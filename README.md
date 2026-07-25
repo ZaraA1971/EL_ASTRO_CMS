@@ -21,8 +21,9 @@ Rôles : `admin` / `editor` (tous articles) · `author` (ses articles).
 |---------|------|
 | `el-astro-web.service` | Astro Node SSR `:4322` |
 | `el-astro-rag-proxy.service` | API Node `server/api.mjs` `:8787` (auth, content, desk, newsletter, RAG proxy) |
-| MySQL `el_articles` | Source de vérité articles |
+| MySQL `el_articles` | Source de vérité articles (~15 474 publish) |
 | MySQL `el_users` | Comptes / rôles (sync WP) |
+| Médias | nginx alias `/wp-content/uploads/` → WP uploads (zéro copie) |
 
 Env principal : `/etc/electronlibre/el-astro-api.env` (**jamais** dans git).  
 TinaCMS retiré. Pupitre = `/desk/` uniquement.  
@@ -91,7 +92,11 @@ npm run build
 sudo systemctl restart el-astro-web.service
 sudo systemctl restart el-astro-rag-proxy.service
 php scripts/sync-el-users.php
+npm run export:wp:all        # REST WP → MD archive (~15k)
 npm run import:articles:db   # MD archive → el_articles
+```
+
+Médias : URLs réécrites en `/wp-content/uploads/…` à l’export/import ; servies par nginx (pas de double copie disque).
 ```
 
 Health : `GET /api/health` → `ok`, `db`, `brevo`, `brevoDryRun`, `onesignalDryRun`, …

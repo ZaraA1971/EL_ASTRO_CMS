@@ -51,6 +51,13 @@ function asJsonArray(v) {
   return JSON.stringify([String(v)]);
 }
 
+function rewriteMediaUrls(html) {
+  return String(html || '').replace(
+    /https?:\/\/(?:www\.)?electronlibre\.info\/wp-content\/uploads\//gi,
+    '/wp-content/uploads/'
+  );
+}
+
 const env = loadEnvFile(ENV_FILE);
 const pool = mysql.createPool({
   host: env.EL_DB_HOST || 'localhost',
@@ -118,8 +125,8 @@ for (const file of files) {
         wpId,
         String(data.slug || file.replace(/\.md$/, '')),
         String(data.title || 'Sans titre'),
-        String(data.excerpt || ''),
-        String(content || '').trim(),
+        rewriteMediaUrls(String(data.excerpt || '')),
+        rewriteMediaUrls(String(content || '').trim()),
         toMysqlDate(data.date) || toMysqlDate(new Date()),
         toMysqlDate(data.modified),
         author,

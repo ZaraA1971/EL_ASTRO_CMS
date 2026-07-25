@@ -16,6 +16,7 @@
     "export:wp:400": "node scripts/export-wp-articles.mjs --limit=400",
     "export:wp:1000": "node scripts/export-wp-articles.mjs --limit=1000",
     "export:wp:2000": "node scripts/export-wp-articles.mjs --limit=2000",
+    "export:wp:all": "node scripts/export-wp-articles.mjs --all",
     "import:articles:db": "node scripts/import-md-to-el-articles.mjs",
     "test": "node --test server/lib/*.test.mjs server/lib/newsletter/*.test.mjs",
     "desk": "echo 'Pupitre: http://163.172.185.4:8091/desk/'"

@@ -4,9 +4,11 @@
  *
  * Usage:
  *   node scripts/export-wp-articles.mjs [--limit=100] [--page=1]
+ *   node scripts/export-wp-articles.mjs --all
  *
  * - Contenu via REST publique
  * - access granted via scripts/list-granted-ids.php (WP-CLI/PHP local)
+ * - URLs médias → chemins relatifs /wp-content/uploads/ (servis par nginx alias)
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -26,7 +28,10 @@ const args = Object.fromEntries(
     return m ? [m[1], m[2]] : [a.replace(/^--/, ''), true];
   })
 );
-const LIMIT = Math.min(Number(args.limit || 100), 5000);
+const EXPORT_ALL = Boolean(args.all);
+const LIMIT = EXPORT_ALL
+  ? Number.POSITIVE_INFINITY
+  : Math.min(Number(args.limit || 100), 5000);
 const START_PAGE = Number(args.page || 1);
 
 function loadGrantedSet() {
@@ -80,8 +85,9 @@ async function fetchJson(url) {
   });
   if (!res.ok) throw new Error(`${res.status} ${url}`);
   const totalPages = Number(res.headers.get('x-wp-totalpages') || 1);
+  const total = Number(res.headers.get('x-wp-total') || 0);
   const data = await res.json();
-  return { data, totalPages };
+  return { data, totalPages, total };
 }
 
 async function loadMap(endpoint, fields = 'id,slug,name') {
@@ -100,12 +106,21 @@ async function loadMap(endpoint, fields = 'id,slug,name') {
   return map;
 }
 
+/** Absolu WP → relatif (servi par nginx alias sur staging/cutover). */
+function rewriteMediaUrls(html) {
+  return String(html || '').replace(
+    /https?:\/\/(?:www\.)?electronlibre\.info\/wp-content\/uploads\//gi,
+    '/wp-content/uploads/'
+  );
+}
+
 function cleanHtml(html) {
   let s = String(html || '');
   s = s.replace(/<script[\s\S]*?<\/script>/gi, '');
   s = s.replace(/<style[\s\S]*?<\/style>/gi, '');
   // Neutralise shortcodes WP courants non portés
   s = s.replace(/\[\/?(?:caption|gallery|embed|audio|video)[^\]]*\]/gi, '');
+  s = rewriteMediaUrls(s);
   return s.trim();
 }
 
@@ -138,14 +153,21 @@ async function main() {
 
   let exported = 0;
   let page = START_PAGE;
-  const perPage = Math.min(LIMIT, 20);
+  const perPage = EXPORT_ALL ? 100 : Math.min(Number.isFinite(LIMIT) ? LIMIT : 100, 100);
+  const limitLabel = EXPORT_ALL ? 'all' : String(LIMIT);
+
+  console.log(
+    `[export] mode=${EXPORT_ALL ? 'all' : 'limit'} target=${limitLabel} per_page=${perPage} start_page=${START_PAGE}`
+  );
 
   while (exported < LIMIT) {
-    const need = Math.min(perPage, LIMIT - exported);
+    const need = EXPORT_ALL
+      ? perPage
+      : Math.min(perPage, LIMIT - exported);
     const url =
       `${WP_API}/posts?per_page=${need}&page=${page}` +
       `&_fields=id,slug,link,title,content,excerpt,date,modified,author,categories,tags`;
-    const { data: posts, totalPages } = await fetchJson(url);
+    const { data: posts, totalPages, total } = await fetchJson(url);
     if (!posts.length) break;
 
     for (const post of posts) {
@@ -153,7 +175,7 @@ async function main() {
       const slug = post.slug;
       const filename = `${id}-${slug}.md`;
       const title = he.decode(post.title?.rendered || '').trim();
-      const excerpt = stripTags(post.excerpt?.rendered || '');
+      const excerpt = rewriteMediaUrls(stripTags(post.excerpt?.rendered || ''));
       const body = cleanHtml(post.content?.rendered || '');
       const author = users.get(post.author) || { name: 'ElectronLibre', slug: 'electronlibre' };
       const cats = (post.categories || [])
@@ -192,7 +214,10 @@ async function main() {
       const file = matter.stringify(body + '\n', front);
       fs.writeFileSync(path.join(OUT_DIR, filename), file, 'utf8');
       exported += 1;
-      console.log(`[export] ${exported}/${LIMIT} ${filename} (${access}/${lang})`);
+      if (exported % 50 === 0 || exported === 1) {
+        const denom = total || limitLabel;
+        console.log(`[export] ${exported}/${denom} … ${filename} (${access}/${lang})`);
+      }
       if (exported >= LIMIT) break;
     }
 
