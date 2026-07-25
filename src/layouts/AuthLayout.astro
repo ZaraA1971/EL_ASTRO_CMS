@@ -4,6 +4,7 @@
  * Pas de header Compagnon ni formulaire de recherche : Safari / gestionnaires
  * de mots de passe ne détectent sinon que le premier <form> de la page (le chat IA).
  */
+import GoatCounter from "../components/GoatCounter.astro";
 import { ASSET_V } from "../lib/assets";
 import "../styles/global.css";
 
@@ -36,6 +37,7 @@ const assetV = ASSET_V;
     <link rel="stylesheet" href={`/css/el/el-reset.css?v=${assetV}`} />
     <link rel="stylesheet" href={`/css/el/el-global.css?v=${assetV}`} />
     <link rel="stylesheet" href={`/css/el/el-article.css?v=${assetV}`} />
+    <GoatCounter />
   </head>
   <body class="el-archive-surface el-auth-page el-auth-page--bare">
     <a class="skip-link screen-reader-text" href="#primary">Aller au contenu</a>

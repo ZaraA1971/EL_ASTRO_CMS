@@ -1,0 +1,17 @@
+---
+/**
+ * GoatCounter — même site pour electronlibre.info + sous-domaines.
+ * path = host + path pour distinguer GEO / Desinfo / site dans les stats.
+ */
+const ENDPOINT = "https://electronlibre.goatcounter.com/count";
+---
+
+<script is:inline>
+  window.goatcounter = {
+    path: function (p) {
+      return location.host + p;
+    },
+  };
+</script>
+<script is:inline data-goatcounter={ENDPOINT} async src="https://gc.zgo.at/count.js"
+></script>
