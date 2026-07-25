@@ -1099,3 +1099,118 @@ a {
   color: var(--ok);
   font-size: 0.92rem;
 }
+
+/* Audience */
+.aud-panel {
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  box-shadow: var(--shadow);
+}
+
+.aud-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.aud-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin: 8px 0 20px;
+}
+
+.aud-kpi {
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg1);
+}
+
+.aud-kpi-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.aud-kpi-value {
+  margin-top: 6px;
+  font-size: 1.55rem;
+  font-weight: 700;
+  font-family: var(--ui);
+  letter-spacing: -0.02em;
+}
+
+.aud-kpi-hint {
+  margin-top: 6px;
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.aud-title {
+  margin: 22px 0 10px;
+  font-size: 1rem;
+  font-family: var(--ui);
+}
+
+.aud-chart-wrap {
+  position: relative;
+  height: 240px;
+  margin-bottom: 8px;
+}
+
+.aud-table-wrap {
+  overflow-x: auto;
+}
+
+.aud-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+
+.aud-table th,
+.aud-table td {
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.aud-table th {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.aud-table .num {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.aud-ref-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.aud-ref-badge.aud-ref-g { background: #e0f2fe; color: #0369a1; }
+.aud-ref-badge.aud-ref-h { background: var(--accent-soft); color: var(--accent); }
+.aud-ref-badge.aud-ref-c { background: var(--warn-soft); color: var(--warn); }
+.aud-ref-badge.aud-ref-o { background: #f1f5f9; color: #475569; }
+

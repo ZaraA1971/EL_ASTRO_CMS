@@ -5,6 +5,7 @@ import { canAccessDesk, canEditAll, canPublish } from './roles.mjs';
 import { canManageUsers, handleDeskUsers } from './users.mjs';
 import { auditLog } from './audit.mjs';
 import { handleDeskNewsletter } from './newsletter/handler.mjs';
+import { handleDeskAudience } from './audience/handler.mjs';
 import {
   buildKeywordSource,
   extractKeywordsViaRag,
@@ -373,6 +374,7 @@ export async function handleDesk(req, res, parts, ctx) {
         onesignalDryRun: Boolean(ctx.onesignal?.dryRun),
         newsletter: Boolean(canPublish(session.role)),
         newsletterDryRun: Boolean(ctx.brevo?.dryRun),
+        audience: Boolean(canPublish(session.role)),
       },
       contentGen: getContentGen(),
     });
@@ -495,6 +497,16 @@ export async function handleDesk(req, res, parts, ctx) {
   // /api/desk/newsletter/*
   if (parts[2] === 'newsletter') {
     return handleDeskNewsletter(req, res, parts, {
+      ...ctx,
+      session,
+      ip,
+      actor,
+    });
+  }
+
+  // /api/desk/audience/*
+  if (parts[2] === 'audience') {
+    return handleDeskAudience(req, res, parts, {
       ...ctx,
       session,
       ip,

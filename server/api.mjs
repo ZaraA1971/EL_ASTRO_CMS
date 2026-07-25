@@ -98,6 +98,19 @@ const BREVO_FROM_EMAIL =
   'info@electronlibre.info';
 const BREVO_FROM_NAME =
   process.env.BREVO_FROM_NAME || fileEnv.BREVO_FROM_NAME || 'ElectronLibre';
+
+const GOATCOUNTER_SITE = (
+  process.env.GOATCOUNTER_SITE ||
+  fileEnv.GOATCOUNTER_SITE ||
+  prodEnv.GOATCOUNTER_SITE ||
+  ''
+).replace(/^https?:\/\//, '').replace(/\.goatcounter\.com.*$/, '').replace(/\/$/, '');
+const GOATCOUNTER_API_KEY =
+  process.env.GOATCOUNTER_API_KEY ||
+  fileEnv.GOATCOUNTER_API_KEY ||
+  prodEnv.GOATCOUNTER_API_KEY ||
+  '';
+
 const BREVO_CONFIGURED = Boolean(
   BREVO_API_KEY || (BREVO_SMTP_USER && BREVO_SMTP_PASS)
 );
@@ -772,6 +785,10 @@ const deskCtx = {
     fromEmail: BREVO_FROM_EMAIL,
     fromName: BREVO_FROM_NAME,
   },
+  goatcounter: {
+    site: GOATCOUNTER_SITE,
+    apiKey: GOATCOUNTER_API_KEY,
+  },
 };
 
 const startedAt = Date.now();
@@ -805,6 +822,7 @@ const server = http.createServer(async (req, res) => {
         onesignalDryRun: ONESIGNAL_DRY_RUN,
         brevo: BREVO_CONFIGURED,
         brevoDryRun: BREVO_DRY_RUN,
+        goatcounter: Boolean(GOATCOUNTER_SITE && GOATCOUNTER_API_KEY),
         cookieSecure: COOKIE_SECURE,
         db: dbOk,
         articles,
