@@ -3,14 +3,14 @@ export const prerender = false;
 
 import BaseLayout from "../../../layouts/BaseLayout.astro";
 import ArticleCard from "../../../components/ArticleCard.astro";
-import { getArticlesByTag, humanizeTag } from "../../../lib/articles";
+import { displayKeyword, getArticlesByTag } from "../../../lib/articles";
 
 const { slug } = Astro.params;
 const tagSlug = decodeURIComponent(slug || "");
 if (!tagSlug) {
   return Astro.redirect("/404/");
 }
-const name = humanizeTag(tagSlug);
+const name = displayKeyword(tagSlug);
 const articles = await getArticlesByTag(tagSlug, "all");
 const featured = articles[0];
 const rest = articles.slice(1);

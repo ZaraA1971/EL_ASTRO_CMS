@@ -1,18 +1,27 @@
-# ElectronLibre — front Astro (migration)
+# ElectronLibre — front Astro (prod)
 
-Staging Scaleway. WordPress prod **inchangé**.
+**Site** : https://electronlibre.info  
+**Pupitre** : https://electronlibre.info/desk/  
+WordPress **gelé** (plus utilisé pour le runtime).
+
+| Ressource | Emplacement |
+|-----------|-------------|
+| Médias | `/var/www/el-media/uploads` → URL `/wp-content/uploads/` |
+| Articles / comptes | MySQL `el_articles` / `el_users` |
+| RAG | indexe `el_articles` (FAISS IDs = `wp_id`) |
+| Backup BDD | `/var/backups/electronlibre-db/` (glissant 7j, cron 22:00) |
+| Code WP archivé | `/var/backups/electronlibre-astro/wordpress-code-frozen-*.tar.gz` |
 
 ## Accès
 
 | Surface | URL |
 |---------|-----|
-| Site | https://qualif.electronlibre.info/ (aussi `:8090`) |
+| Site | https://electronlibre.info/ |
 | Login | `/login/` · oublié `/login/forgot/` · reset `/login/reset/` |
 | Abonnement | `/abonnement/` |
-| Pupitre | https://qualif.electronlibre.info/desk/ (aussi `:8091/desk/`) |
+| Pupitre | https://electronlibre.info/desk/ |
 
-Compte test : `el-staging` (mot de passe hors dépôt).  
-Rôles : `admin` / `editor` (tous articles) · `author` (ses articles).  
+Rôles : `admin` / `editor` · `author` · `subscriber` · `other`.  
 **Publier = immédiat** (MySQL) — pas de rebuild Astro à chaque article.
 
 ## Architecture
@@ -20,68 +29,29 @@ Rôles : `admin` / `editor` (tous articles) · `author` (ses articles).
 | Service | Rôle |
 |---------|------|
 | `el-astro-web.service` | Astro Node SSR `:4322` |
-| `el-astro-rag-proxy.service` | API Node `server/api.mjs` `:8787` (auth, content, desk, newsletter, RAG proxy) |
-| MySQL `el_articles` | Source de vérité articles (~15 474 publish) |
-| MySQL `el_users` | Comptes / rôles (sync WP) |
-| Médias | nginx alias `/wp-content/uploads/` → WP uploads (zéro copie) |
+| `el-astro-rag-proxy.service` | API `:8787` (auth, content, desk, newsletter, RAG proxy) |
+| `rag.service` | RAG upstream `:8080` — cron index `el_articles` 03:00 |
+| MySQL `el_*` | Source de vérité Astro |
+| Médias | nginx → `/var/www/el-media/uploads` |
 
-Env principal : `/etc/electronlibre/el-astro-api.env` (**jamais** dans git).  
-TinaCMS retiré. Pupitre = `/desk/` uniquement.  
-Tables Astro : `el_*` — **jamais** les tables WP `eaxgw_*`.
+Env : `/etc/electronlibre/el-astro-api.env` (**jamais** dans git).
 
-## Comptes (`el_users`)
+## Comptes
 
-| Niveau | `role` | Droits |
-|--------|--------|--------|
-| Admin | `admin` | Pupitre + premium + gestion de tous les comptes |
-| Rédacteurs | `editor` / `author` | Pupitre (+ editor gère abonnés/auteurs) |
-| Abonnés | `subscriber` | Premium si actif / non expiré |
-| Autres | `other` | Contenu `granted` seulement |
+Gérés au pupitre uniquement. Sync WP **off** (`EL_SYNC_USERS_FORCE=1` pour un import one-shot historique).
 
-Sync WP : `php scripts/sync-el-users.php` (cron horaire).  
-Pupitre → **Comptes** : CRUD, régénération MDP, suppression (ACL `canMutateUser`).
+## Auth / API
 
-## Auth front
+- Auth : `/api/auth/*` (login, logout, me, forgot, reset)
+- Contenu abonné : `/api/content/:wpId`
+- Desk : `/api/desk/*`
+- Compagnon : `/api/rag/askWeb` (entitled)
 
-- Connexion : identifiant **ou** e-mail (`POST /api/auth/login`)
-- Mot de passe oublié : `POST /api/auth/forgot` → e-mail Brevo → `/login/reset/?token=`
-- Layout auth minimal (sans Compagnon) pour les gestionnaires de MDP
-- `/.well-known/change-password` → `/login/forgot/`
+## Sitemaps / SEO
 
-## Newsletter
-
-- Compose / envoi depuis Pupitre (`view=newsletter`)
-- Groupes : `admin` · `redacteurs` · `abonnes`
-- Brevo (API ou SMTP) ; `BREVO_DRY_RUN` dans l’env API
-- Désabo public : `/newsletter/unsubscribe/`
-
-## API (`:8787` via `/api/`)
-
-| Route | Rôle |
-|-------|------|
-| `POST /api/auth/login` | Connexion |
-| `POST /api/auth/logout` | Déconnexion |
-| `GET /api/auth/me` | Session + `entitled` / `desk` |
-| `POST /api/auth/forgot` | Demande reset MDP |
-| `GET/POST /api/auth/reset` | Valider jeton / nouveau MDP |
-| `GET /api/content/:wpId` | Corps article (entitled) |
-| `GET/POST/PUT/DELETE /api/desk/users[/:id]` | Comptes |
-| `POST /api/desk/users/:id/password` | Régénérer MDP |
-| `GET/POST /api/desk/newsletter*` | Newsletter desk |
-| `POST /api/newsletter/unsubscribe` | Désabo |
-| `POST /api/desk/articles/:id/publish` | Publier (`push` optionnel) |
-| `POST /api/rag/askWeb` | Compagnon (entitled) |
-
-## Solidification
-
-- Vague A–C : paywall, ACL desk DB, OneSignal dry-run, rate-limit, audit, perf listes
-- Newsletter Brevo + groupes privilèges
-- Auth reset + layout PM-friendly
-
-## CSS / assets
-
-- Source unique : `public/css/el/*` — cache-bust `ASSET_V` (`src/lib/assets.ts`)
-- Articles MD sous `src/content/articles/` = **archive d’import** (ignorés par git / non indexés au build). SoT = MySQL.
+- `/wp-sitemap.xml` (+ chunks posts)
+- `/news-sitemap.xml` · `/news-sitemap.xml.php`
+- GA4 : `G-Q3W21V1KB5`
 
 ## Ops
 
@@ -89,18 +59,16 @@ Pupitre → **Comptes** : CRUD, régénération MDP, suppression (ACL `canMutate
 cd /var/www/el-astro
 npm test
 npm run build
-sudo systemctl restart el-astro-web.service
-sudo systemctl restart el-astro-rag-proxy.service
-php scripts/sync-el-users.php
-npm run export:wp:all        # REST WP → MD archive (~15k)
-npm run import:articles:db   # MD archive → el_articles
+sudo systemctl restart el-astro-web.service el-astro-rag-proxy.service
+sudo find /var/cache/nginx/el-astro-prod -type f -delete
 ```
 
-Médias : URLs réécrites en `/wp-content/uploads/…` à l’export/import ; servies par nginx (pas de double copie disque).
-```
+OneSignal : `ONESIGNAL_DRY_RUN=1` jusqu’au premier push contrôlé.
 
-Health : `GET /api/health` → `ok`, `db`, `brevo`, `brevoDryRun`, `onesignalDryRun`, …
+Archive MD d’import : backup `/var/backups/electronlibre-astro/articles-md-import-*.tar.gz` (hors live).
+
+Health : `GET /api/health` · RAG `GET http://127.0.0.1:8080/health/index`
 
 ## Hors scope
 
-`rag` / `dash` / `désinfo` / WP prod / secrets `/etc/electronlibre/*`.
+`rag` / `dash` / `désinfo` code métier · secrets `/etc/electronlibre/*` · drop tables `eaxgw_*` (legacy, encore en BDD).

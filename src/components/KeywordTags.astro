@@ -1,0 +1,30 @@
+---
+/**
+ * Liste de tags / mots-clés cliquables (cards, sujets liés).
+ */
+import { displayKeyword, tagPath } from "../lib/articles";
+
+interface Props {
+  keywords: string[];
+  class?: string;
+  linkTitle?: string;
+}
+
+const {
+  keywords,
+  class: className = "tags",
+  linkTitle,
+} = Astro.props;
+---
+
+{
+  keywords.length > 0 && (
+    <div class={className}>
+      {keywords.map((kw) => (
+        <a href={tagPath(kw)} title={linkTitle || undefined}>
+          {displayKeyword(kw)}
+        </a>
+      ))}
+    </div>
+  )
+}

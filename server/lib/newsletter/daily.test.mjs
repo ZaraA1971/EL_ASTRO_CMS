@@ -7,6 +7,7 @@ import {
   sortNewsletterArticles,
   trimWords,
   articleExcerptFromBody,
+  articleExcerptForNewsletter,
   dayBoundsParis,
   injectUnsubscribe,
 } from './daily.mjs';
@@ -52,6 +53,20 @@ describe('newsletter daily helpers', () => {
     assert.equal(
       articleExcerptFromBody('<p>Hello <strong>world</strong> again</p>', 2),
       'Hello world…'
+    );
+    assert.equal(
+      articleExcerptForNewsletter(
+        { excerpt: 'Chapô stocké ici', body: '<p>Corps beaucoup plus long encore</p>' },
+        3
+      ),
+      'Chapô stocké ici'
+    );
+    assert.equal(
+      articleExcerptForNewsletter(
+        { excerpt: '', body: '<p>Un deux trois quatre</p>' },
+        2
+      ),
+      'Un deux…'
     );
   });
 

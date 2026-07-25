@@ -1,5 +1,16 @@
 <?php
 /**
+ * DEPRECATED — WordPress gelé. Ne plus exécuter (nécessitait wp-load.php).
+ * SoT = MySQL el_articles / el_users. Voir README.md.
+ */
+if (PHP_SAPI === 'cli') {
+    fwrite(STDERR, "deprecated: WP frozen — script disabled\n");
+    exit(1);
+}
+http_response_code(410);
+exit('deprecated');
+
+/**
  * Liste les post IDs avec access_control=granted (CLI only).
  * Usage: php scripts/list-granted-ids.php
  */

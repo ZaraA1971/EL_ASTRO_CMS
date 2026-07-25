@@ -1,20 +1,30 @@
 <?php
 /**
- * Synchronise comptes WP → el_users (hashes préservés).
- * Mappe les rôles WP vers le modèle EL (admin/editor/author/subscriber/other).
- * CLI: php scripts/sync-el-users.php
- * Ne modifie PAS les tables WP.
+ * Sync WP → el_users — DÉSACTIVÉ.
+ * WordPress n’est plus utilisé : source de vérité = el_users (pupitre /desk/).
+ *
+ * Historique : lecture SQL eaxgw_users (sans wp-load). Conservé pour référence.
+ * Relancer un import one-shot : EL_SYNC_USERS_FORCE=1 php scripts/sync-el-users.php
  */
 if (PHP_SAPI !== 'cli') {
     fwrite(STDERR, "CLI only\n");
     exit(1);
 }
 
-require '/var/www/electronlibre.info/wp-load.php';
-require_once __DIR__ . '/migrate-el-users-model.php';
-global $wpdb;
+if (getenv('EL_SYNC_USERS_FORCE') !== '1') {
+    echo json_encode([
+        'ok' => true,
+        'skipped' => true,
+        'reason' => 'WP sync disabled — el_users is source of truth (desk)',
+    ], JSON_UNESCAPED_UNICODE), "\n";
+    exit(0);
+}
 
-el_migrate_users_model($wpdb);
+require_once __DIR__ . '/lib/el-pdo.php';
+require_once __DIR__ . '/migrate-el-users-model.php';
+
+$pdo = el_pdo();
+el_migrate_users_model($pdo);
 
 function el_map_wp_role(string $wpRole): string
 {
@@ -28,35 +38,73 @@ function el_map_wp_role(string $wpRole): string
     return $map[strtolower($wpRole)] ?? 'other';
 }
 
-function el_sql_nullable($value): string
+function el_parse_wp_capabilities(?string $serialized): ?string
 {
-    global $wpdb;
-    if ($value === null || $value === '') {
-        return 'NULL';
+    if ($serialized === null || $serialized === '') {
+        return null;
     }
-    return $wpdb->prepare('%s', $value);
+    $caps = @unserialize($serialized, ['allowed_classes' => false]);
+    if (!is_array($caps) || !$caps) {
+        return null;
+    }
+    foreach (['administrator', 'editor', 'author', 'contributor', 'subscriber'] as $role) {
+        if (!empty($caps[$role])) {
+            return $role;
+        }
+    }
+    return null;
 }
 
-$users = get_users([
-    'fields' => 'all',
-    'role__in' => ['subscriber', 'author', 'editor', 'administrator', 'contributor'],
-]);
+$prefix = el_wp_prefix();
+$usersTable = $prefix . 'users';
+$metaTable = $prefix . 'usermeta';
+$capsKey = $prefix . 'capabilities';
 
+$st = $pdo->prepare(
+    "SELECT u.ID, u.user_login, u.user_email, u.display_name, u.user_pass, u.user_registered,
+            m.meta_value AS caps
+     FROM `{$usersTable}` u
+     INNER JOIN `{$metaTable}` m
+       ON m.user_id = u.ID AND m.meta_key = ?
+     ORDER BY u.ID ASC"
+);
+$st->execute([$capsKey]);
+
+$selExisting = $pdo->prepare(
+    'SELECT status, access_until, notes, source, role FROM el_users WHERE id = ?'
+);
+$ins = $pdo->prepare(
+    'INSERT INTO el_users (
+    id, login, email, display_name, password_hash,
+    role, status, wp_role, source, registered, access_until, notes
+  ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+  ON DUPLICATE KEY UPDATE
+    login = VALUES(login),
+    email = VALUES(email),
+    display_name = VALUES(display_name),
+    password_hash = VALUES(password_hash),
+    role = VALUES(role),
+    status = VALUES(status),
+    wp_role = VALUES(wp_role),
+    source = VALUES(source),
+    registered = VALUES(registered),
+    access_until = VALUES(access_until),
+    notes = VALUES(notes)'
+);
+
+$allowed = array_flip(['administrator', 'editor', 'author', 'contributor', 'subscriber']);
 $upsert = 0;
-foreach ($users as $u) {
-    $roles = (array) $u->roles;
-    $wpRole = $roles[0] ?? 'subscriber';
+$skipped = 0;
+while ($u = $st->fetch()) {
+    $wpRole = el_parse_wp_capabilities($u['caps'] ?? null);
+    if ($wpRole === null || !isset($allowed[$wpRole])) {
+        $skipped++;
+        continue;
+    }
     $elRole = el_map_wp_role($wpRole);
-    $id = (int) $u->ID;
-
-    $existing = $wpdb->get_row(
-        $wpdb->prepare(
-            'SELECT status, access_until, notes, source, role FROM el_users WHERE id = %d',
-            $id
-        ),
-        ARRAY_A
-    );
-
+    $id = (int) $u['ID'];
+    $selExisting->execute([$id]);
+    $existing = $selExisting->fetch() ?: null;
     $status = $existing['status'] ?? 'active';
     $accessUntil = array_key_exists('access_until', (array) $existing)
         ? $existing['access_until']
@@ -66,51 +114,32 @@ foreach ($users as $u) {
     $role = $source === 'desk' && !empty($existing['role'])
         ? $existing['role']
         : $elRole;
-
-    $sql = $wpdb->prepare(
-        'INSERT INTO el_users (
-            id, login, email, display_name, password_hash,
-            role, status, wp_role, source, registered, access_until, notes
-        ) VALUES (
-            %d, %s, %s, %s, %s,
-            %s, %s, %s, %s, %s, ',
+    $ins->execute([
         $id,
-        $u->user_login,
-        $u->user_email,
-        $u->display_name,
-        $u->user_pass,
+        $u['user_login'],
+        $u['user_email'],
+        $u['display_name'],
+        $u['user_pass'],
         $role,
         $status,
         $wpRole,
         $source,
-        $u->user_registered
-    );
-    $sql .= el_sql_nullable($accessUntil) . ', ' . el_sql_nullable($notes) . ')
-        ON DUPLICATE KEY UPDATE
-          login = VALUES(login),
-          email = VALUES(email),
-          display_name = VALUES(display_name),
-          password_hash = VALUES(password_hash),
-          role = VALUES(role),
-          status = VALUES(status),
-          wp_role = VALUES(wp_role),
-          source = VALUES(source),
-          registered = VALUES(registered),
-          access_until = VALUES(access_until),
-          notes = VALUES(notes)';
-
-    $wpdb->query($sql);
+        $u['user_registered'],
+        $accessUntil,
+        $notes,
+    ]);
     $upsert++;
 }
 
-$counts = $wpdb->get_results(
-    'SELECT role, status, COUNT(*) AS n FROM el_users GROUP BY role, status ORDER BY role, status',
-    ARRAY_A
-);
-$total = (int) $wpdb->get_var('SELECT COUNT(*) FROM el_users');
+$counts = $pdo
+    ->query('SELECT role, status, COUNT(*) AS n FROM el_users GROUP BY role, status ORDER BY role, status')
+    ->fetchAll();
+$total = (int) $pdo->query('SELECT COUNT(*) FROM el_users')->fetchColumn();
 
 echo json_encode([
     'synced' => $upsert,
+    'skipped' => $skipped,
     'total' => $total,
     'counts' => $counts,
+    'via' => 'pdo-force',
 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), "\n";

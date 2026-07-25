@@ -3,6 +3,7 @@ export const prerender = false;
 
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import ArticleCard from "../../components/ArticleCard.astro";
+import KeywordTags from "../../components/KeywordTags.astro";
 import {
   getArticleByIdSlug,
   articleIdSlug,
@@ -11,7 +12,9 @@ import {
   getRelatedArticles,
   getTranslationUrls,
   formatArchiveDate,
-  humanizeTag,
+  articleUpdateDate,
+  displayKeyword,
+  articleDisplayKeywords,
 } from "../../lib/articles";
 import { ASSET_V } from "../../lib/assets";
 
@@ -38,8 +41,18 @@ const homeHref = pageLang === "en" ? "/en/" : "/";
 const homeLabel = pageLang === "en" ? "Home" : "Accueil";
 const relatedTitle =
   pageLang === "en" ? "Related reading..." : "A lire aussi...";
-const keywordsTitle = pageLang === "en" ? "Keywords" : "Mots-clés";
+const browseTitle = pageLang === "en" ? "Related topics" : "Sujets liés";
+const browseHint =
+  pageLang === "en" ? "Open articles with this keyword" : "Voir les articles sur ce mot-clé";
+const defineTitle = pageLang === "en" ? "Define" : "Définir";
+const defineHelp =
+  pageLang === "en"
+    ? "Click a term to get an AI definition in this article’s context."
+    : "Cliquez un terme pour obtenir une définition IA dans le contexte de l’article.";
 const dateLabel = formatArchiveDate(d.date);
+const updateDate = articleUpdateDate(article);
+const updateLabel = updateDate ? formatArchiveDate(updateDate) : "";
+const updatePrefix = pageLang === "en" ? "Updated" : "Mis à jour le";
 const primaryCat = {
   slug: d.categories[0] || "",
   name: d.category_names[0] || "Article",
@@ -48,18 +61,21 @@ const cats = d.categories.map((slug, i) => ({
   slug,
   name: d.category_names[i] || slug,
 }));
-const tags = (d.tags || []).slice(0, 24);
-const iaKeywords = (d.ia_keywords || []).slice(0, 24);
+// Sujets liés + cards : IA (abonnés) si présent, sinon tags WP
+const browseKeywords = articleDisplayKeywords(article, 0);
+// Sidebar « Définir » : mots-clés IA abonnés uniquement
+const iaKeywords = (!free ? d.ia_keywords || [] : []).slice(0, 24);
 const href = articlePath(article);
 const hasTranslations =
   Boolean(translationUrls?.FR) && Boolean(translationUrls?.EN);
 const currentLangCode = pageLang === "en" ? "EN" : "FR";
 
-// Paywall : jamais de cache public (évite de servir un HTML « unlocked » par erreur)
+// Paywall : jamais de cache public. Articles gratuits : revalidation rapide
+// (mots-clés / métadonnées éditées dans le pupitre doivent apparaître tout de suite).
 Astro.response.headers.set(
   "Cache-Control",
   free
-    ? "public, max-age=30, stale-while-revalidate=60"
+    ? "public, max-age=0, must-revalidate"
     : "private, no-store"
 );
 ---
@@ -147,6 +163,15 @@ Astro.response.headers.set(
                   <time datetime={d.date.toISOString()}>{dateLabel}</time>
                 </li>
                 {
+                  updateDate && (
+                    <li class="post-updated">
+                      <time datetime={updateDate.toISOString()}>
+                        {updatePrefix} {updateLabel}
+                      </time>
+                    </li>
+                  )
+                }
+                {
                   d.author && (
                     <li class="post-author">
                       <span>{d.author}</span>
@@ -170,11 +195,18 @@ Astro.response.headers.set(
 
             {
               free ? (
-                <div class="inner-article-content entry-content" set:html={article.body} />
+                <div
+                  class="inner-article-content entry-content"
+                  set:html={article.body}
+                />
               ) : (
                 <div id="el-paywall-root" data-wp-id={d.wp_id}>
                   <div class="el-article__teaser">
-                    {d.excerpt && <p class="seo-teaser-ai">{d.excerpt}</p>}
+                    {d.excerpt && (
+                      <p class="el-article-chapo el-article-chapo--teaser">
+                        {d.excerpt}
+                      </p>
+                    )}
                     <div class="el-paywall abonnement-cta">
                       <p>
                         {pageLang === "en"
@@ -197,15 +229,15 @@ Astro.response.headers.set(
             }
 
             {
-              tags.length > 0 && (
-                <div class="ifoot info">
-                  <div class="tags">
-                    {tags.map((t) => (
-                      <a href={`/articles/tag/${encodeURIComponent(t)}/`}>
-                        {humanizeTag(t)}
-                      </a>
-                    ))}
-                  </div>
+              browseKeywords.length > 0 && (
+                <div class="ifoot info el-keywords-browse-block" aria-label={browseTitle}>
+                  <p class="el-keywords-browse__label">{browseTitle}</p>
+                  <p class="el-keywords-browse__help">{browseHint}</p>
+                  <KeywordTags
+                    keywords={browseKeywords}
+                    class="tags el-keywords-browse"
+                    linkTitle={browseHint}
+                  />
                 </div>
               )
             }
@@ -231,18 +263,25 @@ Astro.response.headers.set(
 
         {
           iaKeywords.length > 0 && (
-            <aside class="el-single-sidebar" aria-label={keywordsTitle}>
+            <aside class="el-single-sidebar" aria-label={defineTitle}>
               <div id="secondary">
-                <h2 class="el-single-aside__title">{keywordsTitle}</h2>
+                <h2 class="el-single-aside__title">{defineTitle}</h2>
+                <p class="el-keywords-define__help">{defineHelp}</p>
                 {/* Corps article chargé via /api/content — jamais en base64 dans le HTML */}
-                <div class="tags el-ia-keywords" data-wp-id={d.wp_id}>
+                <div
+                  class="tags el-ia-keywords"
+                  data-wp-id={d.wp_id}
+                  data-title={d.title}
+                  data-excerpt={d.excerpt || ""}
+                >
                   {iaKeywords.map((k) => (
                     <button
                       type="button"
                       class="keyword-item el-ia-keyword"
                       data-keyword={k}
+                      title={defineHelp}
                     >
-                      {k}
+                      {displayKeyword(k)}
                     </button>
                   ))}
                 </div>

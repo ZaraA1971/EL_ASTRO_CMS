@@ -295,6 +295,30 @@ body.el-archive-surface {
   color: var(--el-accent, #2f6dfb) !important;
 }
 
+.el-single-page .el-keywords-browse__label,
+.el-single-page .el-keywords-define__help,
+.el-single-page .el-keywords-browse__help {
+  margin: 0 0 6px;
+  font-family: var(--el-font-ui, sans-serif);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #64748b;
+}
+
+.el-single-page .el-keywords-define__help,
+.el-single-page .el-keywords-browse__help {
+  font-weight: 400;
+  line-height: 1.45;
+  margin-bottom: 10px;
+}
+
+.el-single-page .el-keywords-browse-block {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+}
+
 .el-single-page .el-single-article-card .tags {
   display: flex;
   flex-wrap: wrap;
@@ -302,6 +326,10 @@ body.el-archive-surface {
   margin-top: 8px;
   font-family: var(--el-font-ui, sans-serif);
   font-size: 0.58rem;
+}
+
+.el-single-page .el-single-article-card .ifoot .el-keywords-browse {
+  margin-top: 0;
 }
 
 .el-single-page .el-single-article-card .tags span,
@@ -864,6 +892,8 @@ h2.el-section-head__title,
 .el-home-tools__panel--desinfo .el-home-tools__name {
   font-family: var(--el-font-editorial, Georgia, "Times New Roman", serif);
   font-weight: 400;
+  font-size: clamp(1.15rem, 2.4vw, 1.45rem);
+  line-height: 1.15;
   color: #0f6b4c;
 }
 

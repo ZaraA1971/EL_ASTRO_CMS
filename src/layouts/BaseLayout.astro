@@ -2,6 +2,7 @@
 import Header from "../components/Header.astro";
 import Footer from "../components/Footer.astro";
 import OneSignalInit from "../components/OneSignalInit.astro";
+import GoogleAnalytics from "../components/GoogleAnalytics.astro";
 import { ASSET_V } from "../lib/assets";
 import "../styles/global.css";
 
@@ -28,7 +29,7 @@ const {
 const assetV = ASSET_V;
 const canonicalUrl =
   canonical ||
-  new URL(Astro.url.pathname, Astro.site || "https://qualif.electronlibre.info").href;
+  new URL(Astro.url.pathname, Astro.site || "https://electronlibre.info").href;
 ---
 
 <!doctype html>
@@ -36,7 +37,10 @@ const canonicalUrl =
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192x192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <meta name="generator" content={Astro.generator} />
     <meta name="description" content={description} />
     {noindex && <meta name="robots" content="noindex,nofollow" />}
@@ -60,13 +64,10 @@ const canonicalUrl =
     <link rel="stylesheet" href={`/css/el/el-article.css?v=${assetV}`} />
     <link rel="stylesheet" href={`/css/el/single.css?v=${assetV}`} />
     <OneSignalInit />
+    <GoogleAnalytics />
   </head>
   <body class={bodyClass}>
     <a class="skip-link screen-reader-text" href="#primary">Aller au contenu</a>
-    <div class="el-staging-banner">
-      Staging Astro — <strong>qualif.electronlibre.info</strong> · prod WP inchangée ·
-      <a href="https://electronlibre.info/">voir le site actuel</a>
-    </div>
     <Header lang={lang} />
     <main id="primary">
       <slot />

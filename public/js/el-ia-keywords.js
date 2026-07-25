@@ -61,7 +61,27 @@
     return html;
   }
 
+  function pageContextPrefix(listEl) {
+    const title =
+      listEl.getAttribute('data-title') ||
+      document.querySelector('.el-single-article-card h1, article h1, .news-title')
+        ?.textContent?.trim() ||
+      '';
+    const excerpt =
+      listEl.getAttribute('data-excerpt') ||
+      document.querySelector('.el-single-article-card .excerpt, .summary .excerpt')
+        ?.textContent?.trim() ||
+      '';
+    const parts = [];
+    if (title) parts.push('<p><strong>' + title + '</strong></p>');
+    if (excerpt) parts.push('<p>' + excerpt + '</p>');
+    return parts.join('');
+  }
+
   async function fetchDefinition(keyword, articleHtml) {
+    if (!articleHtml || !String(articleHtml).trim()) {
+      throw new Error('Contenu article indisponible pour la définition');
+    }
     const res = await fetch('/api/rag/simple', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -73,7 +93,7 @@
       }),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || 'Erreur définition');
+    if (!res.ok) throw new Error(data.error || data?.data?.message || 'Erreur définition');
     return data?.answer || 'Définition indisponible.';
   }
 
@@ -85,8 +105,10 @@
 
     defBox.innerHTML = '<p><em>Chargement…</em></p>';
     try {
-      const articleHtml = await loadArticleHtml(wpId);
-      const sessionKey = 'definition_' + wpId + '_' + keyword;
+      const bodyHtml = await loadArticleHtml(wpId);
+      const articleHtml = pageContextPrefix(listEl) + bodyHtml;
+      // v2 = définitions contextualisées (invalide l’ancien cache générique)
+      const sessionKey = 'definition_v2_' + wpId + '_' + keyword;
       const cached = sessionStorage.getItem(sessionKey);
       if (cached) {
         defBox.innerHTML = cleanAIHTML(cached);
@@ -104,7 +126,8 @@
           '">Connexion</a></p>';
         return;
       }
-      defBox.innerHTML = '<p>Erreur lors de la définition.</p>';
+      const msg = e.message || 'Erreur lors de la définition.';
+      defBox.innerHTML = '<p>' + msg.replace(/[<>&]/g, '') + '</p>';
     }
   }
 

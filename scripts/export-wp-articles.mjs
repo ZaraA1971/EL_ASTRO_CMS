@@ -57,15 +57,9 @@ function loadLangMap() {
   }
 }
 
+/** @deprecated Ne plus importer le cache WP _ia_keywords (auto à la visite). */
 function loadIaKeywordsMap() {
-  const php = path.join(ROOT, 'scripts/list-ia-keywords.php');
-  try {
-    const out = execFileSync('php', [php], { encoding: 'utf8', maxBuffer: 40 * 1024 * 1024 });
-    return JSON.parse(out.trim());
-  } catch (err) {
-    console.warn('[export] ia keywords unavailable', err.message);
-    return {};
-  }
+  return {};
 }
 
 function loadTranslationsMap() {
@@ -187,7 +181,6 @@ async function main() {
 
       const access = granted.has(id) ? 'granted' : 'subscribers';
       const lang = langs[String(id)] === 'en' ? 'en' : 'fr';
-      const keywords = Array.isArray(iaKeywords[String(id)]) ? iaKeywords[String(id)] : [];
       const pair = translations[String(id)] || null;
 
       const front = {
@@ -201,7 +194,8 @@ async function main() {
         categories: cats.map((c) => c.slug),
         category_names: cats.map((c) => c.name),
         tags: tagList.map((t) => t.slug),
-        ia_keywords: keywords,
+        // Mots-clés IA : uniquement via le pupitre (pas le cache WP auto)
+        ia_keywords: [],
         access,
         lang,
         source_url: post.link,

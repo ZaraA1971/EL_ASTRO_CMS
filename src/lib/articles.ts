@@ -175,12 +175,59 @@ export function formatArchiveDate(date: Date): string {
   });
 }
 
+/**
+ * Date de mise à jour éditoriale à afficher, ou null si pas de vrai update
+ * (modified absent / quasi égal à la date de publication).
+ */
+export function articleUpdateDate(article: Article): Date | null {
+  const published = article.data.date;
+  const modified = article.data.modified;
+  if (!modified || Number.isNaN(modified.getTime())) return null;
+  if (Number.isNaN(published.getTime())) return modified;
+  // Seuil : > 2 min après publication = mise à jour
+  if (modified.getTime() - published.getTime() < 2 * 60 * 1000) return null;
+  return modified;
+}
+
 export function humanizeTag(slug: string): string {
   return String(slug || '')
     .split(/[-_]+/)
     .filter(Boolean)
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ');
+}
+
+/** Affichage mot-clé IA (libellé déjà lisible) ou tag slug WP. */
+export function displayKeyword(value: string): string {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  // Slug WP historique (ex. reseaux-sociaux) → libellé ; sinon garder tel quel
+  if (/^[a-z0-9]+(?:-[a-z0-9]+)+$/i.test(raw) && !/\s/.test(raw)) {
+    return humanizeTag(raw);
+  }
+  return raw;
+}
+
+/** Limite cards grille ; 0 = pas de limite (hero / sujets liés). */
+export const KEYWORDS_LIMIT_CARD = 8;
+
+/**
+ * Mots-clés affichés (cards / sujets liés) :
+ * - articles abonnés + ia_keywords → remplacent les tags WP
+ * - sinon tags WP (gratuits / importés sans IA)
+ * - sinon rien
+ * @param limit tranche max ; ≤ 0 = tous
+ */
+export function articleDisplayKeywords(
+  article: Article,
+  limit: number = KEYWORDS_LIMIT_CARD
+): string[] {
+  const subscriber = article.data.access !== "granted";
+  const ia = subscriber ? article.data.ia_keywords || [] : [];
+  const tags = article.data.tags || [];
+  const list = ia.length > 0 ? ia : tags;
+  if (limit <= 0) return list.slice();
+  return list.slice(0, limit);
 }
 
 export function tagPath(slug: string): string {
@@ -305,15 +352,37 @@ export async function countArticlesByCategory(
   return Number((rows as { n: number }[])[0]?.n || 0);
 }
 
-/** Articles portant un tag. */
+/**
+ * Archive /articles/tag/… : tags WP, ou ia_keywords des articles abonnés.
+ */
 export async function getArticlesByTag(
   tag: string,
   lang: LangCode | 'all' = 'all'
 ): Promise<Article[]> {
   const pool = getPool();
-  const params: unknown[] = [tag];
+  const needle = String(tag || '').trim();
+  if (!needle) return [];
+  const params: unknown[] = [needle, needle];
   let sql = `SELECT ${ARTICLE_LIST_COLUMNS} FROM el_articles
-    WHERE draft = 0 AND JSON_CONTAINS(tags, JSON_QUOTE(?))`;
+    WHERE draft = 0 AND (
+      EXISTS (
+        SELECT 1 FROM JSON_TABLE(
+          COALESCE(tags, JSON_ARRAY()),
+          '$[*]' COLUMNS (kw VARCHAR(255) CHARACTER SET utf8mb4 PATH '$')
+        ) AS jt
+        WHERE LOWER(jt.kw) = LOWER(?)
+      )
+      OR (
+        access <> 'granted'
+        AND EXISTS (
+          SELECT 1 FROM JSON_TABLE(
+            COALESCE(ia_keywords, JSON_ARRAY()),
+            '$[*]' COLUMNS (kw VARCHAR(255) CHARACTER SET utf8mb4 PATH '$')
+          ) AS jt2
+          WHERE LOWER(jt2.kw) = LOWER(?)
+        )
+      )
+    )`;
   if (lang !== 'all') {
     sql += ` AND lang = ?`;
     params.push(lang);

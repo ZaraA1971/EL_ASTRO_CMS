@@ -1,5 +1,5 @@
 /**
- * API staging ElectronLibre Astro
+ * API ElectronLibre Astro (prod)
  * - /api/rag/*     → proxy uvicorn RAG local
  * - /api/auth/*    → login / logout / me (hashes WP via el_users)
  * - /api/content/* → corps article abonné (session requise) — MySQL el_articles
@@ -49,6 +49,17 @@ const SESSION_SECRET =
   process.env.EL_SESSION_SECRET || fileEnv.EL_SESSION_SECRET || '';
 const DEEPL_API_KEY =
   process.env.DEEPL_API_KEY || fileEnv.DEEPL_API_KEY || prodEnv.DEEPL_API_KEY || '';
+const AGENT_API_KEY =
+  process.env.AGENT_API_KEY ||
+  fileEnv.AGENT_API_KEY ||
+  prodEnv.AGENT_API_KEY ||
+  '';
+const AGENT_EDITORIAL_URL = (
+  process.env.AGENT_EDITORIAL_URL ||
+  fileEnv.AGENT_EDITORIAL_URL ||
+  prodEnv.ASSISTANT_IA_AGENT_EDITORIAL_URL ||
+  'http://127.0.0.1:8300/editorial/assist'
+).replace(/\/+$/, '');
 const ONESIGNAL_APP_ID =
   process.env.ONESIGNAL_APP_ID ||
   fileEnv.ONESIGNAL_APP_ID ||
@@ -58,7 +69,7 @@ const ONESIGNAL_REST_API_KEY =
 const ONESIGNAL_SITE_URL = (
   process.env.ONESIGNAL_SITE_URL ||
   fileEnv.ONESIGNAL_SITE_URL ||
-  'https://qualif.electronlibre.info'
+  'https://electronlibre.info'
 ).replace(/\/+$/, '');
 const ONESIGNAL_DRY_RUN =
   String(process.env.ONESIGNAL_DRY_RUN || fileEnv.ONESIGNAL_DRY_RUN || '1') ===
@@ -94,7 +105,7 @@ const SITE_URL = (
   process.env.SITE_URL ||
   fileEnv.SITE_URL ||
   ONESIGNAL_SITE_URL ||
-  'https://qualif.electronlibre.info'
+  'https://electronlibre.info'
 ).replace(/\/+$/, '');
 const COOKIE_SECURE =
   String(process.env.EL_COOKIE_SECURE || fileEnv.EL_COOKIE_SECURE || '') === '1';
@@ -612,29 +623,59 @@ async function handleRag(req, res, parts) {
     if (mode !== 'definition') {
       return sendJson(res, 400, { error: 'mode non autorisé' });
     }
+    const articleB64 =
+      typeof payload.article_b64 === 'string' ? payload.article_b64.trim() : '';
+    if (!articleB64) {
+      return sendJson(res, 400, {
+        error: 'Contexte article requis pour la définition',
+      });
+    }
     const forward = {
       question: payload.question.trim(),
-      article_b64: typeof payload.article_b64 === 'string' ? payload.article_b64 : '',
+      article_b64: articleB64,
       mode: 'definition',
     };
     let upstreamRes;
-    try {
-      upstreamRes = await fetch(`${UPSTREAM}/simple`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': RAG_KEY,
-          Accept: 'application/json',
-        },
-        body: JSON.stringify(forward),
+    let lastFetchErr = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        upstreamRes = await fetch(`${UPSTREAM}/simple`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': RAG_KEY,
+            Accept: 'application/json',
+          },
+          body: JSON.stringify(forward),
+          signal: AbortSignal.timeout(120_000),
+        });
+        lastFetchErr = null;
+        break;
+      } catch (err) {
+        lastFetchErr = err;
+        console.error('[api] rag simple fetch', err.message, `attempt=${attempt + 1}`);
+        if (attempt < 2) await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
+      }
+    }
+    if (!upstreamRes) {
+      return sendJson(res, 502, {
+        error: 'Connexion RAG impossible',
+        detail: lastFetchErr?.message || '',
       });
-    } catch (err) {
-      console.error('[api] rag simple fetch', err.message);
-      return sendJson(res, 502, { error: 'Connexion RAG impossible' });
     }
     const text = await upstreamRes.text().catch(() => '');
     if (!upstreamRes.ok) {
-      return sendJson(res, 502, { error: 'Réponse RAG invalide', status: upstreamRes.status });
+      let detail = '';
+      try {
+        detail = JSON.parse(text)?.data?.message || JSON.parse(text)?.error || '';
+      } catch {
+        detail = text.slice(0, 200);
+      }
+      console.error('[api] rag simple upstream', upstreamRes.status, detail);
+      return sendJson(res, 502, {
+        error: detail || 'Réponse RAG invalide',
+        status: upstreamRes.status,
+      });
     }
     res.writeHead(200, {
       'Content-Type': 'application/json; charset=utf-8',
@@ -709,6 +750,12 @@ const deskCtx = {
   clientIp,
   deeplApiKey: DEEPL_API_KEY,
   siteUrl: SITE_URL,
+  ragUpstream: UPSTREAM,
+  ragApiKey: RAG_KEY,
+  agentEditorial: {
+    url: AGENT_EDITORIAL_URL,
+    apiKey: AGENT_API_KEY,
+  },
   onesignal: {
     appId: ONESIGNAL_APP_ID,
     apiKey: ONESIGNAL_REST_API_KEY,

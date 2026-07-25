@@ -6,7 +6,7 @@ import ArchiveHome from "../../components/ArchiveHome.astro";
 import { getArchivePage } from "../../lib/archive";
 
 const { featured, rest, page, totalPages } = await getArchivePage("en", 1);
-Astro.response.headers.set("Cache-Control", "public, max-age=30, stale-while-revalidate=60");
+Astro.response.headers.set("Cache-Control", "public, max-age=10, must-revalidate");
 ---
 
 <BaseLayout

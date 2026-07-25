@@ -1,5 +1,16 @@
 <?php
 /**
+ * DEPRECATED — WordPress gelé. Ne plus exécuter (nécessitait wp-load.php).
+ * SoT = MySQL el_articles / el_users. Voir README.md.
+ */
+if (PHP_SAPI === 'cli') {
+    fwrite(STDERR, "deprecated: WP frozen — script disabled\n");
+    exit(1);
+}
+http_response_code(410);
+exit('deprecated');
+
+/**
  * Map wp_id → mots-clés IA (_ia_keywords).
  * Usage: php list-ia-keywords.php
  */

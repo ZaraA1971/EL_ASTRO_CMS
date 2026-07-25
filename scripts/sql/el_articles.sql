@@ -24,5 +24,7 @@ CREATE TABLE IF NOT EXISTS el_articles (
   PRIMARY KEY (wp_id),
   KEY idx_draft_lang_date (draft, lang, date),
   KEY idx_author_user (author_user_id),
-  KEY idx_slug (slug(191))
+  KEY idx_slug (slug(191)),
+  KEY idx_list_modified (modified, wp_id),
+  KEY idx_list_draft_modified (draft, modified, wp_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

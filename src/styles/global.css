@@ -18,16 +18,3 @@
   --primary-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
   --secondary-font: Georgia, "Times New Roman", serif;
 }
-
-.el-staging-banner {
-  background: #1a1a1a;
-  color: #f5f5f5;
-  font: 12px/1.4 var(--el-font-ui, sans-serif);
-  text-align: center;
-  padding: 6px 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.el-staging-banner a {
-  color: var(--primary-color, #3da1ff);
-}

@@ -6,7 +6,7 @@ import node from '@astrojs/node';
 
 // https://astro.build/config
 export default defineConfig({
-  site: 'https://qualif.electronlibre.info',
+  site: 'https://electronlibre.info',
   trailingSlash: 'always',
   output: 'server',
   adapter: node({ mode: 'standalone' }),

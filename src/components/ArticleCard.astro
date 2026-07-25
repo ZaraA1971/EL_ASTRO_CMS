@@ -4,13 +4,14 @@
  * variant="related" : titre + catégorie + extrait uniquement.
  */
 import LockIcon from "./LockIcon.astro";
+import KeywordTags from "./KeywordTags.astro";
 import {
   type Article,
   articlePath,
   isFreeArticle,
   formatArchiveDate,
-  humanizeTag,
-  tagPath,
+  articleDisplayKeywords,
+  KEYWORDS_LIMIT_CARD,
   trimExcerpt,
 } from "../lib/articles";
 
@@ -26,7 +27,10 @@ const d = article.data;
 const href = articlePath(article);
 const dateLabel = formatArchiveDate(d.date);
 const excerpt = trimExcerpt(d.excerpt, featured ? 55 : related ? 32 : 28);
-const tags = related ? [] : (d.tags || []).slice(0, 8);
+// Hero : tous les tags WP ; grille : limite compacte
+const keywords = related
+  ? []
+  : articleDisplayKeywords(article, featured ? 0 : KEYWORDS_LIMIT_CARD);
 const cats = d.categories.map((slug, i) => ({
   slug,
   name: d.category_names[i] || slug,
@@ -76,15 +80,7 @@ const cats = d.categories.map((slug, i) => ({
 
       {excerpt && <div class="excerpt">{excerpt}</div>}
 
-      {
-        tags.length > 0 && (
-          <div class="tags">
-            {tags.map((tag) => (
-              <a href={tagPath(tag)}>{humanizeTag(tag)}</a>
-            ))}
-          </div>
-        )
-      }
+      <KeywordTags keywords={keywords} />
     </div>
   </div>
 </article>

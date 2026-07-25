@@ -131,11 +131,21 @@
   color: #111827;
 }
 
-.el-single-page .seo-teaser-ai {
+.el-single-page .seo-teaser-ai,
+.el-single-page .el-article-chapo {
   font-family: var(--el-font-editorial);
+  font-size: 1.08rem;
+  line-height: 1.55;
+  color: #334155;
+  margin: 0 0 1.25rem;
+  font-weight: 500;
+}
+
+.el-single-page .el-article-chapo--teaser {
   font-size: 1.02rem;
   line-height: 1.65;
   color: #475569;
+  font-weight: 400;
 }
 
 /* Bloc IA */

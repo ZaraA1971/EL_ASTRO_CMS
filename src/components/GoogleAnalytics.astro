@@ -1,0 +1,17 @@
+---
+/** GA4 — même propriété que WP Site Kit (G-Q3W21V1KB5). */
+const MEASUREMENT_ID = "G-Q3W21V1KB5";
+---
+
+<script
+  async
+  src={`https://www.googletagmanager.com/gtag/js?id=${MEASUREMENT_ID}`}
+></script>
+<script is:inline define:vars={{ MEASUREMENT_ID }}>
+  window.dataLayer = window.dataLayer || [];
+  function gtag() {
+    dataLayer.push(arguments);
+  }
+  gtag("js", new Date());
+  gtag("config", MEASUREMENT_ID);
+</script>

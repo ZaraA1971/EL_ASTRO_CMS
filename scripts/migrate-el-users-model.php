@@ -2,30 +2,28 @@
 /**
  * Migration modèle el_users → rôles EL + status + access_until.
  * CLI: php scripts/migrate-el-users-model.php
- * Ne touche PAS aux tables WP.
+ * Sans WordPress (PDO direct).
  */
 if (PHP_SAPI !== 'cli') {
     fwrite(STDERR, "CLI only\n");
     exit(1);
 }
 
-require '/var/www/electronlibre.info/wp-load.php';
-global $wpdb;
+require_once __DIR__ . '/lib/el-pdo.php';
 
 /**
  * @return array{altered:int, updated:int, counts:array}
  */
-function el_migrate_users_model(wpdb $wpdb): array
+function el_migrate_users_model(PDO $pdo): array
 {
-    $table = 'el_users';
-    $exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table));
+    $exists = $pdo->query("SHOW TABLES LIKE 'el_users'")->fetchColumn();
     if (!$exists) {
         $sql = file_get_contents(__DIR__ . '/sql/el_users.sql');
-        $wpdb->query($sql);
+        $pdo->exec($sql);
         return ['altered' => -1, 'updated' => 0, 'counts' => []];
     }
 
-    $cols = $wpdb->get_col("SHOW COLUMNS FROM {$table}", 0);
+    $cols = $pdo->query('SHOW COLUMNS FROM el_users')->fetchAll(PDO::FETCH_COLUMN, 0);
     $have = array_flip($cols ?: []);
 
     $alters = [];
@@ -52,19 +50,19 @@ function el_migrate_users_model(wpdb $wpdb): array
     }
 
     if ($alters) {
-        $wpdb->query('ALTER TABLE el_users ' . implode(', ', $alters));
+        $pdo->exec('ALTER TABLE el_users ' . implode(', ', $alters));
     }
 
-    $indexRows = $wpdb->get_results('SHOW INDEX FROM el_users', ARRAY_A) ?: [];
+    $indexRows = $pdo->query('SHOW INDEX FROM el_users')->fetchAll() ?: [];
     $indexSet = [];
     foreach ($indexRows as $idx) {
         $indexSet[$idx['Key_name']] = true;
     }
     if (!isset($indexSet['idx_role_status'])) {
-        $wpdb->query('ALTER TABLE el_users ADD INDEX idx_role_status (role, status)');
+        $pdo->exec('ALTER TABLE el_users ADD INDEX idx_role_status (role, status)');
     }
     if (!isset($indexSet['idx_access_until'])) {
-        $wpdb->query('ALTER TABLE el_users ADD INDEX idx_access_until (access_until)');
+        $pdo->exec('ALTER TABLE el_users ADD INDEX idx_access_until (access_until)');
     }
 
     $map = [
@@ -78,8 +76,11 @@ function el_migrate_users_model(wpdb $wpdb): array
     ];
     $wpSlugs = ['administrator', 'editor', 'author', 'contributor', 'subscriber'];
 
-    $rows = $wpdb->get_results('SELECT id, role, wp_role, status, source FROM el_users', ARRAY_A) ?: [];
+    $rows = $pdo->query('SELECT id, role, wp_role, status, source FROM el_users')->fetchAll() ?: [];
     $updated = 0;
+    $upd = $pdo->prepare(
+        'UPDATE el_users SET role = ?, wp_role = ?, status = ?, source = ? WHERE id = ?'
+    );
     foreach ($rows as $row) {
         $current = strtolower((string) $row['role']);
         $storeWp = $row['wp_role'] ?: null;
@@ -94,23 +95,13 @@ function el_migrate_users_model(wpdb $wpdb): array
         $status = $row['status'] ?: 'active';
         $source = $row['source'] ?: 'wp';
 
-        $wpdb->update(
-            'el_users',
-            [
-                'role' => $elRole,
-                'wp_role' => $storeWp,
-                'status' => $status,
-                'source' => $source,
-            ],
-            ['id' => (int) $row['id']]
-        );
+        $upd->execute([$elRole, $storeWp, $status, $source, (int) $row['id']]);
         $updated++;
     }
 
-    $counts = $wpdb->get_results(
-        'SELECT role, status, COUNT(*) AS n FROM el_users GROUP BY role, status',
-        ARRAY_A
-    ) ?: [];
+    $counts = $pdo
+        ->query('SELECT role, status, COUNT(*) AS n FROM el_users GROUP BY role, status')
+        ->fetchAll() ?: [];
 
     return [
         'altered' => count($alters),
@@ -121,5 +112,8 @@ function el_migrate_users_model(wpdb $wpdb): array
 
 // Exécution CLI directe
 if (realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === realpath(__FILE__)) {
-    echo json_encode(el_migrate_users_model($wpdb), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), "\n";
+    echo json_encode(
+        el_migrate_users_model(el_pdo()),
+        JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+    ), "\n";
 }

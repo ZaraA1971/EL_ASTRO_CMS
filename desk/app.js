@@ -40,6 +40,9 @@ const state = {
   view: "list", // list | edit | users | user-edit | newsletter | login
   articles: [],
   total: 0,
+  page: 1,
+  limit: 25,
+  pages: 1,
   q: "",
   filterDraft: "",
   article: null,
@@ -50,10 +53,7 @@ const state = {
   usersRole: "",
   usersStatus: "",
   usersMeta: { roles: ["subscriber", "other"], statuses: ["active", "disabled", "expired"] },
-  usersSuggestOpen: false,
-  usersSuggestIndex: -1,
-  listSuggestOpen: false,
-  listSuggestIndex: -1,
+  authorPick: null, // { name, slug, userId } depuis l’autocomplete
   editUser: null, // null = create
   generatedPassword: "",
   nlDate: new Date().toISOString().slice(0, 10),
@@ -66,8 +66,11 @@ const state = {
   error: "",
   saving: false,
   translating: false,
+  generatingKeywords: false,
+  assisting: false, // corriger | reformuler | chapo
   _searchTimers: {},
-  _searchSeq: { users: 0, list: 0 },
+  _searchSeq: { users: 0, list: 0, listAc: 0, usersAc: 0, authors: 0 },
+  _ac: {}, // états autocomplétion générique (createAutocomplete)
 };
 
 const app = document.getElementById("app");
@@ -126,6 +129,30 @@ function formatDate(d) {
   }
 }
 
+function formatDateTime(d) {
+  try {
+    return new Date(d).toLocaleString("fr-FR", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return "";
+  }
+}
+
+/** Affiche la mise à jour seulement si distincte de la publication (> 2 min). */
+function updateDateLabel(d) {
+  if (!d?.date || !d?.modified) return "";
+  const pub = new Date(d.date).getTime();
+  const mod = new Date(d.modified).getTime();
+  if (Number.isNaN(pub) || Number.isNaN(mod)) return "";
+  if (mod - pub < 2 * 60 * 1000) return "";
+  return formatDateTime(d.modified);
+}
+
 function cleanHtml(html) {
   return String(html || "")
     .replace(/\s*data-(?:start|end|pm-slice|pm-paste)=["'][^"']*["']/gi, "")
@@ -150,34 +177,276 @@ function getBodyFromDom() {
   return state.article?.body || "";
 }
 
+/** Chapô WP-style : 1er `<p><strong>…</strong></p>` en tête de corps. */
+function extractLeadingChapo(html) {
+  const m = String(html || "").match(
+    /^\s*<p[^>]*>\s*<strong>([\s\S]*?)<\/strong>\s*<\/p>/i
+  );
+  return m ? stripTagsPlain(m[1]) : "";
+}
+
+function stripLeadingChapoHtml(html) {
+  return String(html || "").replace(
+    /^\s*<p[^>]*>\s*<strong>[\s\S]*?<\/strong>\s*<\/p>\s*/i,
+    ""
+  );
+}
+
+function insertChapoAtTop(chapoPlain) {
+  const plain = stripTagsPlain(chapoPlain) || String(chapoPlain || "").trim();
+  if (!plain || !state.article) return;
+  const lead = `<p><strong>${escapeHtml(plain)}</strong></p>`;
+  let body = getBodyFromDom();
+  body = stripLeadingChapoHtml(body);
+  const next = cleanHtml(`${lead}\n${body}`);
+  if (state.mode === "html") {
+    const el = document.getElementById("html-editor");
+    if (el) el.value = next;
+  } else if (state.mode === "visual") {
+    const ed = document.getElementById("visual-editor");
+    if (ed) ed.innerHTML = next;
+  } else {
+    // aperçu : bascule en écriture pour afficher le chapô
+    state.mode = "visual";
+    state.article.body = next;
+    render();
+    return;
+  }
+  state.article.body = next;
+}
+
+/** Excerpt = ~17 % du corps (hors chapô gras), pas le chapô éditorial. */
+function deriveExcerptFromBody(html) {
+  const plain = stripTagsPlain(stripLeadingChapoHtml(html));
+  if (!plain) return "";
+  const target = Math.max(120, Math.min(420, Math.floor(plain.length * 0.17)));
+  if (plain.length <= target) return plain;
+  let cut = plain.slice(0, target);
+  const sp = cut.lastIndexOf(" ");
+  if (sp > target * 0.55) cut = cut.slice(0, sp);
+  cut = cut.trim();
+  return cut ? `${cut}…` : plain.slice(0, target).trim();
+}
+
 function collectForm() {
   const a = state.article;
   if (!a) return null;
   const cats = [...document.querySelectorAll(".chip.on")].map((el) => el.dataset.value);
-  const tagsRaw = document.getElementById("f-tags")?.value || "";
   const iaRaw = document.getElementById("f-ia")?.value || "";
+  const authorName =
+    document.getElementById("f-author")?.value?.trim() || a.data.author || "";
+  const pick =
+    state.authorPick &&
+    String(state.authorPick.name || "").trim().toLowerCase() ===
+      authorName.toLowerCase()
+      ? state.authorPick
+      : null;
+  const body = getBodyFromDom();
+  const access = document.getElementById("f-access")?.value || "subscribers";
+  // Mots-clés IA : abonnés seulement, générés à la demande (pas l’héritage WP)
+  const ia_keywords =
+    access === "granted"
+      ? []
+      : iaRaw
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean);
   return {
     title: document.getElementById("f-title")?.value?.trim() || a.data.title,
-    excerpt: document.getElementById("f-excerpt")?.value || "",
-    body: getBodyFromDom(),
-    author: document.getElementById("f-author")?.value || a.data.author,
+    excerpt: deriveExcerptFromBody(body),
+    body,
+    author: authorName,
+    author_slug: pick?.slug || undefined,
+    author_user_id: pick?.userId != null ? pick.userId : pick ? null : undefined,
     date: document.getElementById("f-date")?.value
       ? new Date(document.getElementById("f-date").value).toISOString()
       : a.data.date,
     categories: cats,
     category_names: cats.map(catLabel),
-    tags: tagsRaw
-      .split(",")
-      .map((t) => t.trim())
-      .filter(Boolean),
-    ia_keywords: iaRaw
-      .split(",")
-      .map((t) => t.trim())
-      .filter(Boolean),
-    lang: document.getElementById("f-lang")?.value || "fr",
-    access: document.getElementById("f-access")?.value || "subscribers",
-    draft: document.getElementById("f-draft")?.checked ?? true,
+    ia_keywords,
+    // Langue gérée via le panneau Version UK (pas de sélecteur ici)
+    lang: a.data.lang || "fr",
+    access,
+    // Brouillon géré par le bouton dédié (effet immédiat) — pas via Enregistrer
   };
+}
+
+/** Texte source pour Corriger / Reformuler (sélection ou corps entier). */
+function getAssistSourceText() {
+  if (state.mode === "html") {
+    const el = document.getElementById("html-editor");
+    if (el && el.selectionStart !== el.selectionEnd) {
+      return el.value.slice(el.selectionStart, el.selectionEnd);
+    }
+  }
+  if (state.mode === "visual") {
+    const ed = document.getElementById("visual-editor");
+    const sel = window.getSelection();
+    if (sel && !sel.isCollapsed && ed && ed.contains(sel.anchorNode)) {
+      const range = sel.getRangeAt(0);
+      const div = document.createElement("div");
+      div.appendChild(range.cloneContents());
+      const html = div.innerHTML.trim();
+      return html || sel.toString();
+    }
+  }
+  return getBodyFromDom();
+}
+
+function assistResultToHtml(text) {
+  const t = String(text || "").trim();
+  if (!t) return "";
+  if (/<[a-z][\s\S]*>/i.test(t)) return cleanHtml(t);
+  return t
+    .split(/\n{2,}/)
+    .map((p) => `<p>${escapeHtml(p).replace(/\n/g, "<br>")}</p>`)
+    .join("");
+}
+
+function replaceSelectionOrBody(html) {
+  if (state.mode === "html") {
+    const el = document.getElementById("html-editor");
+    if (!el) return;
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    if (start !== end) {
+      el.setRangeText(html, start, end, "end");
+    } else {
+      el.value = html;
+    }
+    state.article.body = el.value;
+    return;
+  }
+  const ed = document.getElementById("visual-editor");
+  if (!ed) return;
+  const sel = window.getSelection();
+  if (sel && sel.rangeCount && !sel.isCollapsed && ed.contains(sel.anchorNode)) {
+    const range = sel.getRangeAt(0);
+    range.deleteContents();
+    const tmp = document.createElement("div");
+    tmp.innerHTML = html;
+    const frag = document.createDocumentFragment();
+    let last = null;
+    while (tmp.firstChild) {
+      last = tmp.firstChild;
+      frag.appendChild(last);
+    }
+    range.insertNode(frag);
+    if (last) {
+      sel.removeAllRanges();
+      const after = document.createRange();
+      after.setStartAfter(last);
+      after.collapse(true);
+      sel.addRange(after);
+    }
+  } else {
+    ed.innerHTML = html;
+  }
+  state.article.body = cleanHtml(ed.innerHTML);
+}
+
+function stripTagsPlain(html) {
+  return String(html || "")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function runEditorialAssist(type) {
+  if (!state.article || state.assisting || state.saving) return;
+  const wpId = state.article.data.wp_id;
+  let text = "";
+  if (type === "chapo") {
+    const title =
+      document.getElementById("f-title")?.value?.trim() ||
+      state.article.data.title ||
+      "";
+    const body = getBodyFromDom();
+    const plain = stripTagsPlain(stripLeadingChapoHtml(body));
+    if (!plain) {
+      state.error = "Texte requis pour générer le chapô";
+      const errLine = document.getElementById("edit-error");
+      if (errLine) {
+        errLine.hidden = false;
+        errLine.textContent = state.error;
+      }
+      return;
+    }
+    // Corps tronqué : le modèle n’a pas besoin de l’article entier pour un chapô.
+    const bodyForChapo =
+      plain.length > 4500 ? `${plain.slice(0, 4500).trim()}…` : plain;
+    text = title ? `Titre : ${title}\n\n${bodyForChapo}` : bodyForChapo;
+    if (extractLeadingChapo(body)) {
+      const ok = confirm("Remplacer le chapô en tête d’article ?");
+      if (!ok) return;
+    }
+  } else {
+    text = getAssistSourceText();
+    if (!stripTagsPlain(text) && !String(text || "").trim()) {
+      state.error = "Sélectionnez un passage ou rédigez le corps d’abord";
+      const errLine = document.getElementById("edit-error");
+      if (errLine) {
+        errLine.hidden = false;
+        errLine.textContent = state.error;
+      }
+      return;
+    }
+  }
+
+  state.assisting = true;
+  state.error = "";
+  const labels = {
+    corriger: "Correction…",
+    reformuler: "Reformulation…",
+    chapo: "Génération du chapô…",
+  };
+  state.status = labels[type] || "IA…";
+  const statusEl = document.getElementById("edit-status");
+  if (statusEl) {
+    statusEl.hidden = false;
+    statusEl.className = "ok";
+    statusEl.textContent = state.status;
+  }
+  document.querySelectorAll("[data-assist]").forEach((btn) => {
+    btn.disabled = true;
+  });
+  try {
+    const data = await api("/api/desk/assist", {
+      method: "POST",
+      body: JSON.stringify({ type, text, wpId }),
+    });
+    const out = String(data.text || "").trim();
+    const modelHint = data.model ? ` (${data.model})` : "";
+    if (type === "chapo") {
+      insertChapoAtTop(out);
+      state.status = `Chapô inséré en tête${modelHint} — Enregistrer pour publier`;
+    } else {
+      replaceSelectionOrBody(assistResultToHtml(out));
+      state.status =
+        (type === "corriger" ? "Correction appliquée" : "Reformulation appliquée") +
+        modelHint;
+    }
+    if (statusEl) {
+      statusEl.hidden = false;
+      statusEl.className = "ok";
+      statusEl.textContent = state.status;
+    }
+  } catch (err) {
+    state.error = err.message || "Échec IA";
+    state.status = "";
+    const errLine = document.getElementById("edit-error");
+    if (errLine) {
+      errLine.hidden = false;
+      errLine.textContent = state.error;
+    }
+  } finally {
+    state.assisting = false;
+    document.querySelectorAll("[data-assist]").forEach((btn) => {
+      btn.disabled = false;
+    });
+  }
 }
 
 function desiredViewFromUrl() {
@@ -507,6 +776,296 @@ function debounceSearch(key, fn, waitMs = 220) {
   state._searchTimers[key] = setTimeout(fn, waitMs);
 }
 
+/**
+ * Dropdown suggestions partagé (liste articles, comptes, champs…).
+ * mapItem → { title, sub?, attrs? } (attrs = data-* additionnels)
+ */
+function suggestDropdownHtml(id, items, activeIndex, mapItem, { limit = 8 } = {}) {
+  if (!items?.length) return "";
+  const rows = items.slice(0, limit).map((item, i) => {
+    const m = mapItem(item, i) || {};
+    const active = i === activeIndex ? " is-active" : "";
+    return `<button type="button" class="search-suggest__item${active}" ${m.attrs || ""} role="option" aria-selected="${
+      i === activeIndex ? "true" : "false"
+    }">
+      <strong>${escapeHtml(m.title || "")}</strong>
+      ${m.sub ? `<span>${escapeHtml(m.sub)}</span>` : ""}
+    </button>`;
+  });
+  return `<div class="search-suggest" id="${escapeHtml(id)}" role="listbox">${rows.join("")}</div>`;
+}
+
+/**
+ * Autocomplétion générique selon le contexte (fetch + clavier + dropdown).
+ *
+ * opts:
+ * - key, wrapId, suggestId?, limit?, minChars?, suggestMinChars?, debounceMs?, openOnFocus?
+ * - fetchItems(q) → items
+ * - mapItem(item, i) → { title, sub?, attrs? }
+ * - onPick(item)
+ * - onInput?(q)
+ * - afterFetch?(items, q)
+ */
+function createAutocomplete(opts) {
+  const key = opts.key;
+  const suggestId = opts.suggestId || `${key}-suggest`;
+  const limit = opts.limit ?? 10;
+  const minChars = opts.minChars ?? 0;
+  const suggestMinChars = opts.suggestMinChars ?? minChars;
+  const debounceMs = opts.debounceMs ?? 180;
+  const openOnFocus = opts.openOnFocus !== false;
+
+  if (!state._ac[key]) {
+    state._ac[key] = { open: false, index: -1, items: [], q: "" };
+  }
+  const ac = () => state._ac[key];
+
+  function shouldOpen(q, items) {
+    return Boolean(items?.length) && String(q || "").trim().length >= suggestMinChars;
+  }
+
+  function html() {
+    const s = ac();
+    if (!s.open || !s.items.length) return "";
+    return suggestDropdownHtml(
+      suggestId,
+      s.items,
+      s.index,
+      (item, i) => {
+        const m = opts.mapItem(item, i) || {};
+        return {
+          title: m.title,
+          sub: m.sub,
+          attrs: `data-ac-key="${escapeHtml(key)}" data-ac-pick="${i}" ${m.attrs || ""}`,
+        };
+      },
+      { limit }
+    );
+  }
+
+  function bindPicks(root) {
+    root?.querySelectorAll(`[data-ac-key="${key}"][data-ac-pick]`).forEach((btn) => {
+      btn.onmousedown = (e) => e.preventDefault();
+      btn.onclick = () => pick(Number(btn.dataset.acPick));
+    });
+  }
+
+  function patch() {
+    const wrap = document.getElementById(opts.wrapId);
+    if (!wrap) return;
+    document.getElementById(suggestId)?.remove();
+    const markup = html();
+    if (markup) {
+      wrap.insertAdjacentHTML("beforeend", markup);
+      bindPicks(wrap);
+    }
+  }
+
+  function pick(index) {
+    const item = ac().items[index];
+    if (!item) return;
+    ac().open = false;
+    ac().index = -1;
+    opts.onPick(item);
+    patch();
+  }
+
+  function prepare(items, q = "") {
+    ac().q = String(q || "");
+    ac().items = items || [];
+    ac().open = shouldOpen(ac().q, ac().items);
+    ac().index = -1;
+  }
+
+  function syncItems(items, q = ac().q) {
+    prepare(items, q);
+    patch();
+  }
+
+  function close() {
+    ac().open = false;
+    ac().index = -1;
+    patch();
+  }
+
+  async function load(raw) {
+    if (state._searchSeq[key] == null) state._searchSeq[key] = 0;
+    const seq = (state._searchSeq[key] += 1);
+    const q = String(raw || "").trim();
+    ac().q = q;
+    if (q.length < minChars) {
+      ac().items = [];
+      ac().open = false;
+      ac().index = -1;
+      patch();
+      opts.afterFetch?.([], q);
+      return;
+    }
+    try {
+      const items = (await opts.fetchItems(q)) || [];
+      if (seq !== state._searchSeq[key]) return;
+      ac().items = items;
+      ac().open = shouldOpen(q, items);
+      ac().index = -1;
+      opts.afterFetch?.(items, q);
+      patch();
+    } catch {
+      if (seq !== state._searchSeq[key]) return;
+      ac().items = [];
+      ac().open = false;
+      ac().index = -1;
+      opts.afterFetch?.([], q);
+      patch();
+    }
+  }
+
+  function schedule(raw) {
+    opts.onInput?.(String(raw || ""));
+    debounceSearch(key, () => load(raw), debounceMs);
+  }
+
+  function reset() {
+    ac().items = [];
+    ac().open = false;
+    ac().index = -1;
+    ac().q = "";
+  }
+
+  function bindInput(input) {
+    if (!input) return;
+    bindSuggestKeyboard(input, {
+      getOpen: () => ac().open,
+      setOpen: (v) => {
+        ac().open = v;
+      },
+      getIndex: () => ac().index,
+      setIndex: (v) => {
+        ac().index = v;
+      },
+      getItems: () => ac().items.slice(0, limit),
+      onPick: (item) => {
+        const idx = ac().items.indexOf(item);
+        pick(idx >= 0 ? idx : 0);
+      },
+      onClose: () => patch(),
+    });
+    input.oninput = (e) => schedule(e.target.value);
+    if (openOnFocus) {
+      input.onfocus = () => {
+        load(input.value);
+      };
+    }
+    bindPicks(document.getElementById(opts.wrapId));
+  }
+
+  return {
+    html,
+    patch,
+    pick,
+    load,
+    schedule,
+    bindInput,
+    reset,
+    close,
+    prepare,
+    syncItems,
+  };
+}
+
+/** Autocomplete auteur (articles + comptes rédaction). */
+const authorAc = createAutocomplete({
+  key: "authors",
+  wrapId: "author-search-wrap",
+  suggestId: "author-suggest",
+  limit: 10,
+  minChars: 0,
+  suggestMinChars: 0,
+  openOnFocus: true,
+  debounceMs: 180,
+  fetchItems: async (q) => {
+    const params = new URLSearchParams({ limit: "12" });
+    if (q) params.set("q", q);
+    const data = await api(`/api/desk/authors?${params}`);
+    return data.authors || [];
+  },
+  mapItem: (a) => ({
+    title: a.name,
+    sub:
+      a.source === "user"
+        ? a.slug
+          ? `@${a.slug}`
+          : "compte"
+        : "auteur",
+  }),
+  onPick: (a) => {
+    state.authorPick = {
+      name: a.name,
+      slug: a.slug || "",
+      userId: a.userId != null ? a.userId : null,
+    };
+    const input = document.getElementById("f-author");
+    if (input) input.value = a.name;
+  },
+  onInput: () => {
+    state.authorPick = null;
+  },
+});
+
+/** Autocomplete + recherche liste articles. */
+const listAc = createAutocomplete({
+  key: "listAc",
+  wrapId: "list-search-wrap",
+  suggestId: "list-suggest",
+  limit: 8,
+  minChars: 0,
+  suggestMinChars: 1,
+  openOnFocus: false,
+  debounceMs: 200,
+  fetchItems: async (q) => {
+    state.q = q;
+    state.page = 1;
+    await loadList({ soft: true, fromAc: true });
+    return state.articles;
+  },
+  mapItem: (a) => {
+    const d = a.data;
+    return {
+      title: d.title,
+      sub: `${formatDate(d.date)} · ${d.author || ""}${d.draft ? " · brouillon" : ""}`,
+    };
+  },
+  onPick: (a) => openArticle(a.data.wp_id),
+  onInput: (q) => {
+    state.q = q;
+    state.page = 1;
+  },
+});
+
+/** Autocomplete + recherche comptes. */
+const usersAc = createAutocomplete({
+  key: "usersAc",
+  wrapId: "users-search-wrap",
+  suggestId: "users-suggest",
+  limit: 8,
+  minChars: 0,
+  suggestMinChars: 1,
+  openOnFocus: false,
+  debounceMs: 200,
+  fetchItems: async (q) => {
+    state.usersQ = q;
+    await loadUsers({ soft: true, fromAc: true });
+    return state.users;
+  },
+  mapItem: (u) => ({
+    title: u.name || u.login,
+    sub: `${u.login} · ${u.email || ""} · ${ROLE_LABELS[u.role] || u.role}`,
+  }),
+  onPick: (u) => openUser(u.id),
+  onInput: (q) => {
+    state.usersQ = q;
+  },
+});
+
 function usersItemsHtml(users) {
   return (users || [])
     .map((u) => {
@@ -530,32 +1089,9 @@ function usersItemsHtml(users) {
     .join("");
 }
 
-function usersSuggestHtml() {
-  const q = String(state.usersQ || "").trim();
-  if (!state.usersSuggestOpen || !q || !state.users.length) return "";
-  const items = state.users.slice(0, 8).map((u, i) => {
-    const active = i === state.usersSuggestIndex ? " is-active" : "";
-    return `<button type="button" class="search-suggest__item${active}" data-user-suggest="${u.id}" role="option" aria-selected="${
-      i === state.usersSuggestIndex ? "true" : "false"
-    }">
-      <strong>${escapeHtml(u.name || u.login)}</strong>
-      <span>${escapeHtml(u.login)} · ${escapeHtml(u.email || "")} · ${escapeHtml(
-        ROLE_LABELS[u.role] || u.role
-      )}</span>
-    </button>`;
-  });
-  return `<div class="search-suggest" id="users-suggest" role="listbox">${items.join("")}</div>`;
-}
-
 function bindUsersResultClicks(root = app) {
   root.querySelectorAll("[data-user]").forEach((btn) => {
     btn.onclick = () => openUser(btn.dataset.user);
-  });
-  root.querySelectorAll("[data-user-suggest]").forEach((btn) => {
-    btn.onclick = () => {
-      state.usersSuggestOpen = false;
-      openUser(btn.dataset.userSuggest);
-    };
   });
 }
 
@@ -566,16 +1102,6 @@ function patchUsersResults() {
   if (list) {
     list.innerHTML = usersItemsHtml(state.users) || `<div class="empty">Aucun compte</div>`;
     bindUsersResultClicks(list);
-  }
-  const wrap = document.getElementById("users-search-wrap");
-  if (wrap) {
-    const prev = document.getElementById("users-suggest");
-    if (prev) prev.remove();
-    const html = usersSuggestHtml();
-    if (html) {
-      wrap.insertAdjacentHTML("beforeend", html);
-      bindUsersResultClicks(wrap);
-    }
   }
   const err = document.getElementById("users-error");
   if (err) {
@@ -589,7 +1115,7 @@ function patchUsersResults() {
   }
 }
 
-async function loadUsers({ soft = false } = {}) {
+async function loadUsers({ soft = false, fromAc = false } = {}) {
   const seq = (state._searchSeq.users += 1);
   const params = new URLSearchParams({ limit: "40" });
   const q = String(state.usersQ || "").trim();
@@ -605,25 +1131,24 @@ async function loadUsers({ soft = false } = {}) {
     state.error = "";
     if (soft && state.view === "users" && document.getElementById("users-results")) {
       patchUsersResults();
-    } else {
+      if (!fromAc) usersAc.syncItems(state.users, state.usersQ);
+    } else if (!fromAc) {
       render();
+    } else {
+      patchUsersResults();
     }
   } catch (err) {
     if (seq !== state._searchSeq.users) return;
     state.error = err.message || "Erreur recherche";
     if (soft && state.view === "users" && document.getElementById("users-results")) {
       patchUsersResults();
-    } else {
+      if (!fromAc) usersAc.syncItems([], state.usersQ);
+    } else if (!fromAc) {
       render();
+    } else {
+      patchUsersResults();
     }
   }
-}
-
-function scheduleUsersSearch(raw) {
-  state.usersQ = raw;
-  state.usersSuggestOpen = Boolean(String(raw || "").trim());
-  state.usersSuggestIndex = -1;
-  debounceSearch("users", () => loadUsers({ soft: true }), 200);
 }
 
 function emptyUserForm() {
@@ -819,59 +1344,92 @@ function articlesItemsHtml(articles) {
     .join("");
 }
 
-function articlesSuggestHtml() {
-  const q = String(state.q || "").trim();
-  if (!state.listSuggestOpen || !q || !state.articles.length) return "";
-  const items = state.articles.slice(0, 8).map((a, i) => {
-    const d = a.data;
-    const active = i === state.listSuggestIndex ? " is-active" : "";
-    return `<button type="button" class="search-suggest__item${active}" data-article-suggest="${d.wp_id}" role="option" aria-selected="${
-      i === state.listSuggestIndex ? "true" : "false"
-    }">
-      <strong>${escapeHtml(d.title)}</strong>
-      <span>${escapeHtml(formatDate(d.date))} · ${escapeHtml(d.author || "")}${
-        d.draft ? " · brouillon" : ""
-      }</span>
-    </button>`;
-  });
-  return `<div class="search-suggest" id="list-suggest" role="listbox">${items.join("")}</div>`;
-}
-
 function bindListResultClicks(root = app) {
   root.querySelectorAll("[data-open]").forEach((btn) => {
     btn.onclick = () => openArticle(btn.dataset.open);
   });
-  root.querySelectorAll("[data-article-suggest]").forEach((btn) => {
-    btn.onclick = () => {
-      state.listSuggestOpen = false;
-      openArticle(btn.dataset.articleSuggest);
-    };
+}
+
+function listRangeLabel() {
+  const total = Number(state.total || 0);
+  if (!total) return "0 article";
+  const from = (state.page - 1) * state.limit + 1;
+  const to = Math.min(state.page * state.limit, total);
+  return `${from}–${to} sur ${total} article${total > 1 ? "s" : ""}`;
+}
+
+function pagerHtml() {
+  const pages = Math.max(1, Number(state.pages || 1));
+  const page = Math.min(Math.max(1, Number(state.page || 1)), pages);
+  if (pages <= 1 && Number(state.total || 0) <= state.limit) {
+    return `<div class="pager" hidden></div>`;
+  }
+  const windowSize = 5;
+  let start = Math.max(1, page - Math.floor(windowSize / 2));
+  let end = Math.min(pages, start + windowSize - 1);
+  start = Math.max(1, end - windowSize + 1);
+  const nums = [];
+  for (let i = start; i <= end; i++) nums.push(i);
+  return `
+    <nav class="pager" aria-label="Pagination articles">
+      <button type="button" class="pager__btn" data-page="1" ${page <= 1 ? "disabled" : ""} aria-label="Première page">«</button>
+      <button type="button" class="pager__btn" data-page="${page - 1}" ${page <= 1 ? "disabled" : ""} aria-label="Page précédente">‹</button>
+      ${nums
+        .map(
+          (n) =>
+            `<button type="button" class="pager__btn${n === page ? " is-active" : ""}" data-page="${n}" ${
+              n === page ? 'aria-current="page"' : ""
+            }>${n}</button>`
+        )
+        .join("")}
+      <button type="button" class="pager__btn" data-page="${page + 1}" ${page >= pages ? "disabled" : ""} aria-label="Page suivante">›</button>
+      <button type="button" class="pager__btn" data-page="${pages}" ${page >= pages ? "disabled" : ""} aria-label="Dernière page">»</button>
+      <span class="pager__meta">p. ${page}/${pages}</span>
+    </nav>`;
+}
+
+async function goListPage(next) {
+  const page = Number(next);
+  if (!Number.isFinite(page) || page < 1 || page === state.page) return;
+  state.page = page;
+  listAc.close();
+  await loadList({ soft: true });
+  document.getElementById("list-results")?.scrollIntoView({ block: "start" });
+}
+
+function bindListPager(root = app) {
+  root.querySelectorAll(".pager [data-page]").forEach((btn) => {
+    btn.onclick = () => goListPage(btn.dataset.page);
   });
 }
 
 function patchListResults() {
   const count = document.getElementById("list-count");
-  if (count) count.textContent = `${state.total} article(s)`;
+  if (count) count.textContent = listRangeLabel();
   const list = document.getElementById("list-results");
   if (list) {
     list.innerHTML =
       articlesItemsHtml(state.articles) || `<div class="empty">Aucun article</div>`;
     bindListResultClicks(list);
   }
-  const wrap = document.getElementById("list-search-wrap");
-  if (wrap) {
-    document.getElementById("list-suggest")?.remove();
-    const html = articlesSuggestHtml();
-    if (html) {
-      wrap.insertAdjacentHTML("beforeend", html);
-      bindListResultClicks(wrap);
+  const html = pagerHtml();
+  for (const id of ["list-pager-host", "list-pager-host-bottom"]) {
+    const host = document.getElementById(id);
+    if (host) {
+      host.innerHTML = html;
+      bindListPager(host);
     }
   }
 }
 
-async function loadList({ soft = false } = {}) {
+async function loadList({ soft = false, fromAc = false } = {}) {
   const seq = (state._searchSeq.list += 1);
-  const params = new URLSearchParams({ limit: "30" });
+  const page = Math.max(1, Number(state.page || 1));
+  const limit = Math.min(50, Math.max(10, Number(state.limit || 25)));
+  const params = new URLSearchParams({
+    limit: String(limit),
+    page: String(page),
+  });
   const q = String(state.q || "").trim();
   if (q) params.set("q", q);
   if (state.filterDraft !== "") params.set("draft", state.filterDraft);
@@ -880,32 +1438,37 @@ async function loadList({ soft = false } = {}) {
     if (seq !== state._searchSeq.list) return;
     state.articles = data.articles || [];
     state.total = data.total || 0;
+    state.limit = data.limit || limit;
+    state.pages = data.pages || Math.max(1, Math.ceil(state.total / state.limit) || 1);
+    state.page = Math.min(data.page || page, state.pages);
+    state.error = "";
     if (soft && state.view === "list" && document.getElementById("list-results")) {
       patchListResults();
-    } else {
+      if (!fromAc) listAc.syncItems(state.articles, state.q);
+    } else if (!fromAc) {
       render();
+    } else {
+      patchListResults();
     }
   } catch (err) {
     if (seq !== state._searchSeq.list) return;
     state.error = err.message || "Erreur recherche";
     if (soft && state.view === "list" && document.getElementById("list-results")) {
       patchListResults();
-    } else {
+      if (!fromAc) listAc.syncItems([], state.q);
+    } else if (!fromAc) {
       render();
+    } else {
+      patchListResults();
     }
   }
-}
-
-function scheduleListSearch(raw) {
-  state.q = raw;
-  state.listSuggestOpen = Boolean(String(raw || "").trim());
-  state.listSuggestIndex = -1;
-  debounceSearch("list", () => loadList({ soft: true }), 200);
 }
 
 async function openArticle(wpId) {
   state.status = "";
   state.error = "";
+  state.authorPick = null;
+  authorAc.reset();
   const data = await api(`/api/desk/articles/${wpId}`);
   state.article = data.article;
   state.view = "edit";
@@ -939,6 +1502,31 @@ async function createArticle() {
   }
 }
 
+/** Sync le formulaire vers state.article avant un re-render (évite de perdre le texte). */
+function flushFormToState() {
+  if (!state.article || state.view !== "edit") return;
+  const payload = collectForm();
+  if (!payload) return;
+  state.article.body = payload.body;
+  Object.assign(state.article.data, {
+    title: payload.title,
+    excerpt: payload.excerpt,
+    author: payload.author,
+    date: payload.date,
+    categories: payload.categories,
+    category_names: payload.category_names,
+    ia_keywords: payload.ia_keywords,
+    access: payload.access,
+    lang: payload.lang,
+  });
+  if (payload.author_slug !== undefined) {
+    state.article.data.author_slug = payload.author_slug;
+  }
+  if (payload.author_user_id !== undefined) {
+    state.article.data.author_user_id = payload.author_user_id;
+  }
+}
+
 async function saveArticle({ publish = false } = {}) {
   const payload = collectForm();
   if (!payload || !state.article) return;
@@ -953,13 +1541,19 @@ async function saveArticle({ publish = false } = {}) {
   const wantPush =
     Boolean(state.caps.publish) &&
     Boolean(document.getElementById("f-push")?.checked);
+  const hadKw = (payload.ia_keywords || []).length > 0;
   state.saving = true;
   state.error = "";
-  state.status = publish
-    ? wantPush
-      ? "Publication + push…"
-      : "Publication…"
-    : "Enregistrement…";
+  state.status =
+    payload.access === "subscribers" && !hadKw
+      ? publish
+        ? "Publication + mots-clés IA…"
+        : "Enregistrement + mots-clés IA…"
+      : publish
+        ? wantPush
+          ? "Publication + push…"
+          : "Publication…"
+        : "Enregistrement…";
   render();
   try {
     const wpId = state.article.data.wp_id;
@@ -985,10 +1579,155 @@ async function saveArticle({ publish = false } = {}) {
       }
     } else {
       state.article = data.article;
-      state.status = "Enregistré";
+      const n = (data.article?.data?.ia_keywords || []).length;
+      state.status =
+        !hadKw && payload.access === "subscribers" && n
+          ? `Enregistré — ${n} mot${n > 1 ? "s" : ""}-clé${n > 1 ? "s" : ""} IA`
+          : "Enregistré";
     }
   } catch (err) {
     state.error = err.message;
+    state.status = "";
+  } finally {
+    state.saving = false;
+    render();
+  }
+}
+
+/** @param {{ force?: boolean }} [opts] force = pas de confirm (sélection Accès Abonnés) */
+async function generateKeywords({ force = false } = {}) {
+  if (!state.article || state.generatingKeywords || state.saving) return;
+  const payload = collectForm();
+  if (!payload) return;
+  if (payload.access === "granted") {
+    state.error =
+      "Les mots-clés IA sont réservés aux articles abonnés.";
+    const errLine = document.getElementById("edit-error");
+    if (errLine) {
+      errLine.hidden = false;
+      errLine.textContent = state.error;
+    }
+    return;
+  }
+  const input = document.getElementById("f-ia");
+  const current = String(input?.value || "").trim();
+  if (current && !force) {
+    const ok = confirm(
+      "Remplacer les mots-clés actuels par une nouvelle extraction IA ?"
+    );
+    if (!ok) return;
+  }
+  state.generatingKeywords = true;
+  state.error = "";
+  state.status = "Génération des mots-clés…";
+  const help = document.getElementById("kw-help");
+  if (help) help.textContent = "Analyse IA en cours…";
+  const okLine = document.getElementById("edit-status");
+  if (okLine) {
+    okLine.hidden = false;
+    okLine.className = "ok";
+    okLine.textContent = state.status;
+  }
+  try {
+    const wpId = state.article.data.wp_id;
+    const data = await api(`/api/desk/articles/${wpId}/keywords`, {
+      method: "POST",
+      body: JSON.stringify({
+        title: payload.title,
+        excerpt: payload.excerpt,
+        body: payload.body,
+        lang: payload.lang,
+        access: "subscribers",
+      }),
+    });
+    const keywords = data.keywords || [];
+    if (data.article) state.article = data.article;
+    else {
+      state.article.data.ia_keywords = keywords;
+      state.article.data.access = "subscribers";
+    }
+    if (input) {
+      input.value = keywords.join(", ");
+      input.style.height = "auto";
+      input.style.height = `${Math.max(120, input.scrollHeight)}px`;
+    }
+    state.status = `${keywords.length} mot${keywords.length > 1 ? "s" : ""}-clé${
+      keywords.length > 1 ? "s" : ""
+    } généré${keywords.length > 1 ? "s" : ""}`;
+    if (help) {
+      help.textContent =
+        "Générés automatiquement (abonnés). Modifiables, puis Enregistrer.";
+    }
+    if (okLine) {
+      okLine.hidden = false;
+      okLine.className = "ok";
+      okLine.textContent = state.status;
+    }
+  } catch (err) {
+    state.error = err.message || "Échec génération";
+    state.status = "";
+    if (help) help.textContent = state.error;
+    const errLine = document.getElementById("edit-error");
+    if (errLine) {
+      errLine.hidden = false;
+      errLine.textContent = state.error;
+    }
+  } finally {
+    state.generatingKeywords = false;
+  }
+}
+
+async function onAccessChange() {
+  const sel = document.getElementById("f-access");
+  if (!sel || !state.article) return;
+  const access = sel.value;
+  flushFormToState();
+  state.article.data.access = access;
+  if (access === "granted") {
+    state.article.data.ia_keywords = [];
+    state.status = "";
+    state.error = "";
+    render();
+    return;
+  }
+  render();
+  await generateKeywords({ force: true });
+}
+
+/** Bascule brouillon immédiatement (sans Enregistrer). */
+async function toggleDraft() {
+  if (!state.article || state.saving || state.generatingKeywords) return;
+  const nextDraft = !state.article.data.draft;
+  if (!nextDraft && !state.caps.publish) {
+    state.error = "Remettre en ligne réservé éditeur/admin";
+    const errLine = document.getElementById("edit-error");
+    if (errLine) {
+      errLine.hidden = false;
+      errLine.textContent = state.error;
+    }
+    return;
+  }
+  flushFormToState();
+  state.saving = true;
+  state.error = "";
+  state.status = nextDraft ? "Passage en brouillon…" : "Remise en ligne…";
+  render();
+  try {
+    const wpId = state.article.data.wp_id;
+    const data = await api(`/api/desk/articles/${wpId}/draft`, {
+      method: "POST",
+      body: JSON.stringify({ draft: nextDraft }),
+    });
+    const localBody = state.article.body;
+    const localData = { ...state.article.data };
+    state.article = data.article;
+    state.article.body = localBody;
+    Object.assign(state.article.data, localData, {
+      draft: Boolean(data.article?.data?.draft),
+    });
+    state.status = state.article.data.draft ? "Brouillon" : "En ligne";
+  } catch (err) {
+    state.error = err.message || "Échec brouillon";
     state.status = "";
   } finally {
     state.saving = false;
@@ -1227,7 +1966,7 @@ function renderList() {
       <div class="toolbar-list">
         <div class="search-wrap" id="list-search-wrap">
           <input class="search-input search-input--compact" id="q" type="search" placeholder="Rechercher un article…" value="${escapeHtml(state.q)}" autocomplete="off" />
-          ${articlesSuggestHtml()}
+          ${listAc.html()}
         </div>
         ${filterChips(
           "Statut publication",
@@ -1240,41 +1979,29 @@ function renderList() {
           "draft"
         )}
       </div>
-      <p class="count-line" id="list-count">${state.total} article(s)</p>
+      <div class="list-meta">
+        <p class="count-line" id="list-count">${listRangeLabel()}</p>
+        <div id="list-pager-host">${pagerHtml()}</div>
+      </div>
       ${state.error ? `<p class="err">${escapeHtml(state.error)}</p>` : ""}
       <div id="list-results">${items}</div>
+      <div id="list-pager-host-bottom" class="list-pager-bottom">${pagerHtml()}</div>
     </main>
     <button class="fab" type="button" id="btn-new" title="Nouvel article" aria-label="Nouvel article">+</button>`;
 
   document.getElementById("btn-logout").onclick = logout;
   document.getElementById("btn-new").onclick = () => createArticle();
   bindNav();
-  const qInput = document.getElementById("q");
-  qInput.oninput = (e) => scheduleListSearch(e.target.value);
-  bindSuggestKeyboard(qInput, {
-    getOpen: () => state.listSuggestOpen,
-    setOpen: (v) => {
-      state.listSuggestOpen = v;
-    },
-    getIndex: () => state.listSuggestIndex,
-    setIndex: (v) => {
-      state.listSuggestIndex = v;
-    },
-    getItems: () => state.articles.slice(0, 8),
-    onPick: (a) => {
-      state.listSuggestOpen = false;
-      openArticle(a.data.wp_id);
-    },
-    onClose: (mode) => {
-      if (mode === "refresh") patchListResults();
-    },
-  });
+  listAc.bindInput(document.getElementById("q"));
   app.querySelectorAll("[data-draft]").forEach((btn) => {
     btn.onclick = async () => {
       state.filterDraft = btn.dataset.draft;
+      state.page = 1;
+      listAc.close();
       await loadList({ soft: true });
     };
   });
+  bindListPager();
   bindListResultClicks();
 }
 
@@ -1300,7 +2027,7 @@ function renderUsers() {
       <div class="toolbar-list">
         <div class="search-wrap" id="users-search-wrap">
           <input class="search-input search-input--compact" id="users-q" type="search" placeholder="Nom, login, email…" value="${escapeHtml(state.usersQ)}" autocomplete="off" />
-          ${usersSuggestHtml()}
+          ${usersAc.html()}
         </div>
         ${filterChips("Filtrer les comptes", filterChipsOpts, activeFilter, "ufilter")}
       </div>
@@ -1313,30 +2040,12 @@ function renderUsers() {
   document.getElementById("btn-logout").onclick = logout;
   bindNav();
   document.getElementById("btn-new-user").onclick = () => openUser(null);
-  const qInput = document.getElementById("users-q");
-  qInput.oninput = (e) => scheduleUsersSearch(e.target.value);
-  bindSuggestKeyboard(qInput, {
-    getOpen: () => state.usersSuggestOpen,
-    setOpen: (v) => {
-      state.usersSuggestOpen = v;
-    },
-    getIndex: () => state.usersSuggestIndex,
-    setIndex: (v) => {
-      state.usersSuggestIndex = v;
-    },
-    getItems: () => state.users.slice(0, 8),
-    onPick: (u) => {
-      state.usersSuggestOpen = false;
-      openUser(u.id);
-    },
-    onClose: (mode) => {
-      if (mode === "refresh") patchUsersResults();
-    },
-  });
+  usersAc.bindInput(document.getElementById("users-q"));
   app.querySelectorAll("[data-ufilter]").forEach((btn) => {
     btn.onclick = async () => {
       state.usersRole = btn.dataset.ufilter || "";
       state.usersStatus = "";
+      usersAc.close();
       await loadUsers({ soft: true });
     };
   });
@@ -1495,6 +2204,7 @@ function renderEdit() {
   const dateVal = d.date
     ? new Date(d.date).toISOString().slice(0, 16)
     : "";
+  const updatedLabel = updateDateLabel(d);
   const chips = CATEGORIES.map((c) => {
     const on = (d.categories || []).includes(c.value) ? "on" : "";
     return `<button type="button" class="chip ${on}" data-value="${c.value}">${escapeHtml(c.label)}</button>`;
@@ -1517,51 +2227,104 @@ function renderEdit() {
       <div class="edit-grid">
         <section class="edit-col-write" aria-label="Rédaction">
           <input class="title-input" id="f-title" value="${escapeHtml(d.title)}" placeholder="Titre" />
-          <div class="field">
-            <label for="f-excerpt">Chapô</label>
-            <textarea id="f-excerpt" rows="3">${escapeHtml(d.excerpt || "")}</textarea>
-          </div>
 
-          <div class="row" style="justify-content:space-between">
+          <div class="editor-chrome">
             <div class="editor-tabs">
               <button type="button" data-mode="visual" class="${state.mode === "visual" ? "active" : ""}">Écrire</button>
               <button type="button" data-mode="preview" class="${state.mode === "preview" ? "active" : ""}">Aperçu</button>
               <button type="button" data-mode="html" class="${state.mode === "html" ? "active" : ""}">HTML</button>
             </div>
+            ${
+              state.mode === "visual" || state.mode === "html"
+                ? `<div class="editor-toolbar">
+                    ${
+                      state.mode === "visual"
+                        ? `<button type="button" class="btn" data-cmd="bold">Gras</button>
+                    <button type="button" class="btn" data-cmd="italic">Italique</button>
+                    <button type="button" class="btn" data-cmd="h2">Titre</button>
+                    <button type="button" class="btn" data-cmd="p">Paragraphe</button>
+                    <button type="button" class="btn" data-cmd="ul">Liste</button>
+                    <button type="button" class="btn" data-cmd="link">Lien</button>
+                    <button type="button" class="btn" data-cmd="clean">Nettoyer</button>
+                    <span class="toolbar-sep" aria-hidden="true"></span>`
+                        : ""
+                    }
+                    <button type="button" class="btn" data-assist="corriger" ${
+                      state.assisting || state.saving ? "disabled" : ""
+                    }>Corriger</button>
+                    <button type="button" class="btn" data-assist="reformuler" ${
+                      state.assisting || state.saving ? "disabled" : ""
+                    }>Reformuler</button>
+                    <button type="button" class="btn" data-assist="chapo" ${
+                      state.assisting || state.saving ? "disabled" : ""
+                    }>Chapô</button>
+                  </div>`
+                : ""
+            }
           </div>
-          ${
-            state.mode === "visual"
-              ? `<div class="editor-toolbar">
-                  <button type="button" class="btn" data-cmd="bold">Gras</button>
-                  <button type="button" class="btn" data-cmd="italic">Italique</button>
-                  <button type="button" class="btn" data-cmd="h2">Titre</button>
-                  <button type="button" class="btn" data-cmd="p">Paragraphe</button>
-                  <button type="button" class="btn" data-cmd="ul">Liste</button>
-                  <button type="button" class="btn" data-cmd="link">Lien</button>
-                  <button type="button" class="btn" data-cmd="clean">Nettoyer</button>
-                </div>`
-              : ""
-          }
           ${editorPane}
-          ${state.error ? `<p class="err">${escapeHtml(state.error)}</p>` : ""}
-          ${state.status ? `<p class="ok">${escapeHtml(state.status)}</p>` : ""}
+          <p class="err" id="edit-error" ${state.error ? "" : "hidden"}>${escapeHtml(state.error || "")}</p>
+          <p class="ok" id="edit-status" ${state.status ? "" : "hidden"}>${escapeHtml(state.status || "")}</p>
         </section>
 
         <aside class="edit-col-meta" aria-label="Publication">
           <p class="meta-title">Publication</p>
           <div class="stack">
-            <div class="field"><label for="f-author">Auteur</label><input id="f-author" value="${escapeHtml(d.author || "")}" /></div>
-            <div class="field"><label for="f-date">Date</label><input id="f-date" type="datetime-local" value="${dateVal}" /></div>
-            <div class="field"><label>Rubriques</label><div class="chips" id="chips">${chips}</div></div>
-            <div class="field"><label for="f-tags">Mots-clés (virgules)</label><input id="f-tags" value="${escapeHtml((d.tags || []).join(", "))}" /></div>
-            <div class="field"><label for="f-ia">Mots-clés IA</label><input id="f-ia" value="${escapeHtml((d.ia_keywords || []).join(", "))}" /></div>
-            <div class="field"><label for="f-lang">Langue</label>
-              <select id="f-lang"><option value="fr" ${d.lang === "fr" ? "selected" : ""}>Français</option><option value="en" ${d.lang === "en" ? "selected" : ""}>English (UK)</option></select>
+            <div class="field">
+              <label for="f-author">Auteur</label>
+              <div class="search-wrap" id="author-search-wrap">
+                <input id="f-author" class="search-input" value="${escapeHtml(d.author || "")}" placeholder="Nom…" autocomplete="off" />
+                ${authorAc.html()}
+              </div>
             </div>
+            <div class="field">
+              <label for="f-date">Date de publication</label>
+              <input id="f-date" type="datetime-local" value="${dateVal}" />
+              <p class="uk-help">Fait foi pour le tri et l’affichage principal.</p>
+            </div>
+            <div class="field">
+              <label>Mise à jour</label>
+              <p class="date-updated" id="f-modified">${
+                updatedLabel
+                  ? escapeHtml(updatedLabel)
+                  : "— <span class=\"sub\">renseignée automatiquement à l’enregistrement</span>"
+              }</p>
+            </div>
+            <div class="field"><label>Rubriques</label><div class="chips" id="chips">${chips}</div></div>
             <div class="field"><label for="f-access">Accès</label>
               <select id="f-access"><option value="subscribers" ${d.access !== "granted" ? "selected" : ""}>Abonnés</option><option value="granted" ${d.access === "granted" ? "selected" : ""}>Gratuit</option></select>
             </div>
-            <label class="row" style="min-height:var(--tap)"><input type="checkbox" id="f-draft" ${d.draft ? "checked" : ""} ${state.caps.publish ? "" : "disabled"} /> Brouillon${!state.caps.publish ? " <span class=\"sub\">(publication éditeur)</span>" : ""}</label>
+            ${
+              d.access !== "granted"
+                ? `<div class="field field--keywords">
+              <label for="f-ia">Mots-clés IA</label>
+              <textarea id="f-ia" class="kw-textarea" rows="5" placeholder="Union européenne, Meta, réseaux sociaux…" autocomplete="off" ${
+                state.generatingKeywords || state.saving ? "disabled" : ""
+              }>${escapeHtml((d.ia_keywords || []).join(", "))}</textarea>
+              <p class="uk-help" id="kw-help">${
+                state.generatingKeywords
+                  ? "Analyse IA en cours…"
+                  : "Auto à la sélection Abonnés et à l’enregistrement s’ils sont vides. Modifiables ensuite."
+              }</p>
+            </div>`
+                : `<p class="uk-help">Article gratuit : tags WP à l’affichage (pas de mots-clés IA).</p>`
+            }
+            <div class="field">
+              <button
+                type="button"
+                id="btn-draft"
+                class="btn btn-draft ${d.draft ? "is-pressed" : ""}"
+                aria-pressed="${d.draft ? "true" : "false"}"
+                ${state.saving || state.translating ? "disabled" : ""}
+              >Brouillon</button>
+              <p class="uk-help">${
+                d.draft
+                  ? "Enfoncé = hors ligne. Effet immédiat."
+                  : state.caps.publish
+                    ? "Appuyer pour passer en brouillon tout de suite."
+                    : "Appuyer pour passer en brouillon. Remise en ligne : éditeur."
+              }</p>
+            </div>
 
             ${
               state.caps.publish
@@ -1596,7 +2359,7 @@ function renderEdit() {
                     ? `<p class="uk-help">Lié à l’EN <strong>#${d.translation_en}</strong></p>
                        <button class="btn" type="button" id="btn-open-en">Ouvrir la version UK</button>
                        <button class="btn btn-uk" type="button" id="btn-retranslate" ${state.translating || state.saving ? "disabled" : ""}>Retraduire (écraser)</button>`
-                    : `<p class="uk-help">Crée un brouillon EN-GB via DeepL (titre, chapô, corps). Validation humaine ensuite.</p>
+                    : `<p class="uk-help">Crée un brouillon EN-GB via DeepL (titre, corps). Validation humaine ensuite.</p>
                        <button class="btn btn-uk" type="button" id="btn-translate-uk" ${state.translating || state.saving ? "disabled" : ""}>Créer version UK</button>`
               }
             </div>
@@ -1620,8 +2383,37 @@ function renderEdit() {
   document.getElementById("btn-save").onclick = () => saveArticle({ publish: false });
   const btnPublish = document.getElementById("btn-publish");
   if (btnPublish) btnPublish.onclick = () => saveArticle({ publish: true });
+  const btnDraft = document.getElementById("btn-draft");
+  if (btnDraft) btnDraft.onclick = () => toggleDraft();
   const btnPushNow = document.getElementById("btn-push-now");
   if (btnPushNow) btnPushNow.onclick = () => pushNow();
+  const accessSel = document.getElementById("f-access");
+  if (accessSel) {
+    accessSel.onchange = () => onAccessChange();
+  }
+  app.querySelectorAll("[data-assist]").forEach((btn) => {
+    btn.onclick = () => runEditorialAssist(btn.dataset.assist);
+  });
+  const kwField = document.getElementById("f-ia");
+  if (kwField) {
+    const autosize = () => {
+      kwField.style.height = "auto";
+      kwField.style.height = `${Math.max(120, kwField.scrollHeight)}px`;
+    };
+    autosize();
+    kwField.oninput = autosize;
+  }
+  const authorInput = document.getElementById("f-author");
+  if (authorInput) {
+    if (!state.authorPick && d.author) {
+      state.authorPick = {
+        name: d.author,
+        slug: d.author_slug || "",
+        userId: d.author_user_id != null ? d.author_user_id : null,
+      };
+    }
+    authorAc.bindInput(authorInput);
+  }
 
   const btnUk = document.getElementById("btn-translate-uk");
   if (btnUk) btnUk.onclick = () => translateUk({ overwrite: true });

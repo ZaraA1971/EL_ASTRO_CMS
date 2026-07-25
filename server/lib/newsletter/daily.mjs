@@ -135,6 +135,15 @@ export function articleExcerptFromBody(body, wordLimit = EXCERPT_WORDS) {
   return trimWords(stripHtmlToText(body), wordLimit);
 }
 
+/** Chapô stocké d’abord (Modèle A), sinon trim du corps. */
+export function articleExcerptForNewsletter(article, wordLimit = EXCERPT_WORDS) {
+  const stored = stripHtmlToText(article?.excerpt || '');
+  if (stored) {
+    return wordLimit ? trimWords(stored, wordLimit) : stored;
+  }
+  return articleExcerptFromBody(article?.body, wordLimit);
+}
+
 export function isEditorialArticle(article) {
   const tags = article.tags || [];
   return tags.length > 0;
@@ -194,6 +203,7 @@ function rowToNlArticle(row) {
     wp_id: Number(row.wp_id),
     slug: String(row.slug),
     title: String(row.title),
+    excerpt: String(row.excerpt || ''),
     body: String(row.body || ''),
     date: row.date instanceof Date ? row.date : new Date(row.date),
     tags: parseJsonArray(row.tags),
@@ -205,7 +215,7 @@ function rowToNlArticle(row) {
 
 async function fetchArticlesForDay(pool, ymd, { paywalledOnly = false } = {}) {
   const { start, end } = dayBoundsParis(ymd);
-  let sql = `SELECT wp_id, slug, title, body, date, tags, categories, category_names, access
+  let sql = `SELECT wp_id, slug, title, excerpt, body, date, tags, categories, category_names, access
     FROM el_articles
     WHERE draft = 0 AND lang = 'fr'
       AND date >= ? AND date <= ?`;
@@ -260,7 +270,7 @@ function renderArticleCards(articles, siteUrl, t) {
     html += `<h2 style="${titleStyle}"><a href="${escapeHtml(href)}" rel="bookmark" style="color:${linkColor};text-decoration:none;">${escapeHtml(a.title)}</a></h2>`;
     html += `<div style="font-size:15px;color:${t.body};line-height:1.65;margin:0;font-family:${t.fontUi};">`;
     if (editorial) {
-      const excerpt = articleExcerptFromBody(a.body, EXCERPT_WORDS);
+      const excerpt = articleExcerptForNewsletter(a, EXCERPT_WORDS);
       if (excerpt) {
         html += `<p style="margin:0 0 14px;color:${t.body};font-size:15px;line-height:1.65;font-family:${t.fontUi};">${escapeHtml(excerpt)}</p>`;
       }
@@ -302,7 +312,7 @@ function renderMissed(missed, siteUrl, t) {
   html += `<ul style="margin:0;padding:0;list-style:none;">`;
   missed.forEach((a, i) => {
     const href = articlePath(siteUrl, a);
-    const excerpt = articleExcerptFromBody(a.body, MISSED_EXCERPT_WORDS);
+    const excerpt = articleExcerptForNewsletter(a, MISSED_EXCERPT_WORDS);
     const border = i === 0 ? 'none' : `1px solid ${t.borderLight}`;
     const padTop = i === 0 ? '0' : '11px';
     html += `<li style="margin:0;padding:${padTop} 0 11px;border-top:${border};font-size:14px;line-height:1.45;font-family:${t.fontUi};">`;
