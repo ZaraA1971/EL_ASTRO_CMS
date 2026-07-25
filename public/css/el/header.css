@@ -88,11 +88,6 @@ body.admin-bar .site-header .top-bar {
   margin-left: auto;
 }
 
-.site-header .top-bar .top-ia-button {
-  position: relative;
-  z-index: 6;
-}
-
 .site-header .top-bar .top-lang-switcher {
   margin-left: 0 !important;
   margin-right: 0 !important;

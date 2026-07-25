@@ -1,9 +1,16 @@
 /**
- * Session + paywall client + Compagnon.
+ * Session + paywall client + outils premium (dont RAG / Compagnon).
  * `entitled` = accès premium (abonné/staff actif non expiré).
  */
 (function () {
   'use strict';
+
+  let resolveAuthReady;
+  if (!window.elAuthReady) {
+    window.elAuthReady = new Promise((resolve) => {
+      resolveAuthReady = resolve;
+    });
+  }
 
   async function fetchMe() {
     try {
@@ -15,9 +22,10 @@
     }
   }
 
-  function setSubscriberFlag(entitled) {
+  function setSubscriberFlag(entitled, authenticated) {
     window.isSubscriber = !!entitled;
     window.elEntitled = !!entitled;
+    window.elAuthenticated = !!authenticated;
   }
 
   function updateHeader(me) {
@@ -52,20 +60,20 @@
     });
   }
 
-  function lockCompagnonIfNeeded(entitled) {
-    if (entitled) return;
-    const container = document.querySelector('.ia-drawer-content');
-    if (!container || container.querySelector('.ia-locked')) return;
-    if (!container.querySelector('#gpt4o-rag-form')) return;
-    container.innerHTML =
-      '<div class="ia-locked">' +
-      '<p>🔒 Accès réservé aux abonnés ElectronLibre.</p>' +
-      '<a href="/login/?redirect=' +
-      encodeURIComponent(location.pathname) +
-      '" class="btn-subscribe">Connexion</a>' +
-      '<a href="/abonnement/" class="btn-subscribe" style="margin-left:8px">Je m’abonne</a>' +
-      '</div>';
-  }
+  /**
+   * Accès outil premium : entitled → true ;
+   * sinon redirection login (anonyme) ou abonnement (connecté non abonné).
+   */
+  window.elRequirePremium = function elRequirePremium() {
+    if (window.elEntitled) return true;
+    const redirect = encodeURIComponent(location.pathname + location.search);
+    if (window.elAuthenticated) {
+      location.href = '/abonnement/';
+    } else {
+      location.href = '/login/?redirect=' + redirect;
+    }
+    return false;
+  };
 
   async function hydratePaywall(entitled) {
     const root = document.getElementById('el-paywall-root');
@@ -103,11 +111,12 @@
 
   document.addEventListener('DOMContentLoaded', async () => {
     const me = await fetchMe();
-    const entitled = !!(me.entitled ?? (me.authenticated && me.user?.entitled));
-    setSubscriberFlag(entitled);
+    const authenticated = !!me.authenticated;
+    const entitled = !!(me.entitled ?? (authenticated && me.user?.entitled));
+    setSubscriberFlag(entitled, authenticated);
     updateHeader(me);
     updateLockIcons(entitled);
-    lockCompagnonIfNeeded(entitled);
     await hydratePaywall(entitled);
+    if (typeof resolveAuthReady === 'function') resolveAuthReady(me);
   });
 })();

@@ -264,8 +264,12 @@ Astro.response.headers.set(
         {
           iaKeywords.length > 0 && (
             <aside class="el-single-sidebar" aria-label={defineTitle}>
+              <header class="el-section-head el-single-sidebar-head">
+                <h2 class="el-section-head__title el-single-aside__title">
+                  {defineTitle}
+                </h2>
+              </header>
               <div id="secondary">
-                <h2 class="el-single-aside__title">{defineTitle}</h2>
                 <p class="el-keywords-define__help">{defineHelp}</p>
                 {/* Corps article chargé via /api/content — jamais en base64 dans le HTML */}
                 <div

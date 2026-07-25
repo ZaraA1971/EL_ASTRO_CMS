@@ -594,6 +594,17 @@ async function handleRag(req, res, parts) {
     return sendJson(res, 404, { error: 'Unknown RAG endpoint' });
   }
 
+  // Même principe que /api/content et les outils abonnés : entitled requis.
+  const ent = await loadEntitledSession(req);
+  if (!ent?.entitled) {
+    return sendJson(res, 403, {
+      error: ent?.session
+        ? 'Abonnement requis ou expiré.'
+        : 'Accès réservé aux abonnés ElectronLibre.',
+      entitled: false,
+    });
+  }
+
   let bodyBuf;
   try {
     bodyBuf = await readBody(req);
@@ -682,15 +693,6 @@ async function handleRag(req, res, parts) {
       'Cache-Control': 'no-store',
     });
     return res.end(text);
-  }
-
-  const ent = await loadEntitledSession(req);
-  if (!ent?.entitled) {
-    return sendJson(res, 403, {
-      error: ent?.session
-        ? 'Abonnement requis ou expiré.'
-        : 'Accès réservé aux abonnés ElectronLibre.',
-    });
   }
 
   const forward = {

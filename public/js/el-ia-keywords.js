@@ -103,6 +103,13 @@
     const defBox = ensureDefBox(listEl);
     if (!keyword || !wpId) return;
 
+    if (window.elAuthReady && typeof window.elAuthReady.then === 'function') {
+      await window.elAuthReady;
+    }
+    if (typeof window.elRequirePremium === 'function' && !window.elRequirePremium()) {
+      return;
+    }
+
     defBox.innerHTML = '<p><em>Chargement…</em></p>';
     try {
       const bodyHtml = await loadArticleHtml(wpId);
@@ -118,9 +125,9 @@
       sessionStorage.setItem(sessionKey, answer);
       defBox.innerHTML = cleanAIHTML(answer);
     } catch (e) {
-      if (e.status === 401) {
+      if (e.status === 401 || e.status === 403) {
         defBox.innerHTML =
-          '<p>Connexion abonné requise pour les définitions.</p>' +
+          '<p>Accès abonné requis pour les définitions.</p>' +
           '<p><a class="btn-subscribe" href="/login/?redirect=' +
           encodeURIComponent(location.pathname) +
           '">Connexion</a></p>';

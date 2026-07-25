@@ -150,32 +150,45 @@ RAG.Events = {
 //  Refactored, robust SSE client
 // ==============================
 
-// ---- DOM Manager ----
+// ---- DOM Manager (panneau home #el-compagnon) ----
 RAG.DOM = {
     getContainerBox() {
-        return document.querySelector('#ia-drawer');
+        return document.getElementById('el-compagnon');
     },
 
     getResponseContainer() {
-        // Toujours recalculer pour éviter les problèmes de timing / templates
-        return document.getElementById('ia-drawer-content');
+        return document.getElementById('el-compagnon-content');
     },
 
-    // Removed ensureRAGDiv (unused, legacy, and conflicting)
     clearRAG() {},
 
-    /** N’ouvre PAS le tiroir (évite l’auto-open au restore localStorage). */
-    showBox() {},
-
-    openDrawer() {
-        if (window.IATools && typeof window.IATools.openDrawer === 'function') {
-            window.IATools.openDrawer();
+    showBox() {
+        if (window.ELCompagnon && typeof window.ELCompagnon.open === 'function') {
+            window.ELCompagnon.open();
+            return;
+        }
+        const box = this.getContainerBox();
+        if (box) {
+            box.classList.add('is-open');
+            box.setAttribute('data-open', 'true');
+            const content = this.getResponseContainer();
+            if (content) {
+                content.hidden = false;
+                content.setAttribute('aria-hidden', 'false');
+            }
+            if (typeof box.scrollIntoView === 'function') {
+                box.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            }
         }
     },
 
+    openDrawer() {
+        this.showBox();
+    },
+
     hideBox() {
-        if (window.IATools && typeof window.IATools.closeDrawer === 'function') {
-            window.IATools.closeDrawer();
+        if (window.ELCompagnon && typeof window.ELCompagnon.close === 'function') {
+            window.ELCompagnon.close();
         }
     },
 
@@ -195,12 +208,16 @@ RAG.DOM = {
 
     clearStream() {
         const stream = document.getElementById('gpt-stream');
-        if (stream) stream.remove();
+        if (stream) {
+            stream.innerHTML = '';
+            stream.classList.remove('streaming', 'rag-thinking');
+            delete stream.dataset.mode;
+        }
     },
 
     clearFinal() {
         const finalDiv = document.getElementById('final-answer');
-        if (finalDiv) finalDiv.remove();
+        if (finalDiv) finalDiv.innerHTML = '';
     },
 
     clearSources() {
@@ -444,13 +461,16 @@ RAG.API = {
         });
 
         if (response.status === 403) {
-            RAG.DOM.openDrawer();
+            if (typeof window.elRequirePremium === 'function') {
+                window.elRequirePremium();
+                return null;
+            }
             const stream = RAG.DOM.ensureStreamDiv();
             if (stream) {
                 stream.dataset.mode = 'gpt';
                 stream.classList.remove('streaming');
                 stream.innerHTML =
-                    '🔒 Accès réservé aux abonnés. <a href="/login/">Connexion</a>';
+                    'Accès réservé aux abonnés. <a href="/login/">Connexion</a>';
             }
             return null;
         }
@@ -467,6 +487,14 @@ RAG.API = {
 // ---- RAG Controller ----
 RAG.Controller = {
     async run(question) {
+        if (window.elAuthReady && typeof window.elAuthReady.then === 'function') {
+            await window.elAuthReady;
+        }
+        if (typeof window.elRequirePremium === 'function' && !window.elRequirePremium()) {
+            return;
+        }
+        if (!RAG.DOM.getResponseContainer()) return;
+
         // Clean previous UI immediately (avoid flicker during stream)
         RAG.DOM.resetAll();
         RAG.Parser.reset();
@@ -477,8 +505,7 @@ RAG.Controller = {
         } catch (e) {
             /* ignore */
         }
-        // Ouvre le tiroir uniquement sur action utilisateur (soumission)
-        RAG.DOM.openDrawer();
+        RAG.DOM.showBox();
 
         const reader = await RAG.API.ask(question);
         if (!reader) return;

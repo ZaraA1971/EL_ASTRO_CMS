@@ -23,10 +23,8 @@
   --el-header-max: 1600px;
   --el-top-bar-height: 50px;
   --el-page-pad: 28px;
-  --el-section-hang: min(
-    56px,
-    max(0px, (100vw - var(--el-content-width) - (2 * var(--el-page-pad))) / 2)
-  );
+  /* Étiquettes (À la une, Outils, etc.) : léger décalage dans la marge */
+  --el-section-hang: 6px;
 }
 
 /* Bouton « retour en haut » — pastille bleue, flèche blanche */

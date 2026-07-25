@@ -2,7 +2,6 @@
 /**
  * Header ElectronLibre — port structurel de header.php + assets CSS/JS du thème.
  */
-import Drawer from "./ELCompagnon/Drawer.astro";
 import { ASSET_V } from "../lib/assets";
 
 interface Props {
@@ -43,8 +42,6 @@ const navItems: NavItem[] = [
 ---
 
 <header id="masthead" class="site-header">
-  <Drawer />
-
   <div class="top-bar">
     <div class="container">
       <div class="top-wrapper">
@@ -100,23 +97,10 @@ const navItems: NavItem[] = [
         <div class="top-right">
           <script is:inline>
             window.isSubscriber = false;
+            window.elEntitled = false;
+            window.elAuthenticated = false;
             window.currentLanguage = "FR";
           </script>
-          <div class="top-ia-button">
-            <button
-              type="button"
-              id="ia-drawer-toggle"
-              class="icon-btn ia-icon"
-              aria-label="Ouvrir EL Compagnon"
-              aria-controls="ia-drawer"
-              aria-expanded="false"
-            >
-              <div class="ia-header-icon-wrapper">
-                <img src="/icons/sf/sparkles.svg" alt="" width="22" height="22" />
-                <span class="ia-header-label">EL IA Compagnon</span>
-              </div>
-            </button>
-          </div>
           <div class="top-login" id="el-login">
             <a href="/login/" class="icon-btn login-icon" aria-label="Connexion">
               <div class="ia-header-icon-wrapper">
@@ -169,9 +153,6 @@ const navItems: NavItem[] = [
 
   <script is:inline src="https://cdn.jsdelivr.net/npm/dompurify@3.0.5/dist/purify.min.js"></script>
   <script is:inline src={`/js/el-auth.js?v=${ASSET_V}`}></script>
-  <script is:inline src={`/js/ia-tools.js?v=${ASSET_V}`}></script>
-  <script is:inline src={`/js/ia-drawer.js?v=${ASSET_V}`}></script>
-  <script is:inline src={`/js/rag.js?v=${ASSET_V}`}></script>
   <script is:inline src={`/js/header-nav.js?v=${ASSET_V}`}></script>
   <script is:inline>
     document.getElementById("el-lang-switch")?.addEventListener("change", function (e) {

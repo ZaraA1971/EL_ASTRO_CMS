@@ -1,5 +1,7 @@
 ---
+import LockIcon from "./LockIcon.astro";
 import type { LangCode } from "../lib/articles";
+import { ASSET_V } from "../lib/assets";
 
 interface Props {
   lang?: LangCode;
@@ -12,11 +14,115 @@ const sectionTitle = en ? "Tools" : "Outils";
 ---
 
 <aside class="el-home-tools" aria-labelledby="el-home-tools-title">
-  <header class="el-home-tools__head">
-    <h2 id="el-home-tools-title" class="el-home-tools__kicker">{sectionTitle}</h2>
+  <header class="el-section-head el-home-tools__head">
+    <h2 id="el-home-tools-title" class="el-section-head__title el-home-tools__kicker">
+      {sectionTitle}
+    </h2>
   </header>
 
   <div class="el-home-tools__stack">
+    <div
+      id="el-compagnon"
+      class="el-home-tools__panel el-home-tools__panel--compagnon"
+      data-el-premium-tool="rag"
+      data-open="false"
+    >
+      <button
+        type="button"
+        id="el-compagnon-toggle"
+        class="el-compagnon__toggle"
+        aria-expanded="false"
+        aria-controls="el-compagnon-content"
+      >
+        <div class="el-home-tools__panel-body el-compagnon__head">
+          <div class="el-compagnon__brand">
+            <svg
+              class="el-compagnon__sparkle"
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              width="22"
+              height="22"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <g fill="#2f6dfb">
+                <path d="M12 3l2 5 5 2-5 2-2 5-2-5-5-2 5-2 2-5z"></path>
+                <path d="M20 4l1 2.5 2.5 1-2.5 1-1 2.5-1-2.5-2.5-1 2.5-1 1-2.5z"></path>
+                <path d="M5 15l0.7 2L8 18l-2.3 0.7L5 21l-0.7-2.3L2 18l2.3-0.7L5 15z"></path>
+              </g>
+            </svg>
+            <span class="el-compagnon__brand-label">IA</span>
+            <LockIcon />
+          </div>
+          <p class="el-home-tools__pitch">
+            {
+              en
+                ? "Ask ElectronLibre’s archive. Answers with sources, on this page."
+                : "Interrogez les archives ElectronLibre. Réponses sourcées, ici."
+            }
+          </p>
+          <span class="el-home-tools__cta el-home-tools__cta--compagnon" data-compagnon-cta>
+            {en ? "Open EL Compagnon" : "Ouvrir EL Compagnon"}
+            <span aria-hidden="true">→</span>
+          </span>
+        </div>
+      </button>
+
+      <div
+        id="el-compagnon-content"
+        class="el-compagnon__body"
+        hidden
+        aria-hidden="true"
+      >
+        <div class="el-compagnon__toolbar">
+          <div id="ia-tools-actions" class="ia-tools-actions hidden">
+            <button type="button" data-ia-action="copy" aria-label="Copier la réponse IA">
+              <img src="/icons/sf/doc-on-doc.svg" alt="" class="ia-icon-btn" width="18" height="18" />
+            </button>
+            <button type="button" data-ia-action="email" aria-label="Envoyer la réponse IA par email">
+              <img src="/icons/sf/envelope.svg" alt="" class="ia-icon-btn" width="18" height="18" />
+            </button>
+            <button type="button" data-ia-action="share-x" aria-label="Partager sur X">
+              <img
+                src="/icons/sf/square-and-arrow-up.svg"
+                alt=""
+                class="ia-icon-btn"
+                width="18"
+                height="18"
+              />
+            </button>
+          </div>
+        </div>
+
+        <div class="ai-chat-container">
+          <form id="gpt4o-rag-form" class="ia-form">
+            <div class="input-wrapper">
+              <textarea
+                id="question"
+                name="question"
+                placeholder={
+                  en
+                    ? "EL Compagnon: what do you want to know?"
+                    : "EL Compagnon : Que voulez-vous savoir ?"
+                }
+                required
+                rows="3"
+              ></textarea>
+              <button type="button" id="reset-question" class="input-clear-btn" title="Effacer">
+                ✕
+              </button>
+            </div>
+            <button type="submit" id="submit-question" class="gpt4o-btn gpt4o-btn--submit">
+              {en ? "Ask" : "Envoyer"}
+            </button>
+          </form>
+        </div>
+
+        <div id="gpt-stream" class="rag-stream-text" aria-live="polite"></div>
+        <div id="final-answer" class="final-answer"></div>
+      </div>
+    </div>
+
     <a
       class="el-home-tools__panel el-home-tools__panel--geo"
       href="https://geo.electronlibre.info/"
@@ -122,3 +228,18 @@ const sectionTitle = en ? "Tools" : "Outils";
     </a>
   </div>
 </aside>
+
+<script is:inline src={`/js/ia-compagnon.js?v=${ASSET_V}`}></script>
+<script is:inline src={`/js/ia-tools.js?v=${ASSET_V}`}></script>
+<script is:inline src={`/js/rag.js?v=${ASSET_V}`}></script>
+<script is:inline>
+  document.addEventListener("DOMContentLoaded", function () {
+    const textarea = document.getElementById("question");
+    if (textarea) {
+      textarea.addEventListener("input", function () {
+        textarea.style.height = "auto";
+        textarea.style.height = Math.min(textarea.scrollHeight, 160) + "px";
+      });
+    }
+  });
+</script>

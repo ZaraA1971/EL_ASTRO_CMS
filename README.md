@@ -2,12 +2,13 @@
 
 **Site** : https://electronlibre.info  
 **Pupitre** : https://electronlibre.info/desk/  
-WordPress **gelé** (plus utilisé pour le runtime).
+WordPress **gelé** pour le site ; **`/wp-json/*` reste actif** pour l’app iOS (PHP-FPM).
 
 | Ressource | Emplacement |
 |-----------|-------------|
 | Médias | `/var/www/el-media/uploads` → URL `/wp-content/uploads/` |
 | Articles / comptes | MySQL `el_articles` / `el_users` |
+| App iOS | nginx `/wp-json/` → WP PHP · articles `el_articles` · JWT `el_users` |
 | RAG | indexe `el_articles` (FAISS IDs = `wp_id`) |
 | Backup BDD | `/var/backups/electronlibre-db/` (glissant 7j, cron 22:00) |
 | Code WP archivé | `/var/backups/electronlibre-astro/wordpress-code-frozen-*.tar.gz` |
