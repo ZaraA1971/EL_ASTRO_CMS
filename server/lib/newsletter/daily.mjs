@@ -1,0 +1,401 @@
+/**
+ * Composition newsletter quotidienne FR — port de Newsletter_daily.php
+ * Source : el_articles (MySQL), zéro WP.
+ */
+
+import { parseJsonArray } from '../db.mjs';
+
+const TZ = 'Europe/Paris';
+const EXCERPT_WORDS = 120;
+const MISSED_EXCERPT_WORDS = 18;
+
+const STOP_WORDS = [
+  'ia',
+  'ai',
+  'tech',
+  'web',
+  'web 1,2,3',
+  'culture',
+  'politique',
+  'economie',
+  'économie',
+  'robotic',
+  'high-tech',
+  'android',
+  'newsletter',
+  'googlebook',
+  'so amazing',
+  'so cult',
+  'le flouze',
+  'médias',
+  'medias',
+  'numérique',
+  'numerique',
+  'innovation',
+  'régulation',
+  'regulation',
+  'plateformes',
+  'streaming',
+  'musique',
+  'cinéma',
+  'cinema',
+];
+
+const TOKENS = {
+  accent: '#2f6dfb',
+  dark: '#333333',
+  text: '#111827',
+  body: '#475569',
+  meta: '#64748b',
+  surfaceAlt: '#f6f7f9',
+  border: '#e2e8f0',
+  borderLight: '#f1f5f9',
+  onDarkMuted: '#cbd5e1',
+  brandLibre: '#7a7a7a',
+  fontUi: '-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif',
+  fontEditorial: 'Georgia, Times New Roman, serif',
+};
+
+function escapeHtml(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+export function normalizeKeyword(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const STOP_NORM = new Set(
+  STOP_WORDS.map(normalizeKeyword).filter(Boolean)
+);
+
+/** @param {string} ymd YYYY-MM-DD */
+export function dayBoundsParis(ymd) {
+  // Intervalles locaux Paris stockés comme DATETIME naïfs (aligné WP)
+  return {
+    start: `${ymd} 00:00:00`,
+    end: `${ymd} 23:59:59`,
+    display: ymd.split('-').reverse().join('/'),
+  };
+}
+
+export function previousBusinessDay(ymd) {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  // Monday = 1 in getUTCDay? Sunday=0 … Monday=1
+  const dow = dt.getUTCDay(); // 0=Sun … 1=Mon
+  const back = dow === 1 ? 3 : 1;
+  dt.setUTCDate(dt.getUTCDate() - back);
+  const yy = dt.getUTCFullYear();
+  const mm = String(dt.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(dt.getUTCDate()).padStart(2, '0');
+  return `${yy}-${mm}-${dd}`;
+}
+
+export function todayYmdParis(now = new Date()) {
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  return fmt.format(now); // YYYY-MM-DD
+}
+
+function stripHtmlToText(html) {
+  return String(html || '')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function trimWords(text, limit) {
+  const words = String(text || '').split(/\s+/).filter(Boolean);
+  if (words.length <= limit) return words.join(' ');
+  return `${words.slice(0, limit).join(' ')}…`;
+}
+
+export function articleExcerptFromBody(body, wordLimit = EXCERPT_WORDS) {
+  return trimWords(stripHtmlToText(body), wordLimit);
+}
+
+export function isEditorialArticle(article) {
+  const tags = article.tags || [];
+  return tags.length > 0;
+}
+
+export function tagLabel(article) {
+  const tags = article.tags || [];
+  if (tags[0]) return humanize(tags[0]);
+  const names = article.category_names || [];
+  if (names[0]) return names[0];
+  return 'News';
+}
+
+function humanize(slug) {
+  return String(slug || '')
+    .replace(/[-_]+/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+export function sortNewsletterArticles(articles) {
+  return [...articles].sort((a, b) => {
+    const edA = isEditorialArticle(a);
+    const edB = isEditorialArticle(b);
+    if (edA !== edB) return edA ? -1 : 1;
+    return new Date(a.date) - new Date(b.date);
+  });
+}
+
+export function buildDynamicSubtitle(articles) {
+  const names = [];
+  const seen = new Set();
+  for (const a of articles) {
+    for (const tag of a.tags || []) {
+      const norm = normalizeKeyword(tag);
+      if (!norm || STOP_NORM.has(norm) || seen.has(norm)) continue;
+      seen.add(norm);
+      names.push(humanize(tag));
+    }
+  }
+  if (!names.length) {
+    return 'Au sommaire aujourd’hui : les principaux enjeux du numérique, des médias, des industries de la culture et de l’intelligence artificielle.';
+  }
+  if (names.length === 1) {
+    return `Au sommaire aujourd’hui : ${names[0]} — l’essentiel des signaux du jour.`;
+  }
+  const last = names.pop();
+  return `Au sommaire aujourd’hui : ${names.join(', ')} et ${last} — l’essentiel des signaux du jour.`;
+}
+
+function articlePath(siteUrl, article) {
+  const base = String(siteUrl || 'https://electronlibre.info').replace(/\/+$/, '');
+  return `${base}/articles/${article.wp_id}-${article.slug}/`;
+}
+
+function rowToNlArticle(row) {
+  return {
+    wp_id: Number(row.wp_id),
+    slug: String(row.slug),
+    title: String(row.title),
+    body: String(row.body || ''),
+    date: row.date instanceof Date ? row.date : new Date(row.date),
+    tags: parseJsonArray(row.tags),
+    categories: parseJsonArray(row.categories),
+    category_names: parseJsonArray(row.category_names),
+    access: row.access === 'granted' ? 'granted' : 'subscribers',
+  };
+}
+
+async function fetchArticlesForDay(pool, ymd, { paywalledOnly = false } = {}) {
+  const { start, end } = dayBoundsParis(ymd);
+  let sql = `SELECT wp_id, slug, title, body, date, tags, categories, category_names, access
+    FROM el_articles
+    WHERE draft = 0 AND lang = 'fr'
+      AND date >= ? AND date <= ?`;
+  const params = [start, end];
+  if (paywalledOnly) {
+    sql += ` AND access = 'subscribers'`;
+  }
+  sql += ` ORDER BY date ASC`;
+  const [rows] = await pool.query(sql, params);
+  return (rows || []).map(rowToNlArticle);
+}
+
+function formatDateFr(date) {
+  const d = date instanceof Date ? date : new Date(date);
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  return `${dd}/${mm}/${yyyy}`;
+}
+
+function renderArticleCards(articles, siteUrl, t) {
+  if (!articles.length) {
+    return `<div style="width:100%;max-width:100%;margin:24px 0;border-radius:18px;overflow:hidden;"><div style="padding:28px;background-color:#ffffff;border-radius:18px;color:${t.body};text-align:center;font-family:${t.fontUi};">Aucun article publié aujourd’hui.</div></div>`;
+  }
+
+  const sectionStyle = `width:100%;max-width:100%;margin:26px 0 14px;color:${t.accent};font-size:11px;letter-spacing:0.14em;text-transform:uppercase;font-family:${t.fontUi};font-weight:600;`;
+  const cardShell = `width:100%;max-width:100%;margin-left:0;margin-right:0;border-radius:18px;overflow:hidden;`;
+  const articleInner = `padding:24px 26px;background-color:#ffffff;border:1px solid ${t.border};border-radius:18px;font-family:${t.fontUi};`;
+  const darkInner = `padding:22px 24px;font-family:${t.fontUi};`;
+
+  let html = `<div style="width:100%;max-width:100%;font-family:${t.fontUi};">`;
+  html += `<h2 style="${sectionStyle}">Aujourd’hui dans ElectronLibre</h2>`;
+
+  let briefShown = false;
+  let index = 0;
+  for (const a of articles) {
+    index += 1;
+    const editorial = isEditorialArticle(a);
+    if (!editorial && !briefShown) {
+      html += `<h2 style="${sectionStyle}">En bref</h2>`;
+      briefShown = true;
+    }
+    const label = tagLabel(a);
+    const href = articlePath(siteUrl, a);
+    const titleStyle = editorial
+      ? `margin:0 0 12px;font-size:23px;line-height:1.22;letter-spacing:-0.02em;font-weight:700;color:${t.text};font-family:${t.fontEditorial};`
+      : `margin:0 0 10px;font-size:19px;line-height:1.32;letter-spacing:-0.01em;font-weight:700;color:${t.meta};font-family:${t.fontEditorial};`;
+    const linkColor = editorial ? t.text : t.meta;
+
+    html += `<div style="${cardShell}margin-bottom:18px;"><div style="${articleInner}">`;
+    html += `<p style="margin:0 0 10px;color:${t.meta};font-size:11px;line-height:1.4;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;font-family:${t.fontUi};">${escapeHtml(label)} · ${escapeHtml(formatDateFr(a.date))}</p>`;
+    html += `<h2 style="${titleStyle}"><a href="${escapeHtml(href)}" rel="bookmark" style="color:${linkColor};text-decoration:none;">${escapeHtml(a.title)}</a></h2>`;
+    html += `<div style="font-size:15px;color:${t.body};line-height:1.65;margin:0;font-family:${t.fontUi};">`;
+    if (editorial) {
+      const excerpt = articleExcerptFromBody(a.body, EXCERPT_WORDS);
+      if (excerpt) {
+        html += `<p style="margin:0 0 14px;color:${t.body};font-size:15px;line-height:1.65;font-family:${t.fontUi};">${escapeHtml(excerpt)}</p>`;
+      }
+      html += `<a href="${escapeHtml(href)}" target="_blank" style="display:inline-block;margin-top:10px;color:${t.accent} !important;font-size:14px;font-weight:700;text-decoration:none;font-family:${t.fontUi};">Continuer de lire…</a>`;
+    } else {
+      // Brève : corps HTML allégé (déjà stocké propre)
+      const brief = String(a.body || '').trim();
+      html += `<div style="font-size:14px;line-height:1.6;color:${t.meta};font-family:${t.fontUi};">${brief}</div>`;
+    }
+    html += `</div></div></div>`;
+
+    if (index === 1) {
+      const aiLink = `${String(siteUrl || 'https://electronlibre.info').replace(/\/+$/, '')}/newsletter-open-ia`;
+      html += `<div style="${cardShell}margin:22px 0;background-color:${t.dark};color:#ffffff;"><div style="${darkInner}">`;
+      html += `<h2 style="margin:0 0 8px;color:#ffffff;font-size:20px;line-height:1.25;font-weight:700;font-family:${t.fontEditorial};">Interrogez notre <span style="color:${t.accent};">IA éditoriale</span></h2>`;
+      html += `<p style="margin:0 0 16px;color:${t.onDarkMuted};font-size:14px;line-height:1.55;font-family:${t.fontUi};">Explorez les sujets du jour à partir des contenus et analyses publiés par ElectronLibre.</p>`;
+      html += `<a href="${escapeHtml(aiLink)}" target="_blank" style="display:inline-block;padding:10px 16px;background-color:${t.accent};color:#ffffff !important;border-radius:999px;font-size:13px;font-weight:700;text-decoration:none;font-family:${t.fontUi};">Ouvrir l’IA dans l’app →</a>`;
+      html += `</div></div>`;
+
+      html += `<div style="${cardShell}margin:22px 0;background-color:${t.dark};color:#ffffff;"><div style="${darkInner}">`;
+      html += `<p style="margin:0 0 8px;color:${t.accent};font-size:11px;line-height:1.4;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;font-family:${t.fontUi};">Bientôt</p>`;
+      html += `<h2 style="margin:0 0 8px;color:#ffffff;font-size:20px;line-height:1.25;font-weight:700;font-family:${t.fontEditorial};">GEO arrive dans l’écosystème ElectronLibre</h2>`;
+      html += `<p style="margin:0 0 16px;color:${t.onDarkMuted};font-size:14px;line-height:1.55;font-family:${t.fontUi};">Notre outil de pilotage de perception algorithmique permettra de mesurer la manière dont les IA comprennent, citent et classent une marque, une entreprise, un média ou un marché.</p>`;
+      html += `<a href="https://geo.electronlibre.info/#contact" target="_blank" style="display:inline-block;padding:10px 16px;background-color:${t.accent};color:#ffffff !important;border-radius:999px;font-size:13px;font-weight:700;text-decoration:none;font-family:${t.fontUi};">Découvrir GEO →</a>`;
+      html += `</div></div>`;
+    }
+  }
+  html += `</div>`;
+  return html;
+}
+
+function renderMissed(missed, siteUrl, t) {
+  if (!missed.length) return '';
+  const sectionStyle = `width:100%;max-width:100%;margin:26px 0 14px;color:${t.accent};font-size:11px;letter-spacing:0.14em;text-transform:uppercase;font-family:${t.fontUi};font-weight:600;`;
+  let html = `<div style="width:100%;max-width:100%;font-family:${t.fontUi};">`;
+  html += `<h2 style="${sectionStyle}">Si vous l’aviez manqué</h2>`;
+  html += `<section style="width:100%;max-width:100%;margin:0;border-radius:18px;overflow:hidden;">`;
+  html += `<div style="padding:22px 26px;background-color:#ffffff;border:1px solid ${t.border};border-radius:18px;font-family:${t.fontUi};">`;
+  html += `<ul style="margin:0;padding:0;list-style:none;">`;
+  missed.forEach((a, i) => {
+    const href = articlePath(siteUrl, a);
+    const excerpt = articleExcerptFromBody(a.body, MISSED_EXCERPT_WORDS);
+    const border = i === 0 ? 'none' : `1px solid ${t.borderLight}`;
+    const padTop = i === 0 ? '0' : '11px';
+    html += `<li style="margin:0;padding:${padTop} 0 11px;border-top:${border};font-size:14px;line-height:1.45;font-family:${t.fontUi};">`;
+    html += `<a href="${escapeHtml(href)}" target="_blank" style="color:${t.text};font-weight:700;text-decoration:none;font-family:${t.fontEditorial};">${escapeHtml(a.title)}</a>`;
+    if (excerpt) {
+      html += `<span style="display:block;margin-top:5px;color:${t.body};font-size:13px;line-height:1.45;font-weight:400;font-family:${t.fontUi};">${escapeHtml(excerpt)}</span>`;
+    }
+    html += `</li>`;
+  });
+  html += `</ul></div></section></div>`;
+  return html;
+}
+
+/**
+ * Injecte le lien désabo dans le footer (par destinataire).
+ */
+export function injectUnsubscribe(html, unsubUrl) {
+  const link = escapeHtml(unsubUrl);
+  return String(html).replace(/__UNSUBSCRIBE_URL__/g, link);
+}
+
+/**
+ * Compose HTML + métadonnées pour une date éditoriale.
+ */
+export async function composeDailyNewsletter(pool, opts = {}) {
+  const ymd = opts.date || todayYmdParis();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
+    throw new Error('date_invalide');
+  }
+  const siteUrl = String(opts.siteUrl || 'https://electronlibre.info').replace(
+    /\/+$/,
+    ''
+  );
+  const t = TOKENS;
+  const { display } = dayBoundsParis(ymd);
+
+  const dayArticles = sortNewsletterArticles(await fetchArticlesForDay(pool, ymd));
+  const prev = previousBusinessDay(ymd);
+  let missed = await fetchArticlesForDay(pool, prev, { paywalledOnly: true });
+  missed = missed
+    .sort((a, b) => new Date(b.date) - new Date(a.date))
+    .slice(0, 5);
+
+  const subtitle = buildDynamicSubtitle(dayArticles);
+  const subject = `ElectronLibre — Newsletter du ${display}`;
+
+  const container = `width:100%;max-width:600px;margin-left:auto;margin-right:auto;`;
+  const block = `width:100%;max-width:100%;margin-left:0;margin-right:0;`;
+
+  let html = `<div class="newsletter-shell" id="newsletter-content" style="width:100%;box-sizing:border-box;background-color:${t.surfaceAlt};padding:0 14px 36px;font-family:${t.fontUi};">`;
+  html += `<div class="newsletter-container" style="${container}">`;
+
+  // Hero
+  html += `<div style="${block}background-color:${t.dark};border-radius:22px;overflow:hidden;color:#ffffff;box-shadow:0 18px 48px rgba(15,23,42,0.18);">`;
+  html += `<div style="padding:10px 32px 28px;">`;
+  html += `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:collapse;margin:0 0 20px 0;"><tr><td align="center" style="text-align:center;padding:0;margin:0;">`;
+  html += `<a href="${escapeHtml(siteUrl)}" target="_blank" style="display:inline-block;margin:0 auto;padding:0;text-align:center;font-family:${t.fontEditorial};font-size:34px;line-height:1;letter-spacing:-0.01em;font-weight:700;color:#ffffff;text-decoration:none;">Electron<span style="color:${t.brandLibre};font-weight:500;">Libre</span></a>`;
+  html += `</td></tr></table>`;
+  html += `<div style="display:inline-block;margin:0 0 14px;padding:6px 10px;border:1px solid rgba(255,255,255,0.22);border-radius:999px;color:${t.accent};font-size:11px;letter-spacing:0.12em;text-transform:uppercase;font-family:${t.fontUi};">Newsletter quotidienne</div>`;
+  html += `<h1 style="margin:0;color:#ffffff;font-size:31px;line-height:1.18;letter-spacing:-0.02em;font-weight:700;font-family:${t.fontEditorial};">Une lecture exigeante<br/>des enjeux du <span style="color:${t.accent};">numérique</span></h1>`;
+  html += `<p style="margin:14px 0 0;color:${t.onDarkMuted};font-size:15px;line-height:1.55;font-family:${t.fontUi};">${escapeHtml(subtitle)}</p>`;
+  html += `</div>`;
+  html += `<div style="padding:16px 16px 20px;text-align:center;background:rgba(255,255,255,0.08);border-top:1px solid rgba(255,255,255,0.12);overflow:hidden;">`;
+  html += `<table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" width="100%" style="width:100%;max-width:100%;margin:0 auto;border-collapse:collapse;table-layout:fixed;text-align:center;"><tr>`;
+  html += `<td align="center" style="padding:4px;"><a href="https://apps.apple.com/fr/app/electronlibre-ia/id6743965549" target="_blank" style="display:inline-block;background-color:${t.accent};color:#ffffff !important;padding:11px 14px;border-radius:999px;font-size:13px;font-weight:700;text-decoration:none;font-family:${t.fontUi};">Installer l’app</a></td>`;
+  html += `<td align="center" style="padding:4px;"><a href="${escapeHtml(siteUrl)}" target="_blank" style="display:inline-block;color:${t.onDarkMuted} !important;font-size:12px;text-decoration:none;font-family:${t.fontUi};">Site</a></td>`;
+  html += `<td align="center" style="padding:4px;"><a href="mailto:info@electronlibre.info" style="display:inline-block;color:${t.onDarkMuted} !important;font-size:12px;text-decoration:none;font-family:${t.fontUi};">Contact</a></td>`;
+  html += `<td align="center" style="padding:4px;"><a href="https://x.com/@3l3ctr0nLibr3" target="_blank" style="display:inline-block;color:${t.onDarkMuted} !important;font-size:12px;text-decoration:none;font-family:${t.fontUi};">X / Twitter</a></td>`;
+  html += `</tr></table></div></div>`;
+
+  html += renderArticleCards(dayArticles, siteUrl, t);
+  html += renderMissed(missed, siteUrl, t);
+
+  const year = new Date().getFullYear();
+  html += `<div style="${block}margin-top:22px;padding:22px 20px;text-align:center;font-size:12px;line-height:1.6;color:${t.meta};font-family:${t.fontUi};">`;
+  html += `Vous recevez cette newsletter car vous êtes abonné à <a href="${escapeHtml(siteUrl)}" style="color:${t.meta};text-decoration:underline;">ElectronLibre</a>.<br/>`;
+  html += `Vous pouvez <a href="__UNSUBSCRIBE_URL__" target="_blank" style="color:${t.meta};text-decoration:underline;">vous désabonner de la newsletter</a> sans modifier votre abonnement.<br/>`;
+  html += `© ${year} ElectronLibre. Tous droits réservés.`;
+  html += `</div></div></div>`;
+
+  return {
+    date: ymd,
+    displayDate: display,
+    subject,
+    html,
+    subtitle,
+    articleIds: dayArticles.map((a) => a.wp_id),
+    missedIds: missed.map((a) => a.wp_id),
+    counts: {
+      today: dayArticles.length,
+      editorial: dayArticles.filter(isEditorialArticle).length,
+      briefs: dayArticles.filter((a) => !isEditorialArticle(a)).length,
+      missed: missed.length,
+    },
+  };
+}

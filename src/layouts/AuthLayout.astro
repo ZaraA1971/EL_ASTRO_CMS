@@ -1,0 +1,47 @@
+---
+/**
+ * Layout minimal pour connexion / reset MDP.
+ * Pas de header Compagnon ni formulaire de recherche : Safari / gestionnaires
+ * de mots de passe ne détectent sinon que le premier <form> de la page (le chat IA).
+ */
+import { ASSET_V } from "../lib/assets";
+import "../styles/global.css";
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const {
+  title = "Connexion | ElectronLibre",
+  description = "Connexion abonné ElectronLibre",
+} = Astro.props;
+
+const assetV = ASSET_V;
+---
+
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="description" content={description} />
+    <meta name="robots" content="noindex,nofollow" />
+    <link rel="canonical" href={new URL(Astro.url.pathname, Astro.site || "https://qualif.electronlibre.info").href} />
+    <title>{title}</title>
+    <link rel="stylesheet" href={`/css/el/el-tokens.css?v=${assetV}`} />
+    <link rel="stylesheet" href={`/css/el/el-reset.css?v=${assetV}`} />
+    <link rel="stylesheet" href={`/css/el/el-global.css?v=${assetV}`} />
+    <link rel="stylesheet" href={`/css/el/el-article.css?v=${assetV}`} />
+  </head>
+  <body class="el-archive-surface el-auth-page el-auth-page--bare">
+    <a class="skip-link screen-reader-text" href="#primary">Aller au contenu</a>
+    <header class="el-auth-topbar">
+      <a class="el-auth-topbar__brand" href="/">ElectronLibre</a>
+    </header>
+    <main id="primary">
+      <slot />
+    </main>
+  </body>
+</html>

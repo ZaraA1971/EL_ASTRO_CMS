@@ -1,0 +1,33 @@
+# build output
+dist/
+.astro/
+
+# dependencies
+node_modules/
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# environment / secrets (never commit)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# retired / local junk
+*.retired
+.DS_Store
+.idea/
+.vscode/
+
+# Archive MD d’import (SoT = MySQL el_articles) — garder hors dépôt
+src/content/articles/
+
+# OS / editor
+*.swp
+*~

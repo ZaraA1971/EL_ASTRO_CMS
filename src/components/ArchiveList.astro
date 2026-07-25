@@ -1,0 +1,62 @@
+---
+/**
+ * Grille d’archive + pagination (catégories, tags…).
+ * Sans HomeTools — pour la home, utiliser ArchiveHome.
+ */
+import ArticleCard from "./ArticleCard.astro";
+import Pagination from "./Pagination.astro";
+import type { Article, LangCode } from "../lib/articles";
+
+interface Props {
+  title: string;
+  featured?: Article;
+  rest: Article[];
+  page: number;
+  totalPages: number;
+  lang?: LangCode;
+  basePath?: string;
+  emptyMessage?: string;
+}
+
+const {
+  title,
+  featured,
+  rest,
+  page,
+  totalPages,
+  lang = "fr",
+  basePath,
+  emptyMessage = "Aucun article pour l’instant.",
+} = Astro.props;
+
+const hasArticles = Boolean(featured) || rest.length > 0;
+const featureFirst = page <= 1;
+---
+
+<section class="el-archive-shell el-archive-page el-home-page">
+  <header class="el-section-head">
+    <h1 class="el-section-head__title">{title}</h1>
+  </header>
+
+  {
+    !hasArticles ? (
+      <p class="el-home__sub">{emptyMessage}</p>
+    ) : (
+      <div class="el-card-grid blog-grid-view">
+        {featured && (
+          <ArticleCard article={featured} featured={featureFirst} />
+        )}
+        {rest.map((article) => (
+          <ArticleCard article={article} />
+        ))}
+      </div>
+    )
+  }
+
+  <Pagination
+    page={page}
+    totalPages={totalPages}
+    lang={lang}
+    basePath={basePath}
+  />
+</section>

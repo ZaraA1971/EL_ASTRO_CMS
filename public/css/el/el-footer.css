@@ -1,0 +1,67 @@
+/**
+ * ElectronLibre — pied de page + réseaux top-bar
+ *
+ * @package electronlibre
+ */
+
+/*** footer ***/
+footer.site-footer {
+  background-color: var(--dark-color);
+  color: var(--light-color);
+  padding: 2rem 0 1rem 0;
+}
+
+footer.site-footer .site-info {
+  font-size: 1rem;
+  -webkit-box-align: center;
+      -ms-flex-align: center;
+          align-items: center;
+  text-align: center;
+  padding: 1rem 0;
+}
+
+footer.site-footer .site-info a {
+  color: var(--light-color);
+}
+
+footer.site-footer .site-info a:hover {
+  text-decoration: none;
+  color: var(--grey-color);
+}
+
+footer.site-footer .site-info a.footer-brand {
+  text-decoration: underline;
+}
+
+footer.site-footer .site-info a.footer-brand:hover {
+  text-decoration: none;
+}
+
+.social-links {
+  display: -webkit-box;
+  display: -ms-flexbox;
+  display: flex;
+  -webkit-box-pack: center;
+      -ms-flex-pack: center;
+          justify-content: center;
+}
+
+.social-links ul li {
+  display: -webkit-box;
+  display: -ms-flexbox;
+  display: flex;
+}
+
+.social-links ul li a {
+  margin: 0 0.5rem;
+}
+
+.social-links ul li a svg {
+  fill: var(--light-color);
+  max-width: 1rem;
+  height: 1rem;
+}
+
+.social-links ul li a svg:hover {
+  fill: var(--grey-color);
+}

@@ -1,0 +1,76 @@
+---
+import Header from "../components/Header.astro";
+import Footer from "../components/Footer.astro";
+import OneSignalInit from "../components/OneSignalInit.astro";
+import { ASSET_V } from "../lib/assets";
+import "../styles/global.css";
+
+interface Props {
+  title?: string;
+  description?: string;
+  lang?: "fr" | "en";
+  canonical?: string;
+  noindex?: boolean;
+  bodyClass?: string;
+  ogType?: string;
+}
+
+const {
+  title = "ElectronLibre | Médias, technologies, IA et industries culturelles",
+  description = "ElectronLibre est un média indépendant d’analyse et d’information sur les technologies, l’intelligence artificielle, les médias, les plateformes et les industries culturelles.",
+  lang = "fr",
+  canonical,
+  noindex = false,
+  bodyClass = "",
+  ogType = "website",
+} = Astro.props;
+
+const assetV = ASSET_V;
+const canonicalUrl =
+  canonical ||
+  new URL(Astro.url.pathname, Astro.site || "https://qualif.electronlibre.info").href;
+---
+
+<!doctype html>
+<html lang={lang}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="generator" content={Astro.generator} />
+    <meta name="description" content={description} />
+    {noindex && <meta name="robots" content="noindex,nofollow" />}
+    <link rel="canonical" href={canonicalUrl} />
+    <meta property="og:type" content={ogType} />
+    <meta property="og:site_name" content="ElectronLibre" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonicalUrl} />
+    <meta property="og:locale" content={lang === "en" ? "en_US" : "fr_FR"} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <title>{title}</title>
+    <link rel="stylesheet" href={`/css/el/el-tokens.css?v=${assetV}`} />
+    <link rel="stylesheet" href={`/css/el/el-reset.css?v=${assetV}`} />
+    <link rel="stylesheet" href={`/css/el/el-global.css?v=${assetV}`} />
+    <link rel="stylesheet" href={`/css/el/header.css?v=${assetV}`} />
+    <link rel="stylesheet" href={`/css/el/ia-chat.css?v=${assetV}`} />
+    <link rel="stylesheet" href={`/css/el/el-footer.css?v=${assetV}`} />
+    <link rel="stylesheet" href={`/css/el/el-article.css?v=${assetV}`} />
+    <link rel="stylesheet" href={`/css/el/single.css?v=${assetV}`} />
+    <OneSignalInit />
+  </head>
+  <body class={bodyClass}>
+    <a class="skip-link screen-reader-text" href="#primary">Aller au contenu</a>
+    <div class="el-staging-banner">
+      Staging Astro — <strong>qualif.electronlibre.info</strong> · prod WP inchangée ·
+      <a href="https://electronlibre.info/">voir le site actuel</a>
+    </div>
+    <Header lang={lang} />
+    <main id="primary">
+      <slot />
+    </main>
+    <Footer />
+  </body>
+</html>

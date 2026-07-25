@@ -1,0 +1,121 @@
+---
+import type { LangCode } from "../lib/articles";
+
+interface Props {
+  lang?: LangCode;
+}
+
+const { lang = "fr" } = Astro.props;
+const en = lang === "en";
+
+const sectionTitle = en ? "Tools" : "Outils";
+---
+
+<aside class="el-home-tools" aria-labelledby="el-home-tools-title">
+  <header class="el-home-tools__head">
+    <h2 id="el-home-tools-title" class="el-home-tools__kicker">{sectionTitle}</h2>
+  </header>
+
+  <div class="el-home-tools__stack">
+    <a
+      class="el-home-tools__panel el-home-tools__panel--geo"
+      href="https://geo.electronlibre.info/"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      <div class="el-home-tools__panel-glow" aria-hidden="true"></div>
+      <div class="el-home-tools__panel-grid" aria-hidden="true"></div>
+      <div class="el-home-tools__panel-body">
+        <p class="el-home-tools__eyebrow">
+          {en ? "AI monitoring" : "Veille IA"}
+        </p>
+        <h3 class="el-home-tools__name">GEO</h3>
+        <p class="el-home-tools__pitch">
+          {
+            en
+              ? "How AI systems cite and rank brands, media, markets."
+              : "Comment les IA citent et classent marques, médias, marchés."
+          }
+        </p>
+        <span class="el-home-tools__cta el-home-tools__cta--geo">
+          {en ? "Open GEO" : "Ouvrir GEO"}
+          <span aria-hidden="true">→</span>
+        </span>
+      </div>
+      <div class="el-home-tools__viz el-home-tools__viz--geo" aria-hidden="true">
+        <div class="el-home-tools__geo-card">
+          <div class="el-home-tools__geo-body">
+            <svg class="el-home-tools__geo-spark" viewBox="0 0 120 40" fill="none">
+              <path
+                d="M2 30 L22 26 L42 28 L62 14 L82 18 L118 6"
+                stroke="#34d399"
+                stroke-width="1.4"
+                stroke-linecap="round"
+                stroke-linejoin="round"></path>
+              <path
+                d="M2 34 L22 32 L42 29 L62 26 L82 24 L118 20"
+                stroke="#22d3ee"
+                stroke-width="1.2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                opacity="0.85"></path>
+            </svg>
+            <svg class="el-home-tools__geo-gravity" viewBox="0 0 56 56" fill="none">
+              <circle cx="28" cy="28" r="24" stroke="#3f3f46" stroke-width="1"></circle>
+              <circle cx="28" cy="28" r="14" stroke="#3f3f46" stroke-width="1"></circle>
+              <line x1="28" y1="28" x2="40" y2="14" stroke="#34d399" stroke-width="1" opacity="0.75"></line>
+              <line x1="28" y1="28" x2="42" y2="34" stroke="#22d3ee" stroke-width="1" opacity="0.7"></line>
+              <circle cx="28" cy="28" r="2.4" fill="#a1a1aa"></circle>
+              <circle cx="40" cy="14" r="2.6" fill="#34d399"></circle>
+              <circle cx="42" cy="34" r="2.3" fill="#22d3ee"></circle>
+            </svg>
+          </div>
+          <div class="el-home-tools__geo-bar" role="presentation">
+            <i style="width:36%"></i>
+            <i style="width:28%"></i>
+            <i style="width:20%"></i>
+            <i style="width:16%"></i>
+          </div>
+        </div>
+      </div>
+    </a>
+
+    <a
+      class="el-home-tools__panel el-home-tools__panel--desinfo"
+      href="https://desinfo.electronlibre.info/"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      <div class="el-home-tools__panel-body">
+        <p class="el-home-tools__eyebrow">
+          {en ? "Observatory" : "Observatoire"}
+        </p>
+        <h3 class="el-home-tools__name">Desinfo</h3>
+        <p class="el-home-tools__pitch">
+          {
+            en
+              ? "Rolling ranking from helpful Community Notes on X."
+              : "Palmarès roulant fondé sur les Community Notes utiles."
+          }
+        </p>
+        <span class="el-home-tools__cta el-home-tools__cta--desinfo">
+          {en ? "Open ranking" : "Voir le palmarès"}
+          <span aria-hidden="true">→</span>
+        </span>
+      </div>
+      <div class="el-home-tools__viz el-home-tools__viz--desinfo" aria-hidden="true">
+        <div class="el-home-tools__desinfo-ui">
+          <div class="el-home-tools__desinfo-tabs">
+            <span class="is-active">{en ? "Media" : "Médias"}</span>
+            <span>7d</span>
+          </div>
+          <ol class="el-home-tools__rank">
+            <li><span>01</span><em>CN / Posts</em><b>0.42</b></li>
+            <li><span>02</span><em>{en ? "Media A" : "Média A"}</em><b>0.31</b></li>
+            <li><span>03</span><em>{en ? "Media B" : "Média B"}</em><b>0.27</b></li>
+          </ol>
+        </div>
+      </div>
+    </a>
+  </div>
+</aside>

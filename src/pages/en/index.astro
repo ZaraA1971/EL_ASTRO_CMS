@@ -1,0 +1,24 @@
+---
+export const prerender = false;
+
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import ArchiveHome from "../../components/ArchiveHome.astro";
+import { getArchivePage } from "../../lib/archive";
+
+const { featured, rest, page, totalPages } = await getArchivePage("en", 1);
+Astro.response.headers.set("Cache-Control", "public, max-age=30, stale-while-revalidate=60");
+---
+
+<BaseLayout
+  title="Featured | ElectronLibre"
+  description="ElectronLibre — English edition"
+  lang="en"
+>
+  <ArchiveHome
+    featured={featured}
+    rest={rest}
+    page={page}
+    totalPages={totalPages}
+    lang="en"
+  />
+</BaseLayout>

@@ -1,0 +1,803 @@
+/**
+ * API staging ElectronLibre Astro
+ * - /api/rag/*     → proxy uvicorn RAG local
+ * - /api/auth/*    → login / logout / me (hashes WP via el_users)
+ * - /api/content/* → corps article abonné (session requise) — MySQL el_articles
+ * - /api/desk/*    → pupitre rédactionnel (rôles admin/editor/author)
+ */
+import http from 'node:http';
+import crypto from 'node:crypto';
+import { URL } from 'node:url';
+import bcrypt from 'bcryptjs';
+import wordpressHash from 'wordpress-hash-node';
+import { loadEnvFile, createPool, rowToArticle } from './lib/db.mjs';
+import { handleDesk, getContentGen } from './lib/desk.mjs';
+import {
+  canAccessPremium,
+  normalizeRole,
+  publicUser,
+  STATUSES,
+} from './lib/roles.mjs';
+import { rateLimit, clientIp } from './lib/rate-limit.mjs';
+import { ensureAuditTable } from './lib/audit.mjs';
+import { ensureNewsletterSchema } from './lib/newsletter/schema.mjs';
+import { handlePublicNewsletter } from './lib/newsletter/handler.mjs';
+import {
+  ensurePasswordResetSchema,
+  normalizeLoginId,
+  requestPasswordReset,
+  resetPasswordWithToken,
+  validateResetToken,
+} from './lib/password-reset.mjs';
+import { auditLog } from './lib/audit.mjs';
+
+const checkPhpass = wordpressHash.CheckPassword || wordpressHash.checkPassword;
+
+const PORT = Number(process.env.EL_API_PORT || 8787);
+const UPSTREAM = (process.env.EL_RAG_UPSTREAM || 'http://127.0.0.1:8080').replace(
+  /\/$/,
+  ''
+);
+const ENV_FILE = process.env.EL_API_ENV_FILE || '/etc/electronlibre/el-astro-api.env';
+const SESSION_TTL_SEC = 60 * 60 * 24 * 14;
+const COOKIE_NAME = 'el_session';
+
+const fileEnv = loadEnvFile(ENV_FILE);
+const prodEnv = loadEnvFile('/etc/electronlibre/prod.env');
+const RAG_KEY = process.env.RAG_API_KEY || fileEnv.RAG_API_KEY || '';
+const SESSION_SECRET =
+  process.env.EL_SESSION_SECRET || fileEnv.EL_SESSION_SECRET || '';
+const DEEPL_API_KEY =
+  process.env.DEEPL_API_KEY || fileEnv.DEEPL_API_KEY || prodEnv.DEEPL_API_KEY || '';
+const ONESIGNAL_APP_ID =
+  process.env.ONESIGNAL_APP_ID ||
+  fileEnv.ONESIGNAL_APP_ID ||
+  '2037d918-24b1-4140-8a12-92eacf2b7167';
+const ONESIGNAL_REST_API_KEY =
+  process.env.ONESIGNAL_REST_API_KEY || fileEnv.ONESIGNAL_REST_API_KEY || '';
+const ONESIGNAL_SITE_URL = (
+  process.env.ONESIGNAL_SITE_URL ||
+  fileEnv.ONESIGNAL_SITE_URL ||
+  'https://qualif.electronlibre.info'
+).replace(/\/+$/, '');
+const ONESIGNAL_DRY_RUN =
+  String(process.env.ONESIGNAL_DRY_RUN || fileEnv.ONESIGNAL_DRY_RUN || '1') ===
+  '1';
+const brevoEnv = loadEnvFile('/etc/electronlibre/brevo-smtp.env');
+const BREVO_API_KEY =
+  process.env.BREVO_API_KEY ||
+  fileEnv.BREVO_API_KEY ||
+  brevoEnv.FLUENTMAIL_SENDINBLUE_API_KEY ||
+  '';
+const BREVO_SMTP_USER =
+  process.env.BREVO_SMTP_USER ||
+  fileEnv.BREVO_SMTP_USER ||
+  brevoEnv.FLUENTMAIL_SMTP_USERNAME ||
+  '';
+const BREVO_SMTP_PASS =
+  process.env.BREVO_SMTP_PASS ||
+  fileEnv.BREVO_SMTP_PASS ||
+  brevoEnv.FLUENTMAIL_SMTP_PASSWORD ||
+  '';
+const BREVO_DRY_RUN =
+  String(process.env.BREVO_DRY_RUN || fileEnv.BREVO_DRY_RUN || '1') === '1';
+const BREVO_FROM_EMAIL =
+  process.env.BREVO_FROM_EMAIL ||
+  fileEnv.BREVO_FROM_EMAIL ||
+  'info@electronlibre.info';
+const BREVO_FROM_NAME =
+  process.env.BREVO_FROM_NAME || fileEnv.BREVO_FROM_NAME || 'ElectronLibre';
+const BREVO_CONFIGURED = Boolean(
+  BREVO_API_KEY || (BREVO_SMTP_USER && BREVO_SMTP_PASS)
+);
+const SITE_URL = (
+  process.env.SITE_URL ||
+  fileEnv.SITE_URL ||
+  ONESIGNAL_SITE_URL ||
+  'https://qualif.electronlibre.info'
+).replace(/\/+$/, '');
+const COOKIE_SECURE =
+  String(process.env.EL_COOKIE_SECURE || fileEnv.EL_COOKIE_SECURE || '') === '1';
+const MAX_BODY_BYTES = Math.max(
+  64_000,
+  Number(process.env.EL_MAX_BODY_BYTES || fileEnv.EL_MAX_BODY_BYTES || 2_000_000)
+);
+const DB = {
+  host: process.env.EL_DB_HOST || fileEnv.EL_DB_HOST || 'localhost',
+  user: process.env.EL_DB_USER || fileEnv.EL_DB_USER || '',
+  password: process.env.EL_DB_PASSWORD || fileEnv.EL_DB_PASSWORD || '',
+  database: process.env.EL_DB_NAME || fileEnv.EL_DB_NAME || 'electronlibre',
+};
+
+if (!RAG_KEY) {
+  console.error('[api] RAG_API_KEY missing');
+  process.exit(1);
+}
+if (!SESSION_SECRET || SESSION_SECRET.length < 32) {
+  console.error('[api] EL_SESSION_SECRET missing or too short (>=32)');
+  process.exit(1);
+}
+if (!DB.user) {
+  console.error('[api] DB credentials missing');
+  process.exit(1);
+}
+
+const pool = createPool(DB);
+
+function b64url(buf) {
+  return Buffer.from(buf)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+function b64urlJson(obj) {
+  return b64url(JSON.stringify(obj));
+}
+
+function sign(payloadB64) {
+  return b64url(
+    crypto.createHmac('sha256', SESSION_SECRET).update(payloadB64).digest()
+  );
+}
+
+function cookieSuffix(maxAge) {
+  let s = `Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`;
+  if (COOKIE_SECURE) s += '; Secure';
+  return s;
+}
+
+function makeSessionCookie(user) {
+  const payload = b64urlJson({
+    uid: user.id,
+    login: user.login,
+    name: user.display_name,
+    role: normalizeRole(user.role),
+    exp: Math.floor(Date.now() / 1000) + SESSION_TTL_SEC,
+  });
+  const sig = sign(payload);
+  const value = `${payload}.${sig}`;
+  return `${COOKIE_NAME}=${value}; ${cookieSuffix(SESSION_TTL_SEC)}`;
+}
+
+function clearSessionCookie() {
+  return `${COOKIE_NAME}=; ${cookieSuffix(0)}`;
+}
+
+function parseCookies(req) {
+  const header = req.headers.cookie || '';
+  const out = {};
+  for (const part of header.split(';')) {
+    const [k, ...rest] = part.trim().split('=');
+    if (!k) continue;
+    out[k] = rest.join('=');
+  }
+  return out;
+}
+
+function sigEqual(a, b) {
+  try {
+    const ba = Buffer.from(String(a));
+    const bb = Buffer.from(String(b));
+    if (ba.length !== bb.length) return false;
+    return crypto.timingSafeEqual(ba, bb);
+  } catch {
+    return false;
+  }
+}
+
+function readSession(req) {
+  const raw = parseCookies(req)[COOKIE_NAME];
+  if (!raw) return null;
+  const [payload, sig] = raw.split('.');
+  if (!payload || !sig || !sigEqual(sign(payload), sig)) return null;
+  try {
+    const json = Buffer.from(
+      payload.replace(/-/g, '+').replace(/_/g, '/'),
+      'base64'
+    ).toString('utf8');
+    const data = JSON.parse(json);
+    if (!data.exp || data.exp < Math.floor(Date.now() / 1000)) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+function toBcryptjsHash(hash) {
+  if (hash.startsWith('$2y$')) return '$2a$' + hash.slice(4);
+  return hash;
+}
+
+function verifyWpPassword(plain, hash) {
+  if (!plain || !hash) return false;
+  if (hash.startsWith('$P$') || hash.startsWith('$H$')) {
+    try {
+      return !!checkPhpass(plain, hash);
+    } catch {
+      return false;
+    }
+  }
+  if (hash.startsWith('$wp')) {
+    try {
+      const passwordToVerify = crypto
+        .createHmac('sha384', 'wp-sha384')
+        .update(plain, 'utf8')
+        .digest('base64');
+      return bcrypt.compareSync(passwordToVerify, toBcryptjsHash(hash.slice(3)));
+    } catch {
+      return false;
+    }
+  }
+  if (hash.startsWith('$2y$') || hash.startsWith('$2a$') || hash.startsWith('$2b$')) {
+    try {
+      return bcrypt.compareSync(plain, toBcryptjsHash(hash));
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+function sendJson(res, status, obj, extraHeaders = {}) {
+  const body = JSON.stringify(obj);
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store',
+    ...extraHeaders,
+  });
+  res.end(body);
+}
+
+function readBody(req, limit = MAX_BODY_BYTES) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    let done = false;
+    req.on('data', (c) => {
+      if (done) return;
+      size += c.length;
+      if (size > limit) {
+        done = true;
+        const err = new Error('Payload trop volumineux');
+        err.code = 'PAYLOAD_TOO_LARGE';
+        reject(err);
+        req.destroy();
+        return;
+      }
+      chunks.push(c);
+    });
+    req.on('end', () => {
+      if (!done) resolve(Buffer.concat(chunks));
+    });
+    req.on('error', reject);
+  });
+}
+
+async function findUser(loginOrEmail) {
+  const id = normalizeLoginId(loginOrEmail);
+  if (!id) return null;
+  const [rows] = await pool.query(
+    `SELECT id, login, email, display_name, password_hash, role, status, access_until, wp_role, source
+     FROM el_users
+     WHERE login = ? OR email = ?
+     LIMIT 1`,
+    [id, id]
+  );
+  return rows[0] || null;
+}
+
+async function findUserById(id) {
+  const [rows] = await pool.query(
+    `SELECT id, login, email, display_name, password_hash, role, status, access_until, wp_role, source
+     FROM el_users
+     WHERE id = ?
+     LIMIT 1`,
+    [id]
+  );
+  return rows[0] || null;
+}
+
+function authPayload(user) {
+  const pub = publicUser(user);
+  return {
+    authenticated: true,
+    user: pub,
+    desk: pub.desk,
+    entitled: pub.entitled,
+  };
+}
+
+async function handleAuth(req, res, parts) {
+  const action = parts[2];
+
+  if (action === 'me' && req.method === 'GET') {
+    const s = readSession(req);
+    if (!s) return sendJson(res, 200, { authenticated: false, entitled: false });
+    // Recharge DB : statut / expiration à jour (pas seulement le cookie)
+    const user = await findUserById(s.uid);
+    if (!user) {
+      return sendJson(
+        res,
+        200,
+        { authenticated: false, entitled: false },
+        { 'Set-Cookie': clearSessionCookie() }
+      );
+    }
+    if (String(user.status || '').toLowerCase() === STATUSES.DISABLED) {
+      return sendJson(
+        res,
+        200,
+        { authenticated: false, entitled: false, error: 'Compte désactivé' },
+        { 'Set-Cookie': clearSessionCookie() }
+      );
+    }
+    return sendJson(res, 200, authPayload(user));
+  }
+
+  if (action === 'logout' && req.method === 'POST') {
+    return sendJson(res, 200, { ok: true }, { 'Set-Cookie': clearSessionCookie() });
+  }
+
+  if (action === 'login' && req.method === 'POST') {
+    const ip = clientIp(req);
+    const lim = rateLimit(`login:${ip}`, { windowMs: 15 * 60_000, max: 20 });
+    if (!lim.ok) {
+      return sendJson(res, 429, {
+        error: 'Trop de tentatives. Réessayez plus tard.',
+        retryAfterSec: lim.retryAfterSec,
+      });
+    }
+    let payload;
+    try {
+      payload = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+    } catch {
+      return sendJson(res, 400, { error: 'JSON invalide' });
+    }
+    const login = normalizeLoginId(payload.login);
+    const password = String(payload.password || '');
+    if (!login || !password) {
+      return sendJson(res, 400, { error: 'Identifiant et mot de passe requis' });
+    }
+    const user = await findUser(login);
+    if (!user || !verifyWpPassword(password, user.password_hash)) {
+      return sendJson(res, 401, { error: 'Identifiants incorrects' });
+    }
+    if (String(user.status || '').toLowerCase() === STATUSES.DISABLED) {
+      return sendJson(res, 403, { error: 'Compte désactivé' });
+    }
+    const pub = publicUser(user);
+    return sendJson(
+      res,
+      200,
+      {
+        ok: true,
+        user: pub,
+        desk: pub.desk,
+        entitled: pub.entitled,
+      },
+      { 'Set-Cookie': makeSessionCookie(user) }
+    );
+  }
+
+  // POST /api/auth/forgot — demande de reset (login ou e-mail)
+  if (action === 'forgot' && req.method === 'POST') {
+    const ip = clientIp(req);
+    const lim = rateLimit(`forgot:${ip}`, { windowMs: 15 * 60_000, max: 8 });
+    if (!lim.ok) {
+      return sendJson(res, 429, {
+        error: 'Trop de demandes. Réessayez plus tard.',
+        retryAfterSec: lim.retryAfterSec,
+      });
+    }
+    let payload;
+    try {
+      payload = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+    } catch {
+      return sendJson(res, 400, { error: 'JSON invalide' });
+    }
+    try {
+      await requestPasswordReset(
+        pool,
+        payload.login || payload.email,
+        {
+          apiKey: BREVO_API_KEY,
+          smtpUser: BREVO_SMTP_USER,
+          smtpPass: BREVO_SMTP_PASS,
+          dryRun: BREVO_DRY_RUN,
+          fromEmail: BREVO_FROM_EMAIL,
+          fromName: BREVO_FROM_NAME,
+        },
+        SITE_URL
+      );
+    } catch (err) {
+      if (err.code === 'INVALID_ID') {
+        return sendJson(res, 400, { error: err.message });
+      }
+      console.error('[auth] forgot', err.message);
+      return sendJson(res, 500, { error: 'Envoi impossible pour le moment' });
+    }
+    // Message volontairement générique
+    return sendJson(res, 200, {
+      ok: true,
+      message:
+        'Si un compte correspond, un e-mail de réinitialisation vient d’être envoyé. Vérifiez aussi vos spams.',
+    });
+  }
+
+  // GET /api/auth/reset?token= — valide le jeton
+  if (action === 'reset' && req.method === 'GET') {
+    const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+    const token = String(url.searchParams.get('token') || '');
+    const user = await validateResetToken(pool, token);
+    if (!user) {
+      return sendJson(res, 400, { error: 'Lien invalide ou expiré', valid: false });
+    }
+    return sendJson(res, 200, {
+      valid: true,
+      login: user.login,
+    });
+  }
+
+  // POST /api/auth/reset — nouveau mot de passe
+  if (action === 'reset' && req.method === 'POST') {
+    const ip = clientIp(req);
+    const lim = rateLimit(`reset:${ip}`, { windowMs: 15 * 60_000, max: 10 });
+    if (!lim.ok) {
+      return sendJson(res, 429, {
+        error: 'Trop de tentatives. Réessayez plus tard.',
+        retryAfterSec: lim.retryAfterSec,
+      });
+    }
+    let payload;
+    try {
+      payload = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+    } catch {
+      return sendJson(res, 400, { error: 'JSON invalide' });
+    }
+    try {
+      const result = await resetPasswordWithToken(
+        pool,
+        payload.token,
+        payload.password
+      );
+      await auditLog(pool, {
+        actor: { uid: result.id, login: result.login },
+        action: 'user.password_forgot_reset',
+        targetType: 'user',
+        targetId: result.id,
+        meta: { via: 'email_token' },
+        ip,
+      }).catch(() => {});
+      return sendJson(res, 200, {
+        ok: true,
+        message: 'Mot de passe mis à jour. Vous pouvez vous connecter.',
+        login: result.login,
+      });
+    } catch (err) {
+      const status =
+        err.code === 'TOKEN_INVALID' || err.code === 'PASSWORD_WEAK' ? 400 : 500;
+      return sendJson(res, status, {
+        error: err.message || 'Échec de la réinitialisation',
+      });
+    }
+  }
+
+  return sendJson(res, 404, { error: 'Unknown auth route' });
+}
+
+/** Session + droits premium frais depuis MySQL */
+async function loadEntitledSession(req) {
+  const s = readSession(req);
+  if (!s) return null;
+  const user = await findUserById(s.uid);
+  if (!user) return null;
+  if (String(user.status || '').toLowerCase() === STATUSES.DISABLED) return null;
+  return { session: s, user, entitled: canAccessPremium(user) };
+}
+
+/** Session desk : rôle/status toujours lus en DB (jamais cookie seul). */
+async function resolveDeskSession(req) {
+  const s = readSession(req);
+  if (!s) return null;
+  const user = await findUserById(s.uid);
+  if (!user) return null;
+  if (String(user.status || '').toLowerCase() === STATUSES.DISABLED) return null;
+  return {
+    session: {
+      uid: Number(user.id),
+      login: user.login,
+      name: user.display_name,
+      role: normalizeRole(user.role),
+      exp: s.exp,
+    },
+    user,
+  };
+}
+
+async function handleContent(req, res, parts) {
+  if (req.method !== 'GET') return sendJson(res, 405, { error: 'Method not allowed' });
+  const wpId = Number(parts[2]);
+  if (!wpId) return sendJson(res, 400, { error: 'wp_id invalide' });
+
+  const [rows] = await pool.query(
+    'SELECT access, body, draft FROM el_articles WHERE wp_id = ? LIMIT 1',
+    [wpId]
+  );
+  const row = rows[0];
+  if (!row || row.draft) return sendJson(res, 404, { error: 'Article inconnu' });
+
+  const headers = { 'X-EL-Content-Gen': String(getContentGen()) };
+
+  if (row.access === 'granted') {
+    return sendJson(
+      res,
+      200,
+      { access: 'granted', html: row.body || '', contentGen: getContentGen() },
+      headers
+    );
+  }
+
+  const ent = await loadEntitledSession(req);
+  if (!ent?.entitled) {
+    return sendJson(
+      res,
+      401,
+      {
+        error: ent?.session
+          ? 'Abonnement requis ou expiré'
+          : 'Authentification requise',
+        access: 'subscribers',
+        entitled: false,
+      },
+      headers
+    );
+  }
+  return sendJson(
+    res,
+    200,
+    { access: 'subscribers', html: row.body || '', contentGen: getContentGen() },
+    headers
+  );
+}
+
+async function handleRag(req, res, parts) {
+  const endpoint = parts[2];
+  if (endpoint === 'health' && req.method === 'GET') {
+    return sendJson(res, 200, { ok: true, upstream: UPSTREAM });
+  }
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+    });
+    return res.end();
+  }
+  if (req.method !== 'POST') {
+    return sendJson(res, 405, { error: 'Method not allowed' });
+  }
+
+  if (endpoint !== 'askWeb' && endpoint !== 'simple') {
+    return sendJson(res, 404, { error: 'Unknown RAG endpoint' });
+  }
+
+  let bodyBuf;
+  try {
+    bodyBuf = await readBody(req);
+  } catch {
+    return sendJson(res, 400, { error: 'Invalid body' });
+  }
+  let payload;
+  try {
+    payload = JSON.parse(bodyBuf.toString('utf8') || '{}');
+  } catch {
+    return sendJson(res, 400, { error: 'JSON invalide' });
+  }
+  if (!payload.question || typeof payload.question !== 'string') {
+    return sendJson(res, 400, { error: 'question requise' });
+  }
+
+  if (endpoint === 'simple') {
+    const ip = clientIp(req);
+    const lim = rateLimit(`rag-simple:${ip}`, { windowMs: 60_000, max: 30 });
+    if (!lim.ok) {
+      return sendJson(res, 429, {
+        error: 'Trop de requêtes définitions. Réessayez dans un instant.',
+        retryAfterSec: lim.retryAfterSec,
+      });
+    }
+    const mode = String(payload.mode || 'definition');
+    if (mode !== 'definition') {
+      return sendJson(res, 400, { error: 'mode non autorisé' });
+    }
+    const forward = {
+      question: payload.question.trim(),
+      article_b64: typeof payload.article_b64 === 'string' ? payload.article_b64 : '',
+      mode: 'definition',
+    };
+    let upstreamRes;
+    try {
+      upstreamRes = await fetch(`${UPSTREAM}/simple`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': RAG_KEY,
+          Accept: 'application/json',
+        },
+        body: JSON.stringify(forward),
+      });
+    } catch (err) {
+      console.error('[api] rag simple fetch', err.message);
+      return sendJson(res, 502, { error: 'Connexion RAG impossible' });
+    }
+    const text = await upstreamRes.text().catch(() => '');
+    if (!upstreamRes.ok) {
+      return sendJson(res, 502, { error: 'Réponse RAG invalide', status: upstreamRes.status });
+    }
+    res.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store',
+    });
+    return res.end(text);
+  }
+
+  const ent = await loadEntitledSession(req);
+  if (!ent?.entitled) {
+    return sendJson(res, 403, {
+      error: ent?.session
+        ? 'Abonnement requis ou expiré.'
+        : 'Accès réservé aux abonnés ElectronLibre.',
+    });
+  }
+
+  const forward = {
+    question: payload.question.trim(),
+    language: String(payload.language || 'FR').toUpperCase(),
+    client: payload.client || 'web',
+    inline_citations: payload.inline_citations !== false,
+  };
+
+  let upstreamRes;
+  try {
+    upstreamRes = await fetch(`${UPSTREAM}/askWeb`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': RAG_KEY,
+        Accept: 'text/event-stream',
+      },
+      body: JSON.stringify(forward),
+    });
+  } catch (err) {
+    console.error('[api] rag fetch', err.message);
+    return sendJson(res, 502, { error: 'Connexion RAG impossible' });
+  }
+
+  if (!upstreamRes.ok || !upstreamRes.body) {
+    return sendJson(res, 502, { error: 'Réponse RAG invalide', status: upstreamRes.status });
+  }
+
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+
+  const reader = upstreamRes.body.getReader();
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (value) res.write(Buffer.from(value));
+    }
+  } catch (err) {
+    console.error('[api] rag stream', err.message);
+  } finally {
+    res.end();
+  }
+}
+
+const deskCtx = {
+  pool,
+  readSession,
+  resolveDeskSession,
+  sendJson,
+  readBody,
+  clientIp,
+  deeplApiKey: DEEPL_API_KEY,
+  siteUrl: SITE_URL,
+  onesignal: {
+    appId: ONESIGNAL_APP_ID,
+    apiKey: ONESIGNAL_REST_API_KEY,
+    siteUrl: ONESIGNAL_SITE_URL,
+    dryRun: ONESIGNAL_DRY_RUN,
+  },
+  brevo: {
+    apiKey: BREVO_API_KEY,
+    smtpUser: BREVO_SMTP_USER,
+    smtpPass: BREVO_SMTP_PASS,
+    dryRun: BREVO_DRY_RUN,
+    fromEmail: BREVO_FROM_EMAIL,
+    fromName: BREVO_FROM_NAME,
+  },
+};
+
+const startedAt = Date.now();
+
+const server = http.createServer(async (req, res) => {
+  try {
+    if (req.method === 'GET' && (req.url === '/health' || req.url === '/api/health')) {
+      let dbOk = false;
+      let articles = null;
+      let users = null;
+      try {
+        await pool.query('SELECT 1');
+        dbOk = true;
+        const [[{ a }]] = await pool.query(
+          'SELECT COUNT(*) AS a FROM el_articles WHERE draft = 0'
+        );
+        const [[{ u }]] = await pool.query('SELECT COUNT(*) AS u FROM el_users');
+        articles = Number(a);
+        users = Number(u);
+        await ensureAuditTable(pool);
+        await ensureNewsletterSchema(pool);
+        await ensurePasswordResetSchema(pool);
+      } catch (err) {
+        console.error('[api] health db', err.message);
+      }
+      return sendJson(res, dbOk ? 200 : 503, {
+        ok: dbOk,
+        contentGen: getContentGen(),
+        deepl: Boolean(DEEPL_API_KEY),
+        onesignal: Boolean(ONESIGNAL_REST_API_KEY && ONESIGNAL_APP_ID),
+        onesignalDryRun: ONESIGNAL_DRY_RUN,
+        brevo: BREVO_CONFIGURED,
+        brevoDryRun: BREVO_DRY_RUN,
+        cookieSecure: COOKIE_SECURE,
+        db: dbOk,
+        articles,
+        users,
+        uptimeSec: Math.floor((Date.now() - startedAt) / 1000),
+      });
+    }
+
+    const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+    const parts = url.pathname.replace(/\/+$/, '').split('/').filter(Boolean);
+
+    if (parts[0] !== 'api') {
+      return sendJson(res, 404, { error: 'Not found' });
+    }
+
+    if (parts[1] === 'auth') return handleAuth(req, res, parts);
+    if (parts[1] === 'content') return handleContent(req, res, parts);
+    if (parts[1] === 'desk') return handleDesk(req, res, parts, deskCtx);
+    if (parts[1] === 'newsletter') {
+      return handlePublicNewsletter(req, res, parts, {
+        pool,
+        sendJson,
+        readBody,
+      });
+    }
+    if (parts[1] === 'rag') return handleRag(req, res, parts);
+
+    return sendJson(res, 404, { error: 'Not found' });
+  } catch (err) {
+    if (err?.code === 'PAYLOAD_TOO_LARGE') {
+      return sendJson(res, 413, { error: 'Payload trop volumineux' });
+    }
+    console.error('[api] error', err);
+    return sendJson(res, 500, { error: 'Erreur serveur' });
+  }
+});
+
+server.listen(PORT, '127.0.0.1', () => {
+  console.log(
+    `[api] listening on 127.0.0.1:${PORT} (desk + content MySQL)` +
+      ` onesignalDryRun=${ONESIGNAL_DRY_RUN} brevoDryRun=${BREVO_DRY_RUN} cookieSecure=${COOKIE_SECURE}`
+  );
+});
+
+export { pool, rowToArticle };

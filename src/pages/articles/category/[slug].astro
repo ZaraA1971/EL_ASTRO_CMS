@@ -1,0 +1,41 @@
+---
+export const prerender = false;
+
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import ArchiveList from "../../../components/ArchiveList.astro";
+import {
+  categoryArchiveBase,
+  getCategoryArchivePage,
+} from "../../../lib/archive";
+import { CATEGORIES, categoryName } from "../../../lib/categories";
+
+const { slug } = Astro.params;
+if (!slug || !CATEGORIES.some((c) => c.slug === slug)) {
+  return Astro.redirect("/404/");
+}
+
+const name = categoryName(slug);
+const { featured, rest, page, totalPages } = await getCategoryArchivePage(
+  slug,
+  "fr",
+  1
+);
+
+Astro.response.headers.set(
+  "Cache-Control",
+  "public, max-age=30, stale-while-revalidate=60"
+);
+---
+
+<BaseLayout title={`${name} | ElectronLibre`} description={`Articles — ${name}`}>
+  <ArchiveList
+    title={name}
+    featured={featured}
+    rest={rest}
+    page={page}
+    totalPages={totalPages}
+    lang="fr"
+    basePath={categoryArchiveBase(slug)}
+    emptyMessage="Aucun article importé dans cette catégorie pour l’instant."
+  />
+</BaseLayout>

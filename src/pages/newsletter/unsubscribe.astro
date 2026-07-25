@@ -1,0 +1,85 @@
+---
+export const prerender = false;
+
+import BaseLayout from "../../layouts/BaseLayout.astro";
+
+const token = String(Astro.url.searchParams.get("token") || "").trim();
+const validToken = /^[a-f0-9]{32}$/i.test(token);
+---
+
+<BaseLayout
+  title="Désabonnement newsletter | ElectronLibre"
+  description="Gérer la réception de la newsletter ElectronLibre."
+  bodyClass="el-archive-surface el-subscribe-page"
+>
+  <section class="el-archive-shell el-subscribe">
+    <header class="el-section-head">
+      <h1 class="el-section-head__title">Newsletter</h1>
+    </header>
+
+    <article class="el-subscribe__card" id="nl-unsub-root" data-token={validToken ? token : ""}>
+      {
+        !validToken ? (
+          <>
+            <h2 class="el-subscribe__title">Lien invalide</h2>
+            <p class="el-subscribe__lead">
+              Ce lien de désabonnement est incomplet ou expiré. Contactez{" "}
+              <a href="mailto:info@electronlibre.info">info@electronlibre.info</a>{" "}
+              si besoin.
+            </p>
+          </>
+        ) : (
+          <>
+            <h2 class="el-subscribe__title">Se désabonner de la newsletter</h2>
+            <p class="el-subscribe__lead">
+              Vous ne recevrez plus la newsletter quotidienne. Votre compte
+              abonné (articles, Compagnon) reste inchangé.
+            </p>
+            <div class="el-subscribe__actions">
+              <button type="button" class="btn-subscribe" id="nl-unsub-btn">
+                Confirmer le désabonnement
+              </button>
+            </div>
+            <p class="el-subscribe__foot" id="nl-unsub-msg" hidden></p>
+          </>
+        )
+      }
+    </article>
+  </section>
+
+  <script is:inline>
+    (function () {
+      var root = document.getElementById("nl-unsub-root");
+      var btn = document.getElementById("nl-unsub-btn");
+      var msg = document.getElementById("nl-unsub-msg");
+      if (!root || !btn || !msg) return;
+      var token = root.getAttribute("data-token") || "";
+      btn.addEventListener("click", async function () {
+        btn.disabled = true;
+        msg.hidden = false;
+        msg.textContent = "Traitement…";
+        try {
+          var res = await fetch("/api/newsletter/unsubscribe", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ token: token }),
+          });
+          var data = await res.json().catch(function () {
+            return {};
+          });
+          if (!res.ok) {
+            msg.textContent = data.error || "Échec du désabonnement.";
+            btn.disabled = false;
+            return;
+          }
+          msg.textContent =
+            "Vous êtes désabonné(e) de la newsletter. Merci.";
+          btn.hidden = true;
+        } catch (e) {
+          msg.textContent = "Erreur réseau. Réessayez.";
+          btn.disabled = false;
+        }
+      });
+    })();
+  </script>
+</BaseLayout>

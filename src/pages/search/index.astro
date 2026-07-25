@@ -1,0 +1,121 @@
+---
+export const prerender = false;
+
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { getPublishedArticles, toSearchDoc } from "../../lib/articles";
+
+// Index client léger (sans body)
+const index = (await getPublishedArticles("all", { includeBody: false })).map(
+  toSearchDoc
+);
+Astro.response.headers.set("Cache-Control", "public, max-age=60, stale-while-revalidate=120");
+---
+
+<BaseLayout title="Recherche | ElectronLibre" description="Rechercher sur ElectronLibre">
+  <section class="el-archive-shell el-home-page el-search">
+    <header class="el-section-head">
+      <h1 class="el-section-head__title">Recherche</h1>
+    </header>
+    <form class="el-search__form" role="search" action="/search/" method="get">
+      <input
+        type="search"
+        name="s"
+        id="el-search-input"
+        class="el-search__input"
+        placeholder="Rechercher un article…"
+        autocomplete="off"
+      />
+      <button type="submit" class="btn-subscribe">Rechercher</button>
+    </form>
+    <p id="el-search-meta" class="el-home__sub"></p>
+    <ul id="el-search-results" class="el-home__grid"></ul>
+  </section>
+</BaseLayout>
+
+<script is:inline define:vars={{ index }}>
+  (function () {
+    const docs = Array.isArray(index) ? index : [];
+    const params = new URLSearchParams(location.search);
+    const q = (params.get("s") || "").trim();
+    const input = document.getElementById("el-search-input");
+    const meta = document.getElementById("el-search-meta");
+    const list = document.getElementById("el-search-results");
+    if (input) input.value = q;
+
+    function normalize(s) {
+      return String(s || "")
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+    }
+
+    function search(query) {
+      const tokens = normalize(query).split(/\s+/).filter(Boolean);
+      if (!tokens.length) return [];
+      return docs.filter((doc) => {
+        const hay = normalize(
+          [doc.title, doc.excerpt, (doc.categories || []).join(" ")].join(" ")
+        );
+        return tokens.every((t) => hay.includes(t));
+      });
+    }
+
+    function render(results, query) {
+      if (!list || !meta) return;
+      if (!query) {
+        meta.textContent = "Saisissez un mot-clé dans la barre ci-dessus.";
+        list.innerHTML = "";
+        return;
+      }
+      meta.textContent =
+        results.length +
+        " résultat" +
+        (results.length > 1 ? "s" : "") +
+        " pour « " +
+        query +
+        " »";
+      list.innerHTML = results
+        .slice(0, 50)
+        .map((doc) => {
+          const date = doc.date
+            ? new Date(doc.date).toLocaleDateString("fr-FR", {
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+              })
+            : "";
+          const cat = (doc.categories && doc.categories[0]) || "Article";
+          const lock =
+            doc.access === "subscribers"
+              ? '<span class="lock-icon el-sub-lock" title="Article réservé aux abonnés"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0066ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></span> '
+              : "";
+          const excerpt = doc.excerpt
+            ? "<p class=\"el-home-card__excerpt\">" +
+              doc.excerpt.replace(/</g, "&lt;") +
+              "</p>"
+            : "";
+          return (
+            "<li class=\"el-home-card\">" +
+            "<div class=\"news-snippet\">" +
+            "<p class=\"el-home-card__meta\">" +
+            cat +
+            " · " +
+            date +
+            "</p>" +
+            "<h2 class=\"news-title\">" +
+            lock +
+            "<a href=\"" +
+            doc.href +
+            "\">" +
+            doc.title.replace(/</g, "&lt;") +
+            "</a></h2>" +
+            excerpt +
+            "</div></li>"
+          );
+        })
+        .join("");
+    }
+
+    render(search(q), q);
+  })();
+</script>

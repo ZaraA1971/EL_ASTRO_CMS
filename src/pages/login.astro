@@ -1,0 +1,112 @@
+---
+export const prerender = true;
+import AuthLayout from "../layouts/AuthLayout.astro";
+---
+
+<AuthLayout
+  title="Connexion | ElectronLibre"
+  description="Connectez-vous à votre compte abonné ElectronLibre."
+>
+  <section class="el-archive-shell el-auth">
+    <article class="el-auth__card">
+      <h1 class="el-auth__title">Connexion</h1>
+      <p class="el-auth__sub">
+        Identifiant <em>ou</em> e-mail, avec le mot de passe de votre compte.
+      </p>
+
+      <form
+        id="login"
+        name="login"
+        class="el-auth__form"
+        method="post"
+        action="/login/"
+        autocomplete="on"
+      >
+        <label for="username">Identifiant ou e-mail</label>
+        <input
+          id="username"
+          name="username"
+          type="text"
+          autocomplete="username"
+          autocapitalize="none"
+          autocorrect="off"
+          spellcheck="false"
+          inputmode="email"
+          required
+          placeholder="ex. marie@… ou marie.dupont"
+        />
+
+        <label for="password">Mot de passe</label>
+        <input
+          id="password"
+          name="password"
+          type="password"
+          autocomplete="current-password"
+          required
+        />
+
+        <p id="el-login-error" class="el-auth__error" hidden></p>
+        <button type="submit" class="btn-subscribe el-auth__submit">
+          Se connecter
+        </button>
+      </form>
+
+      <p class="el-auth__links">
+        <a class="el-auth__textbtn" href="/login/forgot/">Mot de passe oublié ?</a>
+      </p>
+
+      <p class="el-auth__foot">
+        <a href="/">Accueil</a>
+        <span aria-hidden="true">·</span>
+        <a href="/abonnement/">S’abonner</a>
+      </p>
+    </article>
+  </section>
+</AuthLayout>
+
+<script is:inline>
+  (function () {
+    document.getElementById("login")?.addEventListener("submit", async function (e) {
+      e.preventDefault();
+      var form = e.target;
+      var err = document.getElementById("el-login-error");
+      var btn = form.querySelector('button[type="submit"]');
+      err.hidden = true;
+      var login = String(form.username.value || "").trim().toLowerCase();
+      var password = form.password.value;
+      if (!login || !password) {
+        err.textContent = "Identifiant (ou e-mail) et mot de passe requis.";
+        err.hidden = false;
+        return;
+      }
+      btn.disabled = true;
+      try {
+        var res = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({ login: login, password: password }),
+        });
+        var data = await res.json().catch(function () {
+          return {};
+        });
+        if (!res.ok) {
+          err.textContent = data.error || "Identifiants incorrects.";
+          err.hidden = false;
+          btn.disabled = false;
+          return;
+        }
+        var raw = new URLSearchParams(location.search).get("redirect") || "/";
+        var next =
+          raw.startsWith("/") && !raw.startsWith("//") && raw.indexOf("://") === -1
+            ? raw
+            : "/";
+        location.href = next;
+      } catch (ex) {
+        err.textContent = "Erreur réseau.";
+        err.hidden = false;
+        btn.disabled = false;
+      }
+    });
+  })();
+</script>

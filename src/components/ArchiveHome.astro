@@ -1,0 +1,73 @@
+---
+import ArticleCard from "./ArticleCard.astro";
+import HomeTools from "./HomeTools.astro";
+import Pagination from "./Pagination.astro";
+import type { Article, LangCode } from "../lib/articles";
+
+interface Props {
+  featured?: Article;
+  rest: Article[];
+  page: number;
+  totalPages: number;
+  lang: LangCode;
+  title?: string;
+}
+
+const {
+  featured,
+  rest,
+  page,
+  totalPages,
+  lang,
+  title = lang === "en" ? "Featured" : "À la une",
+} = Astro.props;
+
+const withTools = page === 1;
+---
+
+<section
+  class:list={[
+    "el-archive-shell",
+    "el-archive-page",
+    "el-home-page",
+    withTools && "el-home-page--with-tools",
+  ]}
+>
+  {
+    withTools ? (
+      <div class="el-home-layout">
+        <div class="el-home-main">
+          <header class="el-section-head">
+            <h1 class="el-section-head__title">{title}</h1>
+          </header>
+
+          <div class="el-card-grid blog-grid-view">
+            {featured && <ArticleCard article={featured} featured />}
+            {rest.map((article) => (
+              <ArticleCard article={article} />
+            ))}
+          </div>
+
+          <Pagination page={page} totalPages={totalPages} lang={lang} />
+        </div>
+
+        <HomeTools lang={lang} />
+      </div>
+    ) : (
+      <>
+        <header class="el-section-head">
+          <h1 class="el-section-head__title">{title}</h1>
+        </header>
+
+        <div class="el-card-grid blog-grid-view">
+          {featured && <ArticleCard article={featured} featured={false} />}
+          {rest.map((article) => (
+            <ArticleCard article={article} />
+          ))}
+        </div>
+
+        <Pagination page={page} totalPages={totalPages} lang={lang} />
+      </>
+    )
+  }
+</section>

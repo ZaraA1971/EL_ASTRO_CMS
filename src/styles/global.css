@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+/*
+ * Tailwind + couleurs WP legacy.
+ * Design tokens EL + CSS thème : source unique = public/css/el/* (servis via BaseLayout).
+ */
+@theme {
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  --font-serif: Georgia, "Times New Roman", serif;
+}
+
+:root {
+  --primary-color: #3da1ff;
+  --secondary-color: #000000;
+  --dark-color: #333333;
+  --light-color: #ffffff;
+  --grey-color: #8a8a8a;
+  --primary-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  --secondary-font: Georgia, "Times New Roman", serif;
+}
+
+.el-staging-banner {
+  background: #1a1a1a;
+  color: #f5f5f5;
+  font: 12px/1.4 var(--el-font-ui, sans-serif);
+  text-align: center;
+  padding: 6px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.el-staging-banner a {
+  color: var(--primary-color, #3da1ff);
+}

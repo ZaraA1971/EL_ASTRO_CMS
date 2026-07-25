@@ -1,0 +1,25 @@
+---
+interface Props {
+  title: string;
+  description?: string;
+  kicker?: string;
+}
+
+const {
+  title,
+  description = "",
+  kicker = title,
+} = Astro.props;
+---
+
+<section class="el-archive-shell el-static-page">
+  <header class="el-section-head">
+    <h1 class="el-section-head__title">{kicker}</h1>
+  </header>
+  <article class="el-static-page__card">
+    <h2 class="el-static-page__title">{title}</h2>
+    <div class="el-static-page__body entry-content">
+      <slot />
+    </div>
+  </article>
+</section>

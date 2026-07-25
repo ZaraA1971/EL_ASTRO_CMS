@@ -1,0 +1,88 @@
+---
+export const prerender = true;
+import BaseLayout from "../layouts/BaseLayout.astro";
+
+const title = "Abonnement à ElectronLibre";
+const description =
+  "Abonnez-vous à ElectronLibre pour un accès illimité aux analyses, rapports et au Compagnon IA.";
+const mailtoSubscribe =
+  "mailto:info@electronlibre.info?subject=" +
+  encodeURIComponent("Abonnement Professionnel ElectronLibre");
+const mailtoQuestion =
+  "mailto:info@electronlibre.info?subject=" +
+  encodeURIComponent("Question abonnement ElectronLibre");
+---
+
+<BaseLayout
+  title={`${title} | ElectronLibre`}
+  description={description}
+  bodyClass="el-archive-surface el-subscribe-page"
+>
+  <section class="el-archive-shell el-subscribe">
+    <header class="el-section-head">
+      <h1 class="el-section-head__title">Abonnement</h1>
+    </header>
+
+    <article class="el-subscribe__card">
+      <p class="el-subscribe__login-hint">
+        Déjà abonné ?
+        <a href="/login/">Connectez-vous</a>
+        via l’espace client en haut à droite.
+      </p>
+
+      <h2 class="el-subscribe__title">
+        Rejoignez la communauté des professionnels sur ElectronLibre
+      </h2>
+      <p class="el-subscribe__lead">
+        Une source d’informations exclusive pour les professionnels.
+        <strong>Abonnez-vous</strong> pour un accès illimité aux analyses, rapports
+        de marché et discussions d’experts.
+      </p>
+
+      <div class="el-subscribe__grid">
+        <div class="el-subscribe__block">
+          <h3 class="el-subscribe__block-title">Pourquoi s’abonner ?</h3>
+          <ul class="el-subscribe__list">
+            <li>Accès exclusif à des articles et rapports spécialisés</li>
+            <li>Invitations à des événements et webinaires réservés aux abonnés</li>
+            <li>Newsletter quotidienne avec des insights du secteur</li>
+            <li>Application mobile avec alertes et accès à tous les contenus</li>
+            <li>EL Compagnon : assistant IA réservé aux abonnés</li>
+          </ul>
+        </div>
+
+        <div class="el-subscribe__block">
+          <h3 class="el-subscribe__block-title">Comment s’abonner ?</h3>
+          <p>
+            Cliquez sur le bouton ci-dessous et mentionnez votre nom, votre
+            organisation et votre rôle professionnel. Nous vous recontactons
+            rapidement.
+          </p>
+          <div class="el-subscribe__actions">
+            <a class="btn-subscribe" href={mailtoSubscribe}>Demander un abonnement</a>
+            <a class="el-subscribe__secondary" href="/login/">J’ai déjà un compte</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="el-subscribe__partners">
+        <h3 class="el-subscribe__block-title">Ils nous font confiance</h3>
+        <img
+          src="/images/logo-partners.png"
+          alt="Logos des organisations partenaires et abonnées"
+          width="880"
+          height="384"
+          loading="lazy"
+          decoding="async"
+        />
+      </div>
+
+      <p class="el-subscribe__foot">
+        Une question ?
+        <a href={mailtoQuestion}>Contactez-nous</a>
+        ·
+        <a href="/">Retour à l’accueil</a>
+      </p>
+    </article>
+  </section>
+</BaseLayout>

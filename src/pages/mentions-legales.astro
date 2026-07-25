@@ -1,0 +1,22 @@
+---
+export const prerender = true;
+import fs from "node:fs";
+import path from "node:path";
+import BaseLayout from "../layouts/BaseLayout.astro";
+import StaticPage from "../components/StaticPage.astro";
+
+const body = fs.readFileSync(
+  path.join(process.cwd(), "src/content/static/mentions-legales.html"),
+  "utf8"
+);
+---
+
+<BaseLayout
+  title="Mentions légales | ElectronLibre"
+  description="Mentions légales, droits d’auteur, abonnement et crédits d’ElectronLibre."
+  bodyClass="el-archive-surface"
+>
+  <StaticPage title="Mentions légales" kicker="Mentions légales">
+    <div set:html={body} />
+  </StaticPage>
+</BaseLayout>

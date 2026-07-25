@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+  <g fill="#fff">
+    <!-- Étoile principale -->
+    <path d="M12 3l2 5 5 2-5 2-2 5-2-5-5-2 5-2 2-5z"/>
+    <!-- Petite étoile haut-droite (écartée et remontée) -->
+    <path d="M20 4l1 2.5 2.5 1-2.5 1-1 2.5-1-2.5-2.5-1 2.5-1 1-2.5z"/>
+    <!-- Petite étoile bas-gauche -->
+    <path d="M5 15l0.7 2L8 18l-2.3 0.7L5 21l-0.7-2.3L2 18l2.3-0.7L5 15z"/>
+  </g>
+</svg>

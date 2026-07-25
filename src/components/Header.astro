@@ -1,0 +1,182 @@
+---
+/**
+ * Header ElectronLibre — port structurel de header.php + assets CSS/JS du thème.
+ */
+import Drawer from "./ELCompagnon/Drawer.astro";
+import { ASSET_V } from "../lib/assets";
+
+interface Props {
+  lang?: "fr" | "en";
+}
+
+const { lang = "fr" } = Astro.props;
+
+type NavChild = { label: string; href: string; rel?: string };
+type NavItem = { label: string; href: string; children?: NavChild[] };
+
+const navItems: NavItem[] = [
+  { label: "Web 1,2,3", href: "/articles/category/web_1_2_3/" },
+  { label: "Culture", href: "/articles/category/so_cult/" },
+  { label: "Piratage", href: "/articles/category/peer2peer/" },
+  { label: "Médias", href: "/articles/category/old_fashion_media/" },
+  { label: "High-Tech", href: "/articles/category/so_amazing/" },
+  { label: "Robotic", href: "/articles/category/robotic/" },
+  { label: "Gaming", href: "/articles/category/gaming/" },
+  { label: "Economie", href: "/articles/category/le_flouze/" },
+  { label: "Politique", href: "/articles/category/politique/" },
+  { label: "Marketing", href: "/articles/category/marketing_room/" },
+  {
+    label: "Espace Client",
+    href: "/a-propos/",
+    children: [
+      { label: "Abonnement", href: "/abonnement/" },
+      { label: "À propos", href: "/a-propos/" },
+      {
+        label: "Mentions légales",
+        href: "/mentions-legales/",
+        rel: "privacy-policy",
+      },
+    ],
+  },
+];
+
+---
+
+<header id="masthead" class="site-header">
+  <Drawer />
+
+  <div class="top-bar">
+    <div class="container">
+      <div class="top-wrapper">
+        <div class="top-left">
+          <div class="top-lang-switcher">
+            <select id="el-lang-switch" aria-label="Langue" data-lang={lang}>
+              <option value="/" selected={lang === "fr" ? true : undefined}>🇫🇷</option>
+              <option value="/en/" selected={lang === "en" ? true : undefined}>🇬🇧</option>
+            </select>
+          </div>
+          <div class="top-social">
+            <div class="social-links">
+              <ul class="list-group list-group-horizontal list-inline">
+                <li class="social-share-list list-group-item twitter-svg">
+                  <a
+                    class="icon-btn"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    href="https://twitter.com/3l3ctr0nLibr3"
+                    aria-label="X"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="32" height="32" fill="currentColor" aria-hidden="true">
+                      <path d="M461.1 32H358.7c-5.7 0-10.9 3.1-13.6 8.1L256 176.7 166.9 40.1c-2.8-5-8-8.1-13.6-8.1H50.9C37.1 32 28.6 47.3 36.8 58.3l175.1 236.5-175.1 159C28.6 464.7 37.1 480 50.9 480h102.4c5.7 0 10.9-3.1 13.6-8.1l89.1-136.6 89.1 136.6c2.8 5 8 8.1 13.6 8.1h102.4c13.8 0 22.3-15.3 14.1-26.3l-175.1-159 175.1-236.5C483.4 47.3 474.9 32 461.1 32z"></path>
+                    </svg>
+                  </a>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="top-center">
+          <div class="top-brand site-branding">
+            <div class="site-identity">
+              <div class="site-title">
+                <a href="/" rel="home" class="logo" aria-label="ElectronLibre">
+                  <span class="site-title-electron">Electron</span><span class="site-title-libre">Libre</span>
+                </a>
+              </div>
+            </div>
+          </div>
+          <div class="top-search">
+            <form role="search" method="get" class="search-form" action="/search/">
+              <label>
+                <span class="screen-reader-text">Rechercher :</span>
+                <input type="search" class="search-field" placeholder="Rechercher…" name="s" />
+              </label>
+              <input type="submit" class="search-submit" value="Rechercher" />
+            </form>
+          </div>
+        </div>
+
+        <div class="top-right">
+          <script is:inline>
+            window.isSubscriber = false;
+            window.currentLanguage = "FR";
+          </script>
+          <div class="top-ia-button">
+            <button
+              type="button"
+              id="ia-drawer-toggle"
+              class="icon-btn ia-icon"
+              aria-label="Ouvrir EL Compagnon"
+              aria-controls="ia-drawer"
+              aria-expanded="false"
+            >
+              <div class="ia-header-icon-wrapper">
+                <img src="/icons/sf/sparkles.svg" alt="" width="22" height="22" />
+                <span class="ia-header-label">EL IA Compagnon</span>
+              </div>
+            </button>
+          </div>
+          <div class="top-login" id="el-login">
+            <a href="/login/" class="icon-btn login-icon" aria-label="Connexion">
+              <div class="ia-header-icon-wrapper">
+                <img src="/icons/sf/loginEL.svg" alt="" width="20" height="20" />
+                <span class="ia-header-label">Connexion</span>
+              </div>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="header-wrapper">
+    <div class="container">
+      <div class="site-header-wrapper">
+        <nav id="site-navigation" class="main-navigation">
+          <button id="nav-icon3" class="menu-toggle" aria-controls="primary-menu" aria-expanded="false">
+            <span></span>
+            <span></span>
+            <span></span>
+            <span></span>
+          </button>
+          <ul id="primary-menu" class="menu">
+            {
+              navItems.map((item) =>
+                item.children?.length ? (
+                  <li class="menu-item menu-item-has-children">
+                    <a href={item.href}>{item.label}</a>
+                    <ul class="sub-menu">
+                      {item.children.map((child) => (
+                        <li class="menu-item">
+                          <a href={child.href} rel={child.rel}>{child.label}</a>
+                        </li>
+                      ))}
+                    </ul>
+                  </li>
+                ) : (
+                  <li class="menu-item">
+                    <a href={item.href}>{item.label}</a>
+                  </li>
+                )
+              )
+            }
+          </ul>
+        </nav>
+      </div>
+    </div>
+  </div>
+
+  <script is:inline src="https://cdn.jsdelivr.net/npm/dompurify@3.0.5/dist/purify.min.js"></script>
+  <script is:inline src={`/js/el-auth.js?v=${ASSET_V}`}></script>
+  <script is:inline src={`/js/ia-tools.js?v=${ASSET_V}`}></script>
+  <script is:inline src={`/js/ia-drawer.js?v=${ASSET_V}`}></script>
+  <script is:inline src={`/js/rag.js?v=${ASSET_V}`}></script>
+  <script is:inline src={`/js/header-nav.js?v=${ASSET_V}`}></script>
+  <script is:inline>
+    document.getElementById("el-lang-switch")?.addEventListener("change", function (e) {
+      var v = e.target && e.target.value;
+      if (v) location.href = v;
+    });
+  </script>
+</header>

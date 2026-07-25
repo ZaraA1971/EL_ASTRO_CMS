@@ -1,0 +1,99 @@
+---
+export const prerender = true;
+import AuthLayout from "../../layouts/AuthLayout.astro";
+---
+
+<AuthLayout
+  title="Mot de passe oublié | ElectronLibre"
+  description="Réinitialisez le mot de passe de votre compte ElectronLibre."
+>
+  <section class="el-archive-shell el-auth">
+    <article class="el-auth__card">
+      <h1 class="el-auth__title">Mot de passe oublié</h1>
+      <p class="el-auth__sub">
+        Indiquez votre identifiant ou votre e-mail. Si un compte existe, vous
+        recevrez un lien de réinitialisation.
+      </p>
+
+      <form
+        id="forgot"
+        name="forgot"
+        class="el-auth__form"
+        method="post"
+        action="/login/forgot/"
+        autocomplete="on"
+      >
+        <label for="username">Identifiant ou e-mail</label>
+        <input
+          id="username"
+          name="username"
+          type="text"
+          autocomplete="username"
+          autocapitalize="none"
+          autocorrect="off"
+          spellcheck="false"
+          inputmode="email"
+          required
+          placeholder="ex. marie@… ou marie.dupont"
+        />
+        <p id="el-forgot-error" class="el-auth__error" hidden></p>
+        <p id="el-forgot-ok" class="el-auth__ok" hidden></p>
+        <button type="submit" class="btn-subscribe el-auth__submit">
+          Envoyer le lien
+        </button>
+      </form>
+
+      <p class="el-auth__foot">
+        <a href="/login/">← Connexion</a>
+        <span aria-hidden="true">·</span>
+        <a href="/">Accueil</a>
+      </p>
+    </article>
+  </section>
+</AuthLayout>
+
+<script is:inline>
+  (function () {
+    document.getElementById("forgot")?.addEventListener("submit", async function (e) {
+      e.preventDefault();
+      var form = e.target;
+      var err = document.getElementById("el-forgot-error");
+      var ok = document.getElementById("el-forgot-ok");
+      var btn = form.querySelector('button[type="submit"]');
+      err.hidden = true;
+      ok.hidden = true;
+      var login = String(form.username.value || "").trim().toLowerCase();
+      if (!login) {
+        err.textContent = "Indiquez votre identifiant ou e-mail.";
+        err.hidden = false;
+        return;
+      }
+      btn.disabled = true;
+      try {
+        var res = await fetch("/api/auth/forgot", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ login: login }),
+        });
+        var data = await res.json().catch(function () {
+          return {};
+        });
+        if (!res.ok) {
+          err.textContent = data.error || "Demande impossible.";
+          err.hidden = false;
+          btn.disabled = false;
+          return;
+        }
+        ok.textContent =
+          data.message ||
+          "Si un compte correspond, un e-mail vient d’être envoyé.";
+        ok.hidden = false;
+        btn.disabled = false;
+      } catch (ex) {
+        err.textContent = "Erreur réseau.";
+        err.hidden = false;
+        btn.disabled = false;
+      }
+    });
+  })();
+</script>

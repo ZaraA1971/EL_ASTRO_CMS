@@ -1,0 +1,73 @@
+/**
+ * ElectronLibre — design tokens (global)
+ * Couleurs dynamiques WP : inc/theme-tokens.php → --primary-color, --dark-color, etc.
+ */
+
+:root {
+  --section-gap: 36px;
+  --small-gap: 12px;
+
+  --el-brand-dark: #3b2416;
+  --el-brand-muted: #8a8a8a;
+  --el-accent: #2f6dfb;
+  --el-accent-soft: #eef3ff;
+  --el-surface: #ffffff;
+  --el-surface-alt: #f6f7f9;
+  --el-border: rgba(15, 23, 42, 0.08);
+  --el-shadow: 0 12px 40px rgba(15, 23, 42, 0.06);
+  --el-radius-lg: 18px;
+  --el-radius-md: 12px;
+  --el-font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  --el-font-editorial: Georgia, "Times New Roman", serif;
+  --el-content-width: 1600px;
+  --el-header-max: 1600px;
+  --el-top-bar-height: 50px;
+  --el-page-pad: 28px;
+  --el-section-hang: min(
+    56px,
+    max(0px, (100vw - var(--el-content-width) - (2 * var(--el-page-pad))) / 2)
+  );
+}
+
+/* Bouton « retour en haut » — pastille bleue, flèche blanche */
+.scroll-to-top {
+  display: none;
+  position: fixed;
+  right: 2rem;
+  bottom: 2rem;
+  z-index: 40;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  color: var(--light-color, #fff);
+  background: var(--primary-color, var(--el-accent));
+  border: none;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.22);
+  cursor: pointer;
+  text-decoration: none;
+  transition: background-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.scroll-to-top svg {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  padding: 0.45rem;
+  fill: none;
+  stroke: currentColor;
+}
+
+.scroll-to-top:hover,
+.scroll-to-top:focus {
+  color: var(--light-color, #fff);
+  background: color-mix(in srgb, var(--primary-color, var(--el-accent)) 78%, #000);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.28);
+  transform: translateY(-2px);
+  outline: none;
+}
+
+.scroll-to-top:focus-visible {
+  outline: 2px solid var(--light-color, #fff);
+  outline-offset: 2px;
+}

@@ -1,0 +1,1134 @@
+/**
+ * ElectronLibre — compagnon IA (header drawer + single + RAG stream)
+ * @package electronlibre
+ */
+
+/* -----------------------------
+   Variantes / Modificateurs
+----------------------------- */
+
+/* Variante principale pour bouton d'action */
+.gpt4o-btn--action {
+  margin-top: 10px;
+  padding: 10px 20px;
+  border-radius: 5px;
+  display: inline-block;
+  width: auto;
+  max-width: fit-content;
+  background-color: #0073aa;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.gpt4o-btn--action:hover {
+  background-color: #005c8a;
+}
+
+/* Style commun des boutons outils */
+.gpt4o-btn--tools {
+    background: transparent;    /* pas de fond */
+    border: none;
+    padding: 5px;
+    cursor: pointer;
+    color: #555;                /* couleur par défaut des icônes */
+    transition: color 0.2s ease;
+}
+
+/* Effet au survol */
+.gpt4o-btn--tools:hover {
+    color: #000;                /* plus foncé au hover */
+}
+
+/* Icônes SVG */
+.gpt4o-btn--tools img {
+    width: 20px;
+    height: 20px;
+    display: block;
+    fill: currentColor;         /* hérite de la couleur du bouton */
+}
+
+.spinner {
+  display: none;
+  width: 16px;
+  height: 16px;
+  margin-left: 8px;
+  border: 2px solid #ccc;
+  border-top-color: #555;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  0%   { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Styles pour les cartouches de questions suggérées */
+/* Bloc de questions suggérées */
+
+.suggested-questions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 15px;
+  margin-bottom: var(--section-gap);
+}
+
+.question-card {
+  width: 100%;
+  background-color: #f0f8ff;
+  border: 1px solid #add8e6;
+  border-radius: 8px;
+  padding: 15px;
+  box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
+  transition: transform 0.3s, background-color 0.3s, border-color 0.3s;
+  cursor: pointer;
+}
+
+.question-card:hover {
+  transform: scale(1.02);
+  background-color: #e6f2fa;
+}
+
+.question-card.selected {
+  transform: scale(1.05);
+  background-color: #d0ebff;
+  border-color: #339af0;
+}
+
+/* Texte de la question */
+.question-card p {
+  font-size: 16px;
+  margin: 0; /* évite les marges par défaut du <p> */
+}
+/* --------- GPT4o / IA Tool Styles (single.php) --------- */
+.gpt4o-tools-container {
+    margin-top: 10px;
+    margin-bottom: 40px;
+    text-align: right;
+}
+
+.gpt4o-btn--tools img {
+    width: 20px;
+    height: 20px;
+}
+
+/* New GPT4o form styles */
+
+#gpt4o-main-form {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* Le textarea sert aussi de zone d’affichage */
+#gpt4o-main-form .gpt4o-textarea {
+    min-height: 200px;       /* plus grand car mix saisie/affichage */
+    max-height: 400px;       /* limite haute */
+    overflow-y: auto;        /* scroll interne */
+    resize: vertical;        /* redimension possible */
+    white-space: pre-wrap;   /* conserver retours à la ligne de l’IA */
+}
+
+.gpt4o-form-title {
+    font-size: 1.5rem;
+    font-weight: bold;
+    margin-bottom: var(--section-gap);
+    margin-top: var(--small-gap);
+    color: inherit;
+}
+
+.gpt4o-textarea {
+    width: 100%;
+    min-height: 120px;
+    padding: 10px;
+    font-size: 1rem;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    resize: vertical;
+    font-family: inherit;
+}
+.gpt4o-form {
+  margin-bottom: 0;
+}
+
+.gpt4o-response-content {
+    font-size: 1rem;
+    color: #333;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+#gpt4o_response {
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    padding: 15px;
+    margin-top: var(--small-gap);
+    margin-bottom: var(--small-gap);
+    background-color: #f9f9f9;
+    min-height: 80px; /* pour que le cadre soit visible même vide */
+}
+
+/* -----------------------------
+   GPT4o Button Layout Container and Unified Action Button
+----------------------------- */
+.gpt4o-btn-container {
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: var(--small-gap);
+  margin-bottom: var(--section-gap);
+}
+
+
+.progress-message {
+  color: #888;        /* gris */
+  font-style: italic; /* italique */
+  margin-bottom: 4px;
+}
+
+#user_prompt {
+    height: 300px;
+    resize: none;
+    overflow-y: auto;
+    white-space: pre-wrap;
+}
+
+#user_prompt.intermediate {
+    color: #666;
+    font-style: italic;
+}
+
+.ai-chat-container {
+    margin-top: 20px;
+}
+
+/* --- Chat Box Layout (Question / Answer) --- */
+.chat-question-box {
+    border: none;
+    padding: 0;
+    background: transparent;
+}
+
+.chat-question-box textarea.chat-box {
+    width: 100%;
+    border: 1px solid #ddd;   /* liseré plus clair */
+    border-radius: 4px;
+    min-height: 60px;
+    max-height: 100px;
+    padding: 10px;
+    resize: vertical;
+    font-size: 14px;
+}
+
+.chat-question-box textarea.chat-box::placeholder {
+    color: #999;
+    font-style: italic;
+}
+
+
+/* ---- Regroupement des styles IA single dans un wrapper ---- */
+.chat-ia-single-wrapper {
+  margin-top: 20px;
+}
+
+.chat-ia-single-wrapper .chat-answer-single {
+  border: 1px solid #ccc;
+  min-height: 200px;
+  max-height: 300px;
+  padding: 8px;
+  white-space: pre-wrap;
+  overflow-y: auto;
+  background-color: #f9f9f9;
+}
+
+.chat-ia-single-wrapper .chat-answer-single:empty:before {
+  content: attr(data-placeholder);
+  color: #aaa;
+  pointer-events: none;
+  display: block;
+}
+
+.chat-ia-single-wrapper .gpt4o-tools-container {
+  margin-top: 10px;
+  margin-bottom: 40px;
+  text-align: right;
+}
+
+.chat-ia-single-wrapper #spinner-response {
+  display: none;
+  width: 16px;
+  height: 16px;
+  margin-left: 8px;
+  border: 2px solid #ccc;
+  border-top-color: #555;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+
+/* === EL Repères Sparkle Button (articles) === */
+.ia-inline-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #2f6dfb;
+  box-shadow: 0 2px 8px rgba(0,0,0,.2), 0 0 0 2px rgba(255,255,255,.65) inset;
+  cursor: pointer;
+  color: #fff; /* currentColor pour le SVG */
+  transition: transform 0.15s ease;
+}
+.ia-inline-btn:hover { transform: translateY(-1px); }
+.ia-inline-btn:active { transform: translateY(0); }
+.ia-inline-btn svg { width: 22px; height: 22px; display: block; }
+
+/* Positionnement du dropdown par rapport à l’icône */
+.ia-dropdown { position: relative; display: inline-flex; }
+
+/* Panneau replié/visible */
+.ia-panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 50%;                  /* centré sous l’icône */
+  right: auto;                /* on neutralise l’ancrage à droite */
+  transform: translateX(-50%);/* décale de moitié pour aligner */
+  display: none;
+  width: 560px;               /* largeur utile */
+  max-width: calc(100vw - 24px);
+  max-height: min(70vh, 640px);
+  overflow: auto;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 16px 36px rgba(0,0,0,.28);
+  padding: 12px;
+  z-index: 1003;
+}
+
+@media (max-width: 680px) {
+  .ia-panel {
+    width: calc(100vw - 24px); /* plein écran moins marges */
+    left: 50%;
+    transform: translateX(-50%);
+  }
+}
+
+.ia-panel.is-open { display: block; }
+
+/* Petite flèche vers l’icône (optionnel) */
+.ia-panel::before {
+  content: "";
+  position: absolute; top: -8px; right: 14px;
+  width: 14px; height: 14px; background: #fff;
+  transform: rotate(45deg);
+  box-shadow: -3px -3px 10px rgba(0,0,0,.06);
+}
+
+/* Form & champs */
+/* Consolidated and updated .ia-form .chat-box styles */
+
+.ia-form .chat-box {
+  border: 1px solid #e3e3e3;
+  border-radius: 8px;
+  width: 100%;
+  font-size: 1rem;
+  padding: 14px 16px;
+  height: auto;
+  min-height: 120px; /* approx. 3 lines */
+  max-height: 200px;
+  line-height: 1.4;
+}
+
+#gpt4o-rag-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+/* Champ texte avec 3 lignes d’épaisseur minimum */
+#gpt4o-rag-form input[type="text"] {
+  width: 100%;
+  padding: 12px;
+  font-size: 16px;
+  line-height: 1.5;
+  min-height: 3em; /* approx. 5 lines */
+  height: auto;                /* allow adaptive growth */
+  border: 1px solid #ddd;   /* plus léger et harmonisé */
+  background: #f0f0f0;
+  color: #111;
+  border-radius: 8px;
+}
+
+#gpt4o-rag-form input[type="text"]:focus {
+    border-color: #bbb;   /* focus plus doux */
+    background: #fff;
+    outline: none;
+}
+
+#gpt4o-rag-form .gpt4o-btn--submit {
+    align-self: flex-end;
+    width: auto;
+    padding: 10px 22px;
+    font-size: 15px;
+    border-radius: 6px;
+    cursor: pointer;
+
+    /* Harmonisation avec bouton Fermer */
+    background: rgba(255,255,255,0.12);
+    color: #f0f0f0;
+    border: 1px solid rgba(255,255,255,0.15);
+    backdrop-filter: blur(6px);
+
+    transition: opacity 0.2s ease, transform 0.15s ease;
+    margin-bottom: 18px;
+}
+
+#gpt4o-rag-form .gpt4o-btn--submit:hover {
+    opacity: 0.85;
+    transform: translateY(-1px);
+}
+
+#gpt4o-rag-form .gpt4o-btn--submit:active {
+    opacity: 0.65;
+    transform: translateY(0);
+}
+
+.chat-box:empty::before {
+    content: attr(data-placeholder);
+    color: #aaa;
+    pointer-events: none;
+    display: block;
+    font-style: italic;
+}
+
+.ia-panel .chat-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.ia-panel .btn-send {
+  background: #2f6dfb;
+  color: #fff;
+  border: 0;
+  border-radius: 8px;
+  padding: 10px 16px;
+  cursor: pointer;
+  align-self: flex-end;
+}
+
+/* Agrandir le champ de saisie dans le formulaire IA si non déjà présent */
+.ia-panel .spinner {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid #ddd;
+  border-top-color: #2f6dfb;
+  animation: spin 1s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Réponse + outils */
+.ia-panel .chat-responses { margin-top: 10px; }
+.ia-panel .gpt4o-tools { display: flex; gap: 8px; margin-top: 8px; }
+.ia-panel .tool-btn { border: 1px solid #e3e3e3; background:#fff; border-radius: 6px; padding: 6px 8px; cursor: pointer; }
+
+/* Utility classes for toggling visibility */
+.hidden {
+  display: none !important;
+}
+
+.visible {
+  display: block !important;
+}
+
+/* === IA RAG Answer Panel === */
+
+.chat-answer-box.visible {
+  display: block;
+}
+
+.chat-responses {
+  margin: 0;
+  padding: 0;
+}
+
+.chat-responses .rag-sources {
+  font-size: 0.9em;
+  color: #666;
+}
+
+.chat-responses .rag-sources ul {
+  margin-top: 4px;
+  padding-left: 1.2em;
+}
+
+.chat-responses .rag-sources li {
+  margin-bottom: 2px;
+}
+
+.chat-responses .rag-sources a {
+  color: #1e73be;
+  text-decoration: none;
+}
+
+.chat-responses .rag-sources a:hover {
+  text-decoration: underline;
+}
+
+/* Citations inline — exposants discrets (pas de pastille) */
+.rag-cite-sup {
+  font-size: 0.72em;
+  line-height: 0;
+  margin: 0 0.04em;
+  vertical-align: baseline;
+  position: relative;
+  top: -0.35em;
+}
+a.rag-cite,
+.ia-drawer a.rag-cite,
+.chat-responses a.rag-cite {
+  display: inline !important;
+  background: none !important;
+  background-color: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  min-width: 0 !important;
+  height: auto !important;
+  color: rgba(154, 163, 175, 0.95) !important;
+  font-size: inherit !important;
+  font-weight: 500 !important;
+  line-height: 1 !important;
+  letter-spacing: 0.01em;
+  text-decoration: none !important;
+  vertical-align: baseline !important;
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+a.rag-cite:hover,
+a.rag-cite:focus,
+.ia-drawer a.rag-cite:hover,
+.ia-drawer a.rag-cite:focus {
+  background: none !important;
+  color: #8eb6ff !important;
+  text-decoration: underline !important;
+  text-underline-offset: 2px;
+}
+
+/* Numéros liste sources — même langage graphique */
+.chat-responses .rag-sources .rag-source-idx,
+.ia-drawer .rag-sources .rag-source-idx {
+  display: inline-block;
+  min-width: 1.15em;
+  margin-right: 0.4em;
+  color: rgba(154, 163, 175, 0.95);
+  font-size: 0.85em;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.ia-drawer .rag-sources .rag-source-idx {
+  color: rgba(180, 188, 200, 0.85);
+}
+
+/* Une ligne RAG */
+.rag-event-line {
+    padding: 2px 0;
+    font-family: monospace;
+    opacity: 0.8;
+}
+
+/* === RAG Events — Terminal Propre === */
+#rag-events {
+    margin-top: 12px;
+    padding: 10px 14px;
+    background: #1e1e1f;              /* fond terminal */
+    border: 1px solid #2d2d2f;        /* bord terminal doux */
+    border-radius: 8px;
+    font-family: "SF Mono", Menlo, Monaco, Consolas, monospace;
+    font-size: 13px;
+    color: #d6d6d6;                   /* gris clair premium */
+    line-height: 1.45;
+    max-height: 55vh;
+    overflow-y: auto;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+}
+
+#rag-events .rag-event-line {
+    padding: 2px 0;
+    border-left: 3px solid #3a3a3c;   /* petite barre latérale */
+    padding-left: 8px;
+    margin-bottom: 3px;
+    color: #e0e0e0;
+    opacity: 0.95;
+    transition: background 0.2s ease;
+}
+
+#rag-events .rag-event-line:hover {
+    background: rgba(255,255,255,0.05);  /* léger highlight */
+}
+
+/* Effet visuel temporaire avant que GPT prenne le relai */
+.rag-debug-stream .rag-event-line {
+    animation: fadein 0.3s ease-out;
+}
+
+@keyframes fadein {
+    from { opacity: 0; transform: translateY(2px); }
+    to { opacity: 0.8; transform: translateY(0); }
+}
+
+/* -----------------------------------------------------------
+   IA DRAWER — tiroir + overlay (transform, sans display:none)
+   ----------------------------------------------------------- */
+
+.ia-drawer-overlay {
+    position: fixed;
+    top: var(--el-top-bar-height, 50px);
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.35);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.25s ease, visibility 0.25s ease;
+    z-index: 1990;
+}
+
+.ia-drawer-overlay.is-open {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+body.admin-bar .ia-drawer-overlay {
+    top: calc(var(--el-top-bar-height, 50px) + var(--wp-admin--admin-bar--height, 32px));
+}
+
+.ia-drawer {
+    position: fixed;
+    top: var(--el-top-bar-height, 50px);
+    right: 0;
+    height: calc(100vh - var(--el-top-bar-height, 50px));
+    width: 420px;
+    max-width: 100%;
+    transform: translateX(100%);
+    visibility: hidden;
+    pointer-events: none;
+
+    background: linear-gradient(
+        to bottom,
+        rgba(28, 28, 29, 0.95),
+        rgba(42, 42, 45, 0.92)
+    );
+    backdrop-filter: blur(14px);
+    border-left: 1px solid rgba(255, 255, 255, 0.06);
+    box-shadow: -10px 0 30px rgba(0, 0, 0, 0.35);
+    padding: 26px;
+    overflow-y: auto;
+    transition:
+        transform 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+        visibility 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 2000;
+}
+
+.ia-drawer.is-open {
+    transform: translateX(0);
+    visibility: visible;
+    pointer-events: auto;
+}
+
+body.admin-bar .ia-drawer {
+    top: calc(var(--el-top-bar-height, 50px) + var(--wp-admin--admin-bar--height, 32px));
+    height: calc(
+        100vh - var(--el-top-bar-height, 50px) - var(--wp-admin--admin-bar--height, 32px)
+    );
+}
+
+.ia-drawer-content {
+    padding-top: 12px;
+    color: #eaeaea;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+}
+
+/* ---- Header (optional) ---- */
+.ia-drawer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 18px;
+}
+
+.ia-drawer-title {
+    font-size: 1.3rem;
+    font-weight: 600;
+    margin: 0;
+    color: #f1f1f1;
+}
+
+/* ---- Champs IA ---- */
+.ia-form .chat-box {
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.07);
+    color: #f5f5f5;
+    border-radius: 10px;
+    padding: 14px 16px;
+}
+.ia-form .chat-box::placeholder {
+    color: #aaa;
+}
+
+/* Bouton envoyer */
+.ia-panel .btn-send {
+    background: #2f6dfb;
+    border-radius: 10px;
+    padding: 12px 20px;
+    color: white;
+    border: none;
+    font-weight: 500;
+    cursor: pointer;
+}
+.ia-panel .btn-send:hover {
+    opacity: 0.9;
+}
+
+/* ---- Carte réponse ---- */
+.ia-drawer .chat-answer-box {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.06);
+    box-shadow: 0 4px 18px rgba(0,0,0,0.25);
+    backdrop-filter: blur(10px);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 22px;
+    color: #eaeaea;
+}
+
+.ia-drawer .chat-responses {
+    color: inherit;
+    font-size: 15.5px;
+    line-height: 1.55;
+}
+
+.ia-drawer .final-answer {
+    color: inherit;
+    font-weight: 500;
+    margin-bottom: 1.2em;
+}
+
+.ia-drawer .rag-sources {
+    color: #cccccc;
+    font-size: 0.92rem;
+    margin-top: 1rem;
+}
+.ia-drawer .rag-sources a {
+    color: #7fb4ff;
+    text-decoration: none;
+}
+.ia-drawer .rag-sources a:hover {
+    text-decoration: underline;
+}
+
+/* Debug style */
+.ia-drawer .rag-debug-stream {
+    background: rgba(255,255,255,0.05);
+    border-left: 3px solid rgba(255,255,255,0.12);
+    padding: 6px 10px;
+    border-radius: 6px;
+    margin-bottom: 6px;
+    font-size: 13px;
+    color: #ccc;
+}
+
+
+@media (max-width: 1024px) {
+    .ia-drawer {
+        width: 100%;
+    }
+}
+
+/* === Imported from chat-box.php (cleanup) === */
+
+/* Input with clear button */
+.input-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.input-wrapper input {
+  width: 100%;
+  padding-right: 32px;
+  box-sizing: border-box;
+}
+
+.input-clear-btn {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  font-size: 20px;
+  color: #aaa;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.input-clear-btn:hover {
+  color: #222;
+}
+
+/* IA Locked (abonnés) */
+.ia-locked {
+  text-align: center;
+  padding: 2rem;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: #fafafa;
+  font-size: 1rem;
+}
+
+.btn-subscribe {
+  display: inline-block;
+  margin-top: 1rem;
+  padding: 0.5rem 1rem;
+  background: #007aff;
+  color: white;
+  border-radius: 6px;
+  text-decoration: none;
+}
+
+.btn-subscribe:hover {
+  background: #005bbb;
+}
+
+/* -----------------------------------------------------------
+   IA DRAWER — Style premium unifié façon iOS
+   ----------------------------------------------------------- */
+
+/* Bloc contenant la réponse GPT (style Apple card) */
+.ia-drawer .chat-answer-box {
+    background: #f4f4f5;              /* card iOS claire */
+    border: 1px solid #e2e2e4;        /* bord doux */
+    border-radius: 12px;              /* arrondi premium */
+    padding: 20px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+    margin-bottom: 18px;              /* espace propre */
+}
+
+/* Contenu de la réponse */
+.ia-drawer .chat-responses {
+    color: inherit;
+    font-size: 15.5px;
+    line-height: 1.55;
+}
+
+/* Réponse finale GPT */
+.ia-drawer .chat-responses .final-answer {
+    color: inherit;
+    font-weight: 500;    /* léger accent premium */
+    margin-bottom: 1.2em;
+}
+
+/* Réponses intermédiaires RAG */
+.ia-drawer .chat-responses .intermediate-answer {
+    color: #4a4a4a;
+    font-style: italic;
+}
+
+/* Sources */
+.ia-drawer .chat-responses .rag-sources {
+    color: #565656;
+    font-size: 0.92rem;
+    margin-top: 1rem;
+}
+.ia-drawer .chat-responses .rag-sources a {
+    color: #007aff;      /* bleu Apple */
+    text-decoration: none;
+}
+.ia-drawer .chat-responses .rag-sources a:hover {
+    text-decoration: underline;
+}
+
+/* Débogage RAG */
+.ia-drawer .rag-debug-stream {
+    background: #f2f2f3;
+    border-left: 3px solid #d0d0d2;
+    padding: 6px 10px;
+    border-radius: 6px;
+    margin-bottom: 6px;
+    font-size: 13px;
+    color: #555;
+}
+
+/* Chaque événement interne */
+.ia-drawer .rag-event-line {
+    color: #555;
+    opacity: 0.85;
+}
+
+/* --- TEXTAREA PREMIUM --- */
+.ia-drawer .ai-chat-container textarea#question {
+    width: 100%;
+    min-height: 48px;
+    max-height: 220px;         /* protection */
+    resize: none;              /* autosize fait le travail */
+    padding: 12px 14px;
+    
+    font-size: 15px;
+    line-height: 1.45;
+    color: #111;               /* texte premium */
+    
+    background: #f4f4f5;       /* systemGray6 */
+    border: 1px solid #d0d0d2; /* bord doux */
+    border-radius: 12px;       /* arrondi Apple */
+    
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* Effet focus */
+.ia-drawer .ai-chat-container textarea#question:focus {
+    border-color: #007aff;     /* bleu iOS */
+    box-shadow: 0 0 0 3px rgba(0,122,255,0.15);
+}
+
+/* -----------------------------------------------------------
+   IA TOOLS ACTIONS — Icons (Copy / Email / Share)
+   ----------------------------------------------------------- */
+
+#ia-tools-actions {
+    display: flex;
+    flex-direction: row;
+    gap: 14px;
+    margin-top: 12px;
+}
+
+/* Normalise l'apparence des boutons */
+#ia-tools-actions button {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: transparent;
+    border: none;
+    padding: 4px;
+    cursor: pointer;
+
+    /* Garantit que les icônes ne deviennent PAS blanches */
+    color: #f0f0f0 !important;
+    position: relative;
+}
+
+/* Hover & Active effects for IA Tools buttons */
+#ia-tools-actions button:hover {
+    opacity: 0.75;
+    transform: scale(1.08);
+    transition: transform 0.12s ease, opacity 0.12s ease;
+}
+
+#ia-tools-actions button:active {
+    opacity: 0.55;
+    transform: scale(0.96);
+    transition: transform 0.08s ease, opacity 0.08s ease;
+}
+
+/* Style spécifique des icônes dans le tiroir IA */
+#ia-tools-actions button img {
+    width: 22px;
+    height: 22px;
+    margin: 0 auto;
+
+    /* Neutralise tout héritage de filtres ou couleurs du thème */
+    filter: invert(1) brightness(1.4) !important;
+    mix-blend-mode: normal;
+    display: block;
+}
+
+/* Wrapper des icônes dans le header — recentré parfaitement */
+/* === Header Icon Wrapper (fixed floating label) === */
+.ia-header-icon-wrapper {
+    position: relative;                /* permet un label flottant */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 34px;                      /* EXACT match de la zone icône */
+    width: 34px;
+}
+
+/* Label sous l'icône sans pousser la mise en page */
+.ia-header-label {
+    position: absolute;
+    bottom: -20px;                     /* légèrement plus bas sous l'icône */
+    left: 50%;
+    transform: translateX(-50%) translateY(6px);
+    font-size: 11px;
+    color: #888;
+    line-height: 1;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+    transition-delay: 0.15s;           /* délai corrigé */
+}
+
+/* Affiche le label au survol souris uniquement (évite 1er tap = hover sur tactile) */
+@media (hover: hover) and (pointer: fine) {
+    .ia-header-icon-wrapper:hover .ia-header-label {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+        transition-delay: 0.55s;
+    }
+}
+
+#rag-events.streaming-effect::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -120%;
+  width: 35%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    rgba(0,0,0,0) 0%,
+    rgba(0,0,0,0.50) 50%, 
+    rgba(0,0,0,0) 100%
+  );
+  animation: ragPeigne 1.6s linear infinite;
+  pointer-events: none;
+}
+
+#rag-events.streaming-effect {
+  position: relative;
+  overflow: hidden;
+}
+
+@keyframes ragPeigne {
+  0% { left: -120%; }
+  100% { left: 120%; }
+}
+/* RAG stream UX */
+/* Step message (analyse, keywords, etc.) */
+.rag-step {
+    font-size: 14px;
+    color: #7a7a7a;
+    font-style: italic;
+    margin-bottom: 10px;
+    opacity: 0.85;
+    animation: ragFadeIn 0.25s ease-out;
+}
+
+.rag-thinking {
+    opacity: 0.55;
+    font-style: italic;
+    letter-spacing: 0.2px;
+    animation: ragPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes ragPulse {
+    0% { opacity: 0.4; }
+    50% { opacity: 0.7; }
+    100% { opacity: 0.4; }
+}
+
+/* Smooth appearance */
+@keyframes ragFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+    to {
+        opacity: 0.85;
+        transform: translateY(0);
+    }
+}
+
+/* GPT stream text */
+.rag-stream-text {
+    font-family: Georgia, serif;
+    font-size: 15.5px;
+    line-height: 1.6;
+    color: inherit;
+    animation: ragFadeIn 0.2s ease-out;
+    transition: opacity 0.2s ease;
+}
+
+.rag-stream-text.active {
+    opacity: 1;
+}
+
+.rag-stream-text.start {
+    opacity: 0;
+}
+
+/* Fix couleur dans le drawer sombre */
+.ia-drawer .rag-stream-text {
+    color: #f5f5f5;
+}
+
+/* Slight spacing for readability */
+.rag-stream-text p {
+    margin-bottom: 10px;
+}
+
+/* Smooth transition when replacing intermediate → GPT */
+.rag-step.fade-out {
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+/* Optional typing cursor effect */
+.rag-stream-text.streaming::after {
+    content: "";
+    display: inline-block;
+    width: 6px;
+    height: 1em;
+    margin-left: 2px;
+    background: #999;
+    animation: ragBlink 1s infinite;
+}
+
+.rag-stream-text.done::after {
+    display: none;
+}
+
+@keyframes ragBlink {
+    0%, 50%, 100% { opacity: 0; }
+    25%, 75% { opacity: 1; }
+}
+
+/* Improve readability inside IA drawer */
+.ia-drawer .rag-step {
+    color: #888;
+}
+
+/* Reduce monospace feel for debug (keep readable) */
+#rag-events .rag-event-line {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+    font-size: 12.5px;
+    letter-spacing: 0.2px;
+}
+
+/* Highlight latest event subtly */
+#rag-events .rag-event-line:last-child {
+    color: #ffffff;
+    opacity: 1;
+}
+
+/* Smooth scroll feel */
+#rag-events {
+    scroll-behavior: smooth;

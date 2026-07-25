@@ -1,0 +1,20 @@
+---
+export const prerender = false;
+
+import BaseLayout from "../layouts/BaseLayout.astro";
+import ArchiveHome from "../components/ArchiveHome.astro";
+import { getArchivePage } from "../lib/archive";
+
+const { featured, rest, page, totalPages } = await getArchivePage("fr", 1);
+Astro.response.headers.set("Cache-Control", "public, max-age=30, stale-while-revalidate=60");
+---
+
+<BaseLayout>
+  <ArchiveHome
+    featured={featured}
+    rest={rest}
+    page={page}
+    totalPages={totalPages}
+    lang="fr"
+  />
+</BaseLayout>

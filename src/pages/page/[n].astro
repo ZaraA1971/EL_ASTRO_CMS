@@ -1,0 +1,28 @@
+---
+export const prerender = false;
+
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import ArchiveHome from "../../components/ArchiveHome.astro";
+import { getArchivePage } from "../../lib/archive";
+
+const n = Number(Astro.params.n || 2);
+if (!Number.isFinite(n) || n < 2) {
+  return Astro.redirect("/");
+}
+const { featured, rest, page, totalPages } = await getArchivePage("fr", n);
+if (page !== n) {
+  return Astro.redirect(page <= 1 ? "/" : `/page/${page}/`);
+}
+
+Astro.response.headers.set("Cache-Control", "public, max-age=30, stale-while-revalidate=60");
+---
+
+<BaseLayout title={`À la une — page ${page} | ElectronLibre`}>
+  <ArchiveHome
+    featured={featured}
+    rest={rest}
+    page={page}
+    totalPages={totalPages}
+    lang="fr"
+  />
+</BaseLayout>

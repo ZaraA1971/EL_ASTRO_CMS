@@ -1,0 +1,177 @@
+---
+export const prerender = false;
+
+import AuthLayout from "../../layouts/AuthLayout.astro";
+
+const token = String(Astro.url.searchParams.get("token") || "")
+  .trim()
+  .toLowerCase();
+const validFormat = /^[a-f0-9]{64}$/.test(token);
+---
+
+<AuthLayout
+  title="Nouveau mot de passe | ElectronLibre"
+  description="Choisissez un nouveau mot de passe pour votre compte ElectronLibre."
+>
+  <section class="el-archive-shell el-auth">
+    <article class="el-auth__card" id="el-reset-root" data-token={validFormat ? token : ""}>
+      {
+        !validFormat ? (
+          <>
+            <h1 class="el-auth__title">Lien invalide</h1>
+            <p class="el-auth__sub">
+              Ce lien de réinitialisation est incomplet. Demandez-en un nouveau
+              depuis la page de connexion.
+            </p>
+            <p class="el-auth__foot">
+              <a href="/login/forgot/">Mot de passe oublié</a>
+              <span aria-hidden="true">·</span>
+              <a href="/login/">Connexion</a>
+            </p>
+          </>
+        ) : (
+          <>
+            <h1 class="el-auth__title">Nouveau mot de passe</h1>
+            <p class="el-auth__sub" id="el-reset-sub">
+              Choisissez un mot de passe d’au moins 8 caractères.
+            </p>
+            <form
+              id="reset"
+              name="reset"
+              class="el-auth__form"
+              method="post"
+              action="/login/reset/"
+              autocomplete="on"
+            >
+              <input
+                type="text"
+                id="username"
+                name="username"
+                autocomplete="username"
+                value=""
+                readonly
+                tabindex="-1"
+                aria-hidden="true"
+                class="el-auth__username-hidden"
+              />
+
+              <label for="new-password">Nouveau mot de passe</label>
+              <input
+                id="new-password"
+                name="new-password"
+                type="password"
+                autocomplete="new-password"
+                required
+                minlength="8"
+              />
+
+              <label for="confirm-password">Confirmer</label>
+              <input
+                id="confirm-password"
+                name="confirm-password"
+                type="password"
+                autocomplete="new-password"
+                required
+                minlength="8"
+              />
+
+              <p id="el-reset-error" class="el-auth__error" hidden></p>
+              <p id="el-reset-ok" class="el-auth__ok" hidden></p>
+              <button type="submit" class="btn-subscribe el-auth__submit">
+                Enregistrer
+              </button>
+            </form>
+            <p class="el-auth__foot">
+              <a href="/login/">← Connexion</a>
+            </p>
+          </>
+        )
+      }
+    </article>
+  </section>
+</AuthLayout>
+
+<script is:inline>
+  (function () {
+    var root = document.getElementById("el-reset-root");
+    var form = document.getElementById("reset");
+    if (!root || !form) return;
+    var token = root.getAttribute("data-token") || "";
+    var err = document.getElementById("el-reset-error");
+    var ok = document.getElementById("el-reset-ok");
+    var sub = document.getElementById("el-reset-sub");
+    var userField = document.getElementById("username");
+
+    fetch("/api/auth/reset?token=" + encodeURIComponent(token))
+      .then(function (r) {
+        return r.json().then(function (d) {
+          return { ok: r.ok, d: d };
+        });
+      })
+      .then(function (res) {
+        if (!res.ok || !res.d.valid) {
+          if (sub)
+            sub.textContent =
+              "Ce lien a expiré ou a déjà été utilisé. Demandez un nouveau lien.";
+          form.hidden = true;
+          return;
+        }
+        if (res.d.login && userField) {
+          userField.value = res.d.login;
+        }
+        if (sub && res.d.login) {
+          sub.textContent =
+            "Compte « " +
+            res.d.login +
+            " » — choisissez un mot de passe (8 caractères min.).";
+        }
+      })
+      .catch(function () {});
+
+    form.addEventListener("submit", async function (e) {
+      e.preventDefault();
+      err.hidden = true;
+      ok.hidden = true;
+      var p1 = form["new-password"].value;
+      var p2 = form["confirm-password"].value;
+      if (p1.length < 8) {
+        err.textContent = "Mot de passe : 8 caractères minimum.";
+        err.hidden = false;
+        return;
+      }
+      if (p1 !== p2) {
+        err.textContent = "Les deux mots de passe ne correspondent pas.";
+        err.hidden = false;
+        return;
+      }
+      var btn = form.querySelector('button[type="submit"]');
+      btn.disabled = true;
+      try {
+        var res = await fetch("/api/auth/reset", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: token, password: p1 }),
+        });
+        var data = await res.json().catch(function () {
+          return {};
+        });
+        if (!res.ok) {
+          err.textContent = data.error || "Échec de la réinitialisation.";
+          err.hidden = false;
+          btn.disabled = false;
+          return;
+        }
+        ok.textContent = data.message || "Mot de passe mis à jour.";
+        ok.hidden = false;
+        form.hidden = true;
+        setTimeout(function () {
+          location.href = "/login/";
+        }, 1600);
+      } catch (ex) {
+        err.textContent = "Erreur réseau.";
+        err.hidden = false;
+        btn.disabled = false;
+      }
+    });
+  })();
+</script>

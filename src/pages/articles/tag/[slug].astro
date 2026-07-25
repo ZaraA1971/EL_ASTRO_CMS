@@ -1,0 +1,39 @@
+---
+export const prerender = false;
+
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import ArticleCard from "../../../components/ArticleCard.astro";
+import { getArticlesByTag, humanizeTag } from "../../../lib/articles";
+
+const { slug } = Astro.params;
+const tagSlug = decodeURIComponent(slug || "");
+if (!tagSlug) {
+  return Astro.redirect("/404/");
+}
+const name = humanizeTag(tagSlug);
+const articles = await getArticlesByTag(tagSlug, "all");
+const featured = articles[0];
+const rest = articles.slice(1);
+Astro.response.headers.set("Cache-Control", "public, max-age=30, stale-while-revalidate=60");
+---
+
+<BaseLayout title={`${name} | ElectronLibre`} description={`Articles — ${name}`}>
+  <section class="el-archive-shell el-archive-page el-home-page">
+    <header class="el-section-head">
+      <h1 class="el-section-head__title">{name}</h1>
+    </header>
+
+    {
+      articles.length === 0 ? (
+        <p class="el-home__sub">Aucun article pour ce mot-clé pour l’instant.</p>
+      ) : (
+        <div class="el-card-grid blog-grid-view">
+          {featured && <ArticleCard article={featured} featured />}
+          {rest.map((article) => (
+            <ArticleCard article={article} />
+          ))}
+        </div>
+      )
+    }
+  </section>
+</BaseLayout>

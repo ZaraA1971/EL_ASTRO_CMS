@@ -1,0 +1,168 @@
+/**
+ * ElectronLibre — typo globale, liens, layout container
+ *
+ * @package electronlibre
+ */
+
+/*** Global ***/
+body {
+  font-family: var(--secondary-font);
+  line-height: var(--line-height);
+  font-weight: var(--font-weight);
+  color: var(--dark-color);
+}
+
+.container {
+  max-width: var(--container-width);
+  margin: 0 auto;
+  padding: 0 40px;
+}
+
+@media only screen and (max-width: 800px) {
+  .container {
+    padding: 0 20px;
+  }
+}
+
+a, a:visited {
+  -webkit-transition: all 0.2s ease;
+  transition: all 0.2s ease;
+  color: var(--primary-color);
+  text-decoration: none;
+  background: -webkit-gradient(linear, left top, left bottom, from(var(--primary-color)), to(var(--primary-color)));
+  background: linear-gradient(var(--primary-color), var(--primary-color));
+  background-size: 0 1px;
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+}
+
+a:hover, a:focus, a:active, a:visited:hover, a:visited:focus, a:visited:active {
+  color: var(--dark-color);
+  background-size: 100% 1px;
+}
+
+.main-wrapper {
+  display: -ms-grid;
+  display: grid;
+  -ms-grid-columns: 9fr 3fr;
+      grid-template-columns: 9fr 3fr;
+  -webkit-column-gap: 80px;
+          column-gap: 80px;
+  row-gap: 40px;
+  margin: 3rem 0;
+}
+
+@media only screen and (max-width: 900px) {
+  .main-wrapper {
+    -ms-grid-columns: 1fr;
+        grid-template-columns: 1fr;
+  }
+}
+
+.archive-wrapper {
+  margin: 3rem 0;
+}
+
+.page-title {
+  margin-top: 0;
+}
+
+.widget-title, .widget_block h2 {
+  font-size: 1rem;
+  margin: 0 0 1rem 0;
+  font-family: var(--primary-font);
+  text-transform: uppercase;
+}
+
+h1, h2, h3 {
+  font-family: var(--secondary-font);
+}
+
+h1 {
+  font-size: 3rem;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+h2 {
+  font-size: 2.5rem;
+  line-height: 1.2;
+  font-weight: 400;
+}
+
+h3 {
+  font-size: 2rem;
+  line-height: 1.2;
+  font-weight: 400;
+}
+
+h4 {
+  font-size: 1.5rem;
+  font-weight: 400;
+}
+
+h5 {
+  font-size: 1.25rem;
+  font-weight: 400;
+}
+
+h6 {
+  font-size: 1rem;
+  line-height: 1.3;
+  font-weight: 400;
+}
+
+@media only screen and (max-width: 900px) {
+  h1 {
+    font-size: 2.5rem;
+  }
+  h2 {
+    font-size: 2rem;
+  }
+  h3 {
+    font-size: 1.6rem;
+  }
+  h4 {
+    font-size: 1.25rem;
+  }
+  h4 {
+    font-size: 1.15rem;
+  }
+  h4 {
+    font-size: 1rem;
+  }
+}
+
+@media only screen and (max-width: 500px) {
+  h1 {
+    font-size: 2rem;
+  }
+  h2 {
+    font-size: 1.5rem;
+  }
+  h3 {
+    font-size: 1.25rem;
+  }
+  h4 {
+    font-size: 1.15rem;
+  }
+  h4 {
+    font-size: 1.5rem;
+  }
+  h4 {
+    font-size: 1rem;
+  }
+}
+
+.wp-block-search__button, input[type="submit"], input[type="button"] {
+  background-color: var(--primary-color);
+  border: none;
+  color: var(--light-color);
+  padding: 1.25rem 3rem;
+  border-radius: 0;
+  cursor: pointer;
+}
+
+.wp-block-search__button:hover, input[type="submit"]:hover, input[type="button"]:hover {
+  background-color: var(--secondary-color);
+}

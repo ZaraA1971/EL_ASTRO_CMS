@@ -1,0 +1,67 @@
+---
+import { archivePath, buildPageNumbers } from "../lib/archive";
+import type { LangCode } from "../lib/articles";
+
+interface Props {
+  page: number;
+  totalPages: number;
+  lang?: LangCode;
+  /**
+   * Base d’URL sans slash final (ex. `/articles/category/robotic`).
+   * page 1 → `{base}/` · page N → `{base}/page/N/`
+   * Absent → pagination home FR/EN via `archivePath`.
+   */
+  basePath?: string;
+}
+
+const { page, totalPages, lang = "fr", basePath } = Astro.props;
+const items = buildPageNumbers(page, totalPages);
+
+function pageHref(n: number): string {
+  if (basePath) {
+    const base = basePath.replace(/\/+$/, "");
+    return n <= 1 ? `${base}/` : `${base}/page/${n}/`;
+  }
+  return archivePath(lang, n);
+}
+---
+
+{
+  totalPages > 1 && (
+    <nav class="el-pagination" aria-label="Pagination">
+      <ul class="el-pagination__list">
+        {page > 1 && (
+          <li>
+            <a href={pageHref(page - 1)} rel="prev">
+              « Précédent
+            </a>
+          </li>
+        )}
+        {items.map((item) =>
+          item === "…" ? (
+            <li class="el-pagination__gap" aria-hidden="true">
+              …
+            </li>
+          ) : (
+            <li>
+              {item === page ? (
+                <span class="el-pagination__current" aria-current="page">
+                  {item}
+                </span>
+              ) : (
+                <a href={pageHref(item)}>{item}</a>
+              )}
+            </li>
+          )
+        )}
+        {page < totalPages && (
+          <li>
+            <a href={pageHref(page + 1)} rel="next">
+              Suivant »
+            </a>
+          </li>
+        )}
+      </ul>
+    </nav>
+  )
+}

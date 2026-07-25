@@ -1,0 +1,22 @@
+---
+export const prerender = true;
+import fs from "node:fs";
+import path from "node:path";
+import BaseLayout from "../layouts/BaseLayout.astro";
+import StaticPage from "../components/StaticPage.astro";
+
+const body = fs.readFileSync(
+  path.join(process.cwd(), "src/content/static/a-propos.html"),
+  "utf8"
+);
+---
+
+<BaseLayout
+  title="À propos | ElectronLibre"
+  description="Le projet ElectronLibre, média payant d’analyse sur le numérique, l’IA et les industries culturelles."
+  bodyClass="el-archive-surface"
+>
+  <StaticPage title="À propos d’ElectronLibre" kicker="À propos">
+    <div set:html={body} />
+  </StaticPage>
+</BaseLayout>
