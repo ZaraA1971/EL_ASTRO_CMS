@@ -1,2 +1,2 @@
 /** Cache-bust unique pour CSS/JS statiques (`public/`). */
-export const ASSET_V = "20260726metaupd3";
+export const ASSET_V = "20260726navmobile1";

@@ -28,16 +28,19 @@
     nav.classList.toggle('toggled', open);
     toggle.classList.toggle('open', open);
     toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    document.body.classList.toggle('el-nav-open', open);
   }
 
   function closeAllSubmenus(except) {
-    document.querySelectorAll('#site-navigation .menu-item-has-children.focus').forEach(function (item) {
-      if (except && item === except) {
-        return;
-      }
-      item.classList.remove('focus');
-      item.setAttribute('aria-expanded', 'false');
-    });
+    document
+      .querySelectorAll('#site-navigation .menu-item-has-children.focus')
+      .forEach(function (item) {
+        if (except && item === except) {
+          return;
+        }
+        item.classList.remove('focus');
+        item.setAttribute('aria-expanded', 'false');
+      });
   }
 
   function toggleSubmenu(item) {
@@ -53,7 +56,8 @@
       return;
     }
 
-    toggle.addEventListener('click', function () {
+    toggle.addEventListener('click', function (event) {
+      event.stopPropagation();
       var nav = getNav();
       if (!nav) {
         return;
@@ -63,25 +67,57 @@
   }
 
   function initSubmenus() {
-    document.querySelectorAll('#site-navigation .menu-item-has-children').forEach(function (item) {
-      item.setAttribute('aria-haspopup', 'true');
-      item.setAttribute('aria-expanded', 'false');
+    document
+      .querySelectorAll('#site-navigation .menu-item-has-children')
+      .forEach(function (item) {
+        item.setAttribute('aria-haspopup', 'true');
+        item.setAttribute('aria-expanded', 'false');
 
-      var link = item.querySelector(':scope > a');
-      if (!link) {
-        return;
-      }
-
-      link.addEventListener('click', function (event) {
-        if (!isMobileNav()) {
+        var link = item.querySelector(':scope > a');
+        if (!link) {
           return;
         }
 
-        if (!item.classList.contains('focus')) {
-          event.preventDefault();
-          toggleSubmenu(item);
-        }
+        link.addEventListener('click', function (event) {
+          if (!isMobileNav()) {
+            return;
+          }
+
+          if (!item.classList.contains('focus')) {
+            event.preventDefault();
+            toggleSubmenu(item);
+          }
+        });
       });
+  }
+
+  /** Ferme le panneau au clic d’un lien de navigation (catégorie / sous-menu). */
+  function initNavLinkClose() {
+    var nav = getNav();
+    if (!nav) {
+      return;
+    }
+
+    nav.addEventListener('click', function (event) {
+      if (!isMobileNav() || !nav.classList.contains('toggled')) {
+        return;
+      }
+
+      // Accordion « Espace Client » : preventDefault au 1er clic → ne pas fermer
+      if (event.defaultPrevented) {
+        return;
+      }
+
+      var link =
+        event.target && event.target.closest
+          ? event.target.closest('a')
+          : null;
+      if (!link || !nav.contains(link)) {
+        return;
+      }
+
+      setNavOpen(false);
+      closeAllSubmenus(null);
     });
   }
 
@@ -122,6 +158,7 @@
   function boot() {
     initMenuToggle();
     initSubmenus();
+    initNavLinkClose();
     initDocumentClose();
     initResize();
   }
