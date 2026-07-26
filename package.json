@@ -18,7 +18,9 @@
     "export:wp:2000": "node scripts/export-wp-articles.mjs --limit=2000",
     "export:wp:all": "node scripts/export-wp-articles.mjs --all",
     "import:articles:db": "node scripts/import-md-to-el-articles.mjs",
-    "test": "node --test server/lib/*.test.mjs server/lib/newsletter/*.test.mjs",
+    "media:index": "node scripts/index-el-media.mjs",
+    "keywords:from-wp-tags": "node scripts/sync-ia-keywords.mjs",
+    "test": "node --test server/lib/*.test.mjs server/lib/newsletter/*.test.mjs server/lib/ios/*.test.mjs server/lib/media/*.test.mjs",
     "desk": "echo 'Pupitre: https://electronlibre.info/desk/'"
   },
   "dependencies": {
@@ -27,14 +29,18 @@
     "@tailwindcss/vite": "^4.3.3",
     "astro": "^7.1.3",
     "bcryptjs": "^3.0.3",
+    "busboy": "^1.6.0",
+    "file-type": "^22.0.1",
     "gray-matter": "^4.0.3",
     "he": "^1.2.0",
     "mysql2": "^3.23.1",
     "nodemailer": "^9.0.3",
+    "sharp": "^0.35.3",
     "tailwindcss": "^4.3.3",
     "wordpress-hash-node": "^1.0.0"
   },
   "devDependencies": {
+    "@types/busboy": "^1.5.4",
     "@types/he": "^1.2.3"
   }
 }

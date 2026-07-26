@@ -13,19 +13,49 @@ import {
 } from './keywords.mjs';
 import { purgeFrontCache } from './front-cache.mjs';
 import { callEditorialAssist } from './editorial-assist.mjs';
-import { deriveExcerptFromBody } from './excerpt.mjs';
+import { chapo } from './excerpt.mjs';
+import { handleDeskMedia } from './media/handler.mjs';
 
 export { canAccessDesk, canEditAll, canPublish };
 
+/**
+ * Valide un lien de traduction : la cible doit exister et être éditable
+ * par la session (évite IDOR via translation_en / translation_fr).
+ * @returns {Promise<object|null>} row twin ou null si twinId falsy
+ */
+async function loadEditableTwin(pool, session, twinId) {
+  const id = Number(twinId) || 0;
+  if (!id) return null;
+  const [rows] = await pool.query(
+    'SELECT * FROM el_articles WHERE wp_id = ? LIMIT 1',
+    [id]
+  );
+  const twin = rows[0] || null;
+  if (!twin) {
+    const err = new Error('Article de traduction lié introuvable');
+    err.status = 400;
+    throw err;
+  }
+  if (!canEditArticle(session, twin)) {
+    const err = new Error('Lien de traduction non autorisé sur cet article');
+    err.status = 403;
+    throw err;
+  }
+  return twin;
+}
+
 /** Propage les mots-clés IA vers la version FR/EN liée (entités souvent bilingues). */
-async function syncKeywordsToTwin(pool, row, keywords) {
+async function syncKeywordsToTwin(pool, session, row, keywords) {
   const twinId =
     Number(row.translation_en) || Number(row.translation_fr) || 0;
   if (!twinId || !Array.isArray(keywords)) return null;
-  const [[twin]] = await pool.query(
-    'SELECT access FROM el_articles WHERE wp_id = ? LIMIT 1',
-    [twinId]
-  );
+  let twin;
+  try {
+    twin = await loadEditableTwin(pool, session, twinId);
+  } catch {
+    // Lien cassé / non autorisé : ne pas bloquer la sauvegarde source
+    return null;
+  }
   // Mots-clés IA = articles abonnés uniquement
   if (!twin || twin.access === 'granted') return null;
   await pool.query('UPDATE el_articles SET ia_keywords = ? WHERE wp_id = ?', [
@@ -141,7 +171,7 @@ async function uniqueSlug(pool, base, excludeWpId = null) {
  * Source FR → brouillon EN-GB (création ou écrasement), liaison bidirectionnelle.
  */
 async function translateUk(req, res, sourceRow, ctx) {
-  const { pool, sendJson, readBody, deeplApiKey } = ctx;
+  const { pool, sendJson, readBody, deeplApiKey, session } = ctx;
 
   let payload = {};
   try {
@@ -196,6 +226,12 @@ async function translateUk(req, res, sourceRow, ctx) {
     });
   }
 
+  if (enExisting && session && !canEditArticle(session, enExisting)) {
+    return sendJson(res, 403, {
+      error: 'Version UK liée non modifiable (propriété / droits)',
+    });
+  }
+
   if (!deeplApiKey) {
     return sendJson(res, 503, {
       error: 'DeepL non configuré (DEEPL_API_KEY)',
@@ -223,7 +259,7 @@ async function translateUk(req, res, sourceRow, ctx) {
   const title = (translated.title || '').trim() || `${fr.title} (EN)`;
   const body = cleanHtml(translated.body || '');
   // Excerpt = début proportionnel du corps EN (pas le chapô gras)
-  const excerpt = deriveExcerptFromBody(body);
+  const excerpt = chapo(body, 'store');
   const now = nowMysql();
   const cats = parseJsonArray(fr.categories);
   const catNames = parseJsonArray(fr.category_names);
@@ -375,8 +411,20 @@ export async function handleDesk(req, res, parts, ctx) {
         newsletter: Boolean(canPublish(session.role)),
         newsletterDryRun: Boolean(ctx.brevo?.dryRun),
         audience: Boolean(canPublish(session.role)),
+        media: true,
+        mediaDelete: canEditAll(session.role),
       },
       contentGen: getContentGen(),
+    });
+  }
+
+  // /api/desk/media — médiathèque
+  if (parts[2] === 'media') {
+    return handleDeskMedia(req, res, parts, {
+      ...ctx,
+      session,
+      actor,
+      ip,
     });
   }
 
@@ -606,7 +654,7 @@ export async function handleDesk(req, res, parts, ctx) {
           wpId,
           slug,
           title,
-          deriveExcerptFromBody(bodyHtml),
+          chapo(bodyHtml, 'store'),
           bodyHtml,
           toMysqlDate(payload.date) || now,
           now,
@@ -821,7 +869,7 @@ export async function handleDesk(req, res, parts, ctx) {
         [asJson(keywords), 'subscribers', wpId]
       );
       existing.access = 'subscribers';
-      const twinId = await syncKeywordsToTwin(pool, existing, keywords);
+      const twinId = await syncKeywordsToTwin(pool, session, existing, keywords);
       bumpContentGen();
       await auditLog(pool, {
         actor,
@@ -896,7 +944,7 @@ export async function handleDesk(req, res, parts, ctx) {
   }
 
   if (parts[4] === 'translate-uk' && req.method === 'POST') {
-    return translateUk(req, res, existing, { ...ctx, actor, ip });
+    return translateUk(req, res, existing, { ...ctx, session, actor, ip });
   }
 
   if (req.method === 'GET' && !parts[4]) {
@@ -950,7 +998,7 @@ export async function handleDesk(req, res, parts, ctx) {
 
     const bodyHtml =
       payload.body != null ? cleanHtml(payload.body) : existing.body || '';
-    const excerpt = deriveExcerptFromBody(bodyHtml);
+    const excerpt = chapo(bodyHtml, 'store');
     const accessNext =
       payload.access === 'granted'
         ? 'granted'
@@ -980,6 +1028,35 @@ export async function handleDesk(req, res, parts, ctx) {
       if (generated.length) {
         iaKeywordsNext = generated;
         autoKeywords = true;
+      }
+    }
+
+    // Liens de traduction : auteurs ne peuvent pas les réassigner (IDOR).
+    // Editors/admins doivent pouvoir éditer la cible si elle existe.
+    let translationFr = existing.translation_fr;
+    let translationEn = existing.translation_en;
+    if (canEditAll(session.role)) {
+      try {
+        if (payload.translation_fr !== undefined) {
+          const wanted =
+            payload.translation_fr != null
+              ? Number(payload.translation_fr) || null
+              : null;
+          if (wanted) await loadEditableTwin(pool, session, wanted);
+          translationFr = wanted;
+        }
+        if (payload.translation_en !== undefined) {
+          const wanted =
+            payload.translation_en != null
+              ? Number(payload.translation_en) || null
+              : null;
+          if (wanted) await loadEditableTwin(pool, session, wanted);
+          translationEn = wanted;
+        }
+      } catch (err) {
+        return sendJson(res, err.status || 400, {
+          error: err.message || 'Lien de traduction invalide',
+        });
       }
     }
 
@@ -1013,12 +1090,8 @@ export async function handleDesk(req, res, parts, ctx) {
           ? String(payload.lang).toLowerCase()
           : existing.lang,
         draftVal,
-        payload.translation_fr != null
-          ? Number(payload.translation_fr) || null
-          : existing.translation_fr,
-        payload.translation_en != null
-          ? Number(payload.translation_en) || null
-          : existing.translation_en,
+        translationFr,
+        translationEn,
         wpId,
       ]
     );
@@ -1026,7 +1099,16 @@ export async function handleDesk(req, res, parts, ctx) {
       accessNext !== 'granted' &&
       (autoKeywords || payload.ia_keywords != null)
     ) {
-      await syncKeywordsToTwin(pool, existing, iaKeywordsNext);
+      await syncKeywordsToTwin(
+        pool,
+        session,
+        {
+          ...existing,
+          translation_fr: translationFr,
+          translation_en: translationEn,
+        },
+        iaKeywordsNext
+      );
     }
     bumpContentGen();
     const [rows] = await pool.query('SELECT * FROM el_articles WHERE wp_id = ?', [

@@ -215,16 +215,12 @@ body.el-archive-surface {
   box-shadow: var(--el-shadow, 0 12px 40px rgba(15, 23, 42, 0.06));
 }
 
-.el-single-page .el-single-article-card .ihead,
 .el-single-page .el-single-article-card .ihead .list-inline {
   font-family: var(--el-font-ui, sans-serif);
   font-size: 0.82rem;
   color: #64748b;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-}
-
-.el-single-page .el-single-article-card .ihead .list-inline {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -232,6 +228,35 @@ body.el-archive-surface {
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+/*
+ * Mise à jour sous la meta — scale pour contourner la taille min. navigateur
+ * (sinon 10px ≈ 0.82rem visuellement).
+ */
+.el-single-page .el-single-article-card .ihead > .post-updated {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  margin: 0.15rem 0 0;
+  padding: 0;
+  font-family: var(--el-font-ui, sans-serif) !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  line-height: 1.2 !important;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #94a3b8 !important;
+  transform: scale(0.72);
+  transform-origin: left top;
+}
+
+.el-single-page .el-single-article-card .ihead > .post-updated time {
+  font-size: inherit !important;
+  font-weight: inherit !important;
+  color: inherit !important;
+  letter-spacing: inherit;
+  text-transform: inherit;
 }
 
 .el-single-page .el-single-article-card .ihead .post-author {

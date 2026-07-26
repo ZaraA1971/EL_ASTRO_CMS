@@ -1,3 +1,5 @@
+import { stripLeadingChapoHtml, chapo } from "./excerpt.js";
+
 const CATEGORIES = [
   { value: "web_1_2_3", label: "Web 1,2,3" },
   { value: "so_cult", label: "Culture" },
@@ -70,6 +72,18 @@ const state = {
   translating: false,
   generatingKeywords: false,
   assisting: false, // corriger | reformuler | chapo
+  mediaPicker: {
+    open: false,
+    q: "",
+    page: 1,
+    pages: 1,
+    total: 0,
+    items: [],
+    loading: false,
+    uploading: false,
+    error: "",
+    alt: "",
+  },
   _searchTimers: {},
   _searchSeq: { users: 0, list: 0, listAc: 0, usersAc: 0, authors: 0 },
   _ac: {}, // états autocomplétion générique (createAutocomplete)
@@ -85,6 +99,23 @@ async function api(path, opts = {}) {
       ...(opts.headers || {}),
     },
     ...opts,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(data.error || `HTTP ${res.status}`);
+    err.status = res.status;
+    err.data = data;
+    throw err;
+  }
+  return data;
+}
+
+/** Upload multipart (ne pas forcer Content-Type JSON). */
+async function apiForm(path, formData) {
+  const res = await fetch(path, {
+    credentials: "same-origin",
+    method: "POST",
+    body: formData,
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -187,13 +218,6 @@ function extractLeadingChapo(html) {
   return m ? stripTagsPlain(m[1]) : "";
 }
 
-function stripLeadingChapoHtml(html) {
-  return String(html || "").replace(
-    /^\s*<p[^>]*>\s*<strong>[\s\S]*?<\/strong>\s*<\/p>\s*/i,
-    ""
-  );
-}
-
 function insertChapoAtTop(chapoPlain) {
   const plain = stripTagsPlain(chapoPlain) || String(chapoPlain || "").trim();
   if (!plain || !state.article) return;
@@ -215,19 +239,6 @@ function insertChapoAtTop(chapoPlain) {
     return;
   }
   state.article.body = next;
-}
-
-/** Excerpt = ~17 % du corps (hors chapô gras), pas le chapô éditorial. */
-function deriveExcerptFromBody(html) {
-  const plain = stripTagsPlain(stripLeadingChapoHtml(html));
-  if (!plain) return "";
-  const target = Math.max(120, Math.min(420, Math.floor(plain.length * 0.17)));
-  if (plain.length <= target) return plain;
-  let cut = plain.slice(0, target);
-  const sp = cut.lastIndexOf(" ");
-  if (sp > target * 0.55) cut = cut.slice(0, sp);
-  cut = cut.trim();
-  return cut ? `${cut}…` : plain.slice(0, target).trim();
 }
 
 function collectForm() {
@@ -255,7 +266,7 @@ function collectForm() {
           .filter(Boolean);
   return {
     title: document.getElementById("f-title")?.value?.trim() || a.data.title,
-    excerpt: deriveExcerptFromBody(body),
+    excerpt: chapo(body, "store"),
     body,
     author: authorName,
     author_slug: pick?.slug || undefined,
@@ -2411,6 +2422,7 @@ function renderUserEdit() {
 }
 
 function renderEdit() {
+  closeMediaPicker();
   const a = state.article;
   const d = a.data;
   const dateVal = d.date
@@ -2457,6 +2469,7 @@ function renderEdit() {
                     <button type="button" class="btn" data-cmd="p">Paragraphe</button>
                     <button type="button" class="btn" data-cmd="ul">Liste</button>
                     <button type="button" class="btn" data-cmd="link">Lien</button>
+                    <button type="button" class="btn" data-cmd="image">Document</button>
                     <button type="button" class="btn" data-cmd="clean">Nettoyer</button>
                     <span class="toolbar-sep" aria-hidden="true"></span>`
                         : ""
@@ -2665,6 +2678,8 @@ function renderEdit() {
         else if (cmd === "link") {
           const url = prompt("URL du lien");
           if (url) exec("createLink", url);
+        } else if (cmd === "image") {
+          openMediaPicker();
         } else if (cmd === "clean") {
           ed.innerHTML = cleanHtml(ed.innerHTML);
         }
@@ -2676,6 +2691,210 @@ function renderEdit() {
       body || "<p><em>Vide</em></p>"
     );
   }
+}
+
+function mediaPickerRoot() {
+  return document.getElementById("media-picker");
+}
+
+function closeMediaPicker() {
+  state.mediaPicker.open = false;
+  const el = mediaPickerRoot();
+  if (el) el.remove();
+}
+
+function insertMediaIntoEditor(item) {
+  // Pièces jointes / documents — pas d’illustration site (pas de <img> décoratif).
+  const url = item.url;
+  const label = String(
+    state.mediaPicker.alt || item.alt || item.filename || "Document"
+  ).trim();
+  const html = `<p><a class="el-doc" href="${escapeHtml(url)}">${escapeHtml(label)}</a></p>`;
+  const ed = document.getElementById("visual-editor");
+  if (ed) {
+    ed.focus();
+    document.execCommand("insertHTML", false, html);
+    if (state.article) state.article.body = getBodyFromDom();
+  }
+  closeMediaPicker();
+}
+
+async function loadMediaPickerPage(page = 1) {
+  const mp = state.mediaPicker;
+  mp.loading = true;
+  mp.error = "";
+  mp.page = page;
+  paintMediaPicker();
+  try {
+    const params = new URLSearchParams({
+      page: String(page),
+      per_page: "24",
+    });
+    if (mp.q.trim()) params.set("q", mp.q.trim());
+    const data = await api(`/api/desk/media?${params}`);
+    mp.items = data.items || [];
+    mp.page = data.page || page;
+    mp.pages = data.pages || 1;
+    mp.total = data.total || 0;
+  } catch (err) {
+    mp.error = err.message || "Chargement impossible";
+    mp.items = [];
+  } finally {
+    mp.loading = false;
+    paintMediaPicker();
+  }
+}
+
+async function uploadMediaFile(file) {
+  const mp = state.mediaPicker;
+  if (!file) return;
+  mp.uploading = true;
+  mp.error = "";
+  paintMediaPicker();
+  try {
+    const fd = new FormData();
+    fd.append("file", file);
+    if (mp.alt.trim()) fd.append("alt", mp.alt.trim());
+    const data = await apiForm("/api/desk/media", fd);
+    if (data.item) {
+      mp.items = [data.item, ...mp.items.filter((i) => i.id !== data.item.id)];
+      mp.total += 1;
+    }
+  } catch (err) {
+    mp.error = err.message || "Upload impossible";
+  } finally {
+    mp.uploading = false;
+    paintMediaPicker();
+  }
+}
+
+function paintMediaPicker() {
+  const mp = state.mediaPicker;
+  if (!mp.open) return;
+  let root = mediaPickerRoot();
+  if (!root) {
+    root = document.createElement("div");
+    root.id = "media-picker";
+    root.className = "media-picker";
+    document.body.appendChild(root);
+  }
+  const canDelete = Boolean(state.caps.mediaDelete);
+  const grid =
+    mp.items.length === 0 && !mp.loading
+      ? `<p class="media-empty">Aucun média${mp.q ? " pour cette recherche" : ""}.</p>`
+      : `<div class="media-grid">
+          ${mp.items
+            .map(
+              (it) => `<button type="button" class="media-card" data-media-id="${it.id}" title="${escapeHtml(it.filename)}">
+                <img src="${escapeHtml(it.thumbUrl || it.url)}" alt="" loading="lazy" />
+                <span class="media-card-name">${escapeHtml(it.filename)}</span>
+              </button>`
+            )
+            .join("")}
+        </div>`;
+
+  root.innerHTML = `
+    <div class="media-picker-backdrop" data-media-close></div>
+    <div class="media-picker-panel" role="dialog" aria-modal="true" aria-label="Documents">
+      <header class="media-picker-head">
+        <h2>Documents</h2>
+        <button type="button" class="btn" data-media-close>Fermer</button>
+      </header>
+      <p class="uk-help media-picker-help">Pièces jointes (scans, PDF rendus en image, etc.). Pas d’illustrations pour le site — insertion = lien fichier.</p>
+      <div class="media-picker-toolbar">
+        <input type="search" id="media-q" class="search-input" placeholder="Rechercher un fichier…" value="${escapeHtml(mp.q)}" />
+        <label class="btn media-upload-btn ${mp.uploading ? "is-busy" : ""}">
+          ${mp.uploading ? "Envoi…" : "Uploader"}
+          <input type="file" id="media-file" accept="image/jpeg,image/png,image/webp,image/gif" hidden ${
+            mp.uploading ? "disabled" : ""
+          } />
+        </label>
+      </div>
+      <div class="field media-alt-field">
+        <label for="media-alt">Libellé du lien (insertion / upload)</label>
+        <input id="media-alt" type="text" value="${escapeHtml(mp.alt)}" placeholder="Ex. Jugement du 12 juin 2026" />
+      </div>
+      ${mp.error ? `<p class="err">${escapeHtml(mp.error)}</p>` : ""}
+      <div class="media-picker-body">
+        ${mp.loading ? `<p class="media-empty">Chargement…</p>` : grid}
+      </div>
+      <footer class="media-picker-foot">
+        <span class="sub">${mp.total} fichier${mp.total > 1 ? "s" : ""}</span>
+        <div class="media-pager">
+          <button type="button" class="btn" data-media-page="${mp.page - 1}" ${
+            mp.page <= 1 || mp.loading ? "disabled" : ""
+          }>Préc.</button>
+          <span class="sub">${mp.page} / ${mp.pages}</span>
+          <button type="button" class="btn" data-media-page="${mp.page + 1}" ${
+            mp.page >= mp.pages || mp.loading ? "disabled" : ""
+          }>Suiv.</button>
+        </div>
+        ${
+          canDelete
+            ? `<p class="uk-help">Clic = insérer le lien document. Shift+clic = supprimer (éditeurs).</p>`
+            : `<p class="uk-help">Clic = insérer le lien document dans l’article.</p>`
+        }
+      </footer>
+    </div>`;
+
+  root.querySelectorAll("[data-media-close]").forEach((el) => {
+    el.onclick = () => closeMediaPicker();
+  });
+  const qInput = root.querySelector("#media-q");
+  qInput.onkeydown = (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      mp.q = qInput.value;
+      loadMediaPickerPage(1);
+    }
+  };
+  qInput.onchange = () => {
+    mp.q = qInput.value;
+  };
+  const altInput = root.querySelector("#media-alt");
+  altInput.oninput = () => {
+    mp.alt = altInput.value;
+  };
+  root.querySelector("#media-file").onchange = (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    uploadMediaFile(file);
+  };
+  root.querySelectorAll("[data-media-page]").forEach((btn) => {
+    btn.onclick = () => {
+      const p = Number(btn.dataset.mediaPage) || 1;
+      if (p >= 1 && p <= mp.pages) loadMediaPickerPage(p);
+    };
+  });
+  root.querySelectorAll("[data-media-id]").forEach((btn) => {
+    btn.onclick = async (e) => {
+      const id = Number(btn.dataset.mediaId);
+      const item = mp.items.find((i) => i.id === id);
+      if (!item) return;
+      if (e.shiftKey && canDelete) {
+        if (!confirm(`Supprimer « ${item.filename} » ?`)) return;
+        try {
+          await api(`/api/desk/media/${id}`, { method: "DELETE" });
+          mp.items = mp.items.filter((i) => i.id !== id);
+          mp.total = Math.max(0, mp.total - 1);
+          paintMediaPicker();
+        } catch (err) {
+          mp.error = err.message || "Suppression impossible";
+          paintMediaPicker();
+        }
+        return;
+      }
+      insertMediaIntoEditor(item);
+    };
+  });
+}
+
+function openMediaPicker() {
+  state.mediaPicker.open = true;
+  state.mediaPicker.error = "";
+  state.mediaPicker.alt = "";
+  paintMediaPicker();
+  loadMediaPickerPage(1);
 }
 
 function render() {

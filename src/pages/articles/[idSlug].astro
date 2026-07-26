@@ -12,6 +12,7 @@ import {
   getRelatedArticles,
   getTranslationUrls,
   formatArchiveDate,
+  formatUpdateDateTime,
   articleUpdateDate,
   displayKeyword,
   articleDisplayKeywords,
@@ -51,7 +52,9 @@ const defineHelp =
     : "Cliquez un terme pour obtenir une définition IA dans le contexte de l’article.";
 const dateLabel = formatArchiveDate(d.date);
 const updateDate = articleUpdateDate(article);
-const updateLabel = updateDate ? formatArchiveDate(updateDate) : "";
+const updateLabel = updateDate
+  ? formatUpdateDateTime(updateDate, pageLang === "en" ? "en" : "fr")
+  : "";
 const updatePrefix = pageLang === "en" ? "Updated" : "Mis à jour le";
 const primaryCat = {
   slug: d.categories[0] || "",
@@ -163,15 +166,6 @@ Astro.response.headers.set(
                   <time datetime={d.date.toISOString()}>{dateLabel}</time>
                 </li>
                 {
-                  updateDate && (
-                    <li class="post-updated">
-                      <time datetime={updateDate.toISOString()}>
-                        {updatePrefix} {updateLabel}
-                      </time>
-                    </li>
-                  )
-                }
-                {
                   d.author && (
                     <li class="post-author">
                       <span>{d.author}</span>
@@ -179,6 +173,15 @@ Astro.response.headers.set(
                   )
                 }
               </ul>
+              {
+                updateDate && (
+                  <p class="post-updated">
+                    <time datetime={updateDate.toISOString()}>
+                      {updatePrefix} {updateLabel}
+                    </time>
+                  </p>
+                )
+              }
             </div>
 
             <h1 class="news-title page-title">{d.title}</h1>

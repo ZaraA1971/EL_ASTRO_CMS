@@ -4,6 +4,7 @@ import {
   countPublishedArticles,
   getArticlesByCategory,
   getPublishedArticles,
+  hydrateFeaturedBody,
 } from './articles';
 
 export const ARCHIVE_PAGE_SIZE = 30;
@@ -26,11 +27,13 @@ export async function getArchivePage(lang: LangCode, page: number) {
   const totalPages = Math.max(1, Math.ceil(total / ARCHIVE_PAGE_SIZE));
   const safePage = Math.min(Math.max(1, page), totalPages);
   const start = (safePage - 1) * ARCHIVE_PAGE_SIZE;
-  const slice = await getPublishedArticles(lang, {
-    includeBody: false,
-    limit: ARCHIVE_PAGE_SIZE,
-    offset: start,
-  });
+  const slice = await hydrateFeaturedBody(
+    await getPublishedArticles(lang, {
+      includeBody: false,
+      limit: ARCHIVE_PAGE_SIZE,
+      offset: start,
+    })
+  );
   return { ...paginateSlice(slice, safePage, total), lang };
 }
 
@@ -43,11 +46,13 @@ export async function getCategoryArchivePage(
   const totalPages = Math.max(1, Math.ceil(total / ARCHIVE_PAGE_SIZE));
   const safePage = Math.min(Math.max(1, page), totalPages);
   const start = (safePage - 1) * ARCHIVE_PAGE_SIZE;
-  const slice = await getArticlesByCategory(categorySlug, lang, {
-    includeBody: false,
-    limit: ARCHIVE_PAGE_SIZE,
-    offset: start,
-  });
+  const slice = await hydrateFeaturedBody(
+    await getArticlesByCategory(categorySlug, lang, {
+      includeBody: false,
+      limit: ARCHIVE_PAGE_SIZE,
+      offset: start,
+    })
+  );
   return {
     ...paginateSlice(slice, safePage, total),
     lang,

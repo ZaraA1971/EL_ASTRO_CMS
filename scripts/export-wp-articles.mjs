@@ -103,9 +103,9 @@ async function loadMap(endpoint, fields = 'id,slug,name') {
 /** Absolu WP → relatif (servi par nginx alias sur staging/cutover). */
 function rewriteMediaUrls(html) {
   return String(html || '').replace(
-    /https?:\/\/(?:www\.)?electronlibre\.info\/wp-content\/uploads\//gi,
-    '/wp-content/uploads/'
-  );
+    /https?:\/\/(?:www\.)?electronlibre\.info\/(?:wp-content\/uploads|media)\//gi,
+    '/media/'
+  ).replace(/\/wp-content\/uploads\//gi, '/media/');
 }
 
 function cleanHtml(html) {

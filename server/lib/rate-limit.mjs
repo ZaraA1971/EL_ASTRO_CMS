@@ -31,16 +31,20 @@ export function rateLimit(key, opts) {
   };
 }
 
+/**
+ * IP client pour rate-limit.
+ * Préfère X-Real-IP (posé par nginx = $remote_addr) — ne jamais faire confiance
+ * au premier hop X-Forwarded-For (spoofable par le client).
+ */
 export function clientIp(req) {
-  const xff = String(req.headers['x-forwarded-for'] || '')
-    .split(',')[0]
-    .trim();
-  if (xff) return xff;
-  return (
+  const real = String(req.headers['x-real-ip'] || '').trim();
+  if (real) return real;
+  const socket =
     req.socket?.remoteAddress ||
     req.connection?.remoteAddress ||
-    'unknown'
-  );
+    '';
+  if (socket) return socket;
+  return 'unknown';
 }
 
 /** Nettoyage opportuniste des buckets expirés */

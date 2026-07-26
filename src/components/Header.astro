@@ -151,9 +151,13 @@ const navItems: NavItem[] = [
     </div>
   </div>
 
-  <script is:inline src="https://cdn.jsdelivr.net/npm/dompurify@3.0.5/dist/purify.min.js"></script>
-  <script is:inline src={`/js/el-auth.js?v=${ASSET_V}`}></script>
-  <script is:inline src={`/js/header-nav.js?v=${ASSET_V}`}></script>
+  <script
+    is:inline
+    defer
+    src="https://cdn.jsdelivr.net/npm/dompurify@3.0.5/dist/purify.min.js"
+  ></script>
+  <script is:inline defer src={`/js/el-auth.js?v=${ASSET_V}`}></script>
+  <script is:inline defer src={`/js/header-nav.js?v=${ASSET_V}`}></script>
   <script is:inline>
     document.getElementById("el-lang-switch")?.addEventListener("change", function (e) {
       var v = e.target && e.target.value;

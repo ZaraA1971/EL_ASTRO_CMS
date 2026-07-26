@@ -4,6 +4,7 @@
  * - /api/auth/*    → login / logout / me (hashes WP via el_users)
  * - /api/content/* → corps article abonné (session requise) — MySQL el_articles
  * - /api/desk/*    → pupitre rédactionnel (rôles admin/editor/author)
+ * - /api/ios/v1/*  → app iOS (Bearer JWT) — unique surface app (/wp-json retiré)
  */
 import http from 'node:http';
 import crypto from 'node:crypto';
@@ -12,15 +13,20 @@ import bcrypt from 'bcryptjs';
 import wordpressHash from 'wordpress-hash-node';
 import { loadEnvFile, createPool, rowToArticle } from './lib/db.mjs';
 import { handleDesk, getContentGen } from './lib/desk.mjs';
+import { handleIos } from './lib/ios/handler.mjs';
 import {
   canAccessPremium,
   normalizeRole,
   publicUser,
   STATUSES,
 } from './lib/roles.mjs';
+import { resolveAccess, toEntitledSession } from './lib/access.mjs';
+import { fetchAskWeb, pipeSseToResponse } from './lib/rag-upstream.mjs';
 import { rateLimit, clientIp } from './lib/rate-limit.mjs';
 import { ensureAuditTable } from './lib/audit.mjs';
 import { ensureNewsletterSchema } from './lib/newsletter/schema.mjs';
+import { ensureMediaSchema } from './lib/media/schema.mjs';
+import { resolveMediaRoot } from './lib/media/storage.mjs';
 import { handlePublicNewsletter } from './lib/newsletter/handler.mjs';
 import {
   ensurePasswordResetSchema,
@@ -110,6 +116,20 @@ const GOATCOUNTER_API_KEY =
   fileEnv.GOATCOUNTER_API_KEY ||
   prodEnv.GOATCOUNTER_API_KEY ||
   '';
+
+const IOS_JWT_SECRET =
+  process.env.EL_IOS_JWT_SECRET ||
+  fileEnv.EL_IOS_JWT_SECRET ||
+  prodEnv.JWT_AUTH_SECRET_KEY ||
+  '';
+const IOS_JWT_TTL_DAYS = Math.max(
+  1,
+  Number(
+    process.env.EL_IOS_JWT_TTL_DAYS ||
+      fileEnv.EL_IOS_JWT_TTL_DAYS ||
+      30
+  )
+);
 
 const BREVO_CONFIGURED = Boolean(
   BREVO_API_KEY || (BREVO_SMTP_USER && BREVO_SMTP_PASS)
@@ -511,14 +531,22 @@ async function handleAuth(req, res, parts) {
   return sendJson(res, 404, { error: 'Unknown auth route' });
 }
 
-/** Session + droits premium frais depuis MySQL */
+function iosJwtCfg() {
+  return {
+    secret: IOS_JWT_SECRET,
+    ttlDays: IOS_JWT_TTL_DAYS,
+    iss: SITE_URL,
+  };
+}
+
+/** Session + droits premium (cookie web OU Bearer iOS) via resolveAccess. */
 async function loadEntitledSession(req) {
-  const s = readSession(req);
-  if (!s) return null;
-  const user = await findUserById(s.uid);
-  if (!user) return null;
-  if (String(user.status || '').toLowerCase() === STATUSES.DISABLED) return null;
-  return { session: s, user, entitled: canAccessPremium(user) };
+  const access = await resolveAccess(req, {
+    pool,
+    readSession,
+    jwtCfg: iosJwtCfg(),
+  });
+  return toEntitledSession(access);
 }
 
 /** Session desk : rôle/status toujours lus en DB (jamais cookie seul). */
@@ -708,53 +736,34 @@ async function handleRag(req, res, parts) {
     return res.end(text);
   }
 
-  const forward = {
-    question: payload.question.trim(),
-    language: String(payload.language || 'FR').toUpperCase(),
-    client: payload.client || 'web',
-    inline_citations: payload.inline_citations !== false,
-  };
-
-  let upstreamRes;
   try {
-    upstreamRes = await fetch(`${UPSTREAM}/askWeb`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': RAG_KEY,
-        Accept: 'text/event-stream',
-      },
-      body: JSON.stringify(forward),
+    const upstreamRes = await fetchAskWeb({
+      upstream: UPSTREAM,
+      apiKey: RAG_KEY,
+      question: payload.question,
+      language: payload.language,
+      client: payload.client || 'web',
+      inline_citations: payload.inline_citations,
     });
+    await pipeSseToResponse(res, upstreamRes);
   } catch (err) {
     console.error('[api] rag fetch', err.message);
-    return sendJson(res, 502, { error: 'Connexion RAG impossible' });
-  }
-
-  if (!upstreamRes.ok || !upstreamRes.body) {
-    return sendJson(res, 502, { error: 'Réponse RAG invalide', status: upstreamRes.status });
-  }
-
-  res.writeHead(200, {
-    'Content-Type': 'text/event-stream; charset=utf-8',
-    'Cache-Control': 'no-cache, no-transform',
-    Connection: 'keep-alive',
-    'X-Accel-Buffering': 'no',
-  });
-
-  const reader = upstreamRes.body.getReader();
-  try {
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      if (value) res.write(Buffer.from(value));
-    }
-  } catch (err) {
-    console.error('[api] rag stream', err.message);
-  } finally {
-    res.end();
+    const status = err.status || 502;
+    return sendJson(res, status, {
+      error:
+        status === 502
+          ? err.upstreamStatus
+            ? 'Réponse RAG invalide'
+            : 'Connexion RAG impossible'
+          : err.message || 'Erreur RAG',
+      ...(err.upstreamStatus ? { status: err.upstreamStatus } : {}),
+    });
   }
 }
+
+const MEDIA_ROOT = resolveMediaRoot(
+  process.env.EL_MEDIA_ROOT || fileEnv.EL_MEDIA_ROOT || ''
+);
 
 const deskCtx = {
   pool,
@@ -763,6 +772,7 @@ const deskCtx = {
   sendJson,
   readBody,
   clientIp,
+  mediaRoot: MEDIA_ROOT,
   deeplApiKey: DEEPL_API_KEY,
   siteUrl: SITE_URL,
   ragUpstream: UPSTREAM,
@@ -810,6 +820,7 @@ const server = http.createServer(async (req, res) => {
         users = Number(u);
         await ensureAuditTable(pool);
         await ensureNewsletterSchema(pool);
+        await ensureMediaSchema(pool);
         await ensurePasswordResetSchema(pool);
       } catch (err) {
         console.error('[api] health db', err.message);
@@ -823,6 +834,7 @@ const server = http.createServer(async (req, res) => {
         brevo: BREVO_CONFIGURED,
         brevoDryRun: BREVO_DRY_RUN,
         goatcounter: Boolean(GOATCOUNTER_SITE && GOATCOUNTER_API_KEY),
+        iosApi: Boolean(IOS_JWT_SECRET && IOS_JWT_SECRET.length >= 16),
         cookieSecure: COOKIE_SECURE,
         db: dbOk,
         articles,
@@ -846,6 +858,16 @@ const server = http.createServer(async (req, res) => {
         pool,
         sendJson,
         readBody,
+      });
+    }
+    if (parts[1] === 'ios') {
+      return handleIos(req, res, parts, {
+        pool,
+        sendJson,
+        readBody,
+        siteUrl: SITE_URL,
+        jwt: { secret: IOS_JWT_SECRET, ttlDays: IOS_JWT_TTL_DAYS },
+        rag: { upstream: UPSTREAM, apiKey: RAG_KEY },
       });
     }
     if (parts[1] === 'rag') return handleRag(req, res, parts);

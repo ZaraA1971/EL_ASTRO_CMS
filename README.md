@@ -2,16 +2,18 @@
 
 **Site** : https://electronlibre.info  
 **Pupitre** : https://electronlibre.info/desk/  
-WordPress **gelé** pour le site ; **`/wp-json/*` reste actif** pour l’app iOS (PHP-FPM).
+WordPress **retiré** (runtime hors live) ; site + app iOS 100 % Astro/Node.
 
 | Ressource | Emplacement |
 |-----------|-------------|
-| Médias | `/var/www/el-media/uploads` → URL `/wp-content/uploads/` |
+| Médias / documents | `/var/www/el-media/uploads` → **`/media/`** (`el_media` + Pupitre) |
 | Articles / comptes | MySQL `el_articles` / `el_users` |
-| App iOS | nginx `/wp-json/` → WP PHP · articles `el_articles` · JWT `el_users` |
+| App iOS | `/api/ios/v1/*` → Node · Bearer JWT |
+| Chemins WP | **410** (`/wp-json`, `/wp-admin`, `/wp-login.php`, …) |
+| `/wp-content/uploads/*` | **301** → `/media/…` |
 | RAG | indexe `el_articles` (FAISS IDs = `wp_id`) |
 | Backup BDD | `/var/backups/electronlibre-db/` (glissant 7j, cron 22:00) |
-| Code WP archivé | `/var/backups/electronlibre-astro/wordpress-code-frozen-*.tar.gz` |
+| Code WP | `/var/backups/electronlibre-astro/wordpress-runtime-retired-*` (+ freeze 2026-07-25) |
 
 ## Accès
 
@@ -33,9 +35,47 @@ Rôles : `admin` / `editor` · `author` · `subscriber` · `other`.
 | `el-astro-rag-proxy.service` | API `:8787` (auth, content, desk, newsletter, RAG proxy) |
 | `rag.service` | RAG upstream `:8080` — cron index `el_articles` 03:00 |
 | MySQL `el_*` | Source de vérité Astro |
-| Médias | nginx → `/var/www/el-media/uploads` |
+| Médias | nginx `/media/` → `/var/www/el-media/uploads` |
 
-Env : `/etc/electronlibre/el-astro-api.env` (**jamais** dans git).
+Env : `/etc/electronlibre/el-astro-api.env` (**jamais** dans git).  
+`EL_MEDIA_ROOT=/var/www/el-media/uploads` (défaut).
+
+## Documents (médiathèque Pupitre)
+
+Stock de **pièces jointes / documents** (scans, rendus image, etc.) — **pas** une banque d’illustrations pour le front (pas de cards, `og:image`, hero, une).
+
+- Table MySQL `el_media` · SQL [`scripts/sql/el_media.sql`](scripts/sql/el_media.sql)
+- Disque `/var/www/el-media/uploads` · URL `/media/` · 301 depuis `/wp-content/uploads/`
+- API Pupitre : `GET/POST /api/desk/media`, `PATCH/DELETE /api/desk/media/:id`
+- UI : bouton **Document** — upload, recherche, insertion d’un **lien fichier** (`<a class="el-doc">`), pas d’`<img>` décoratif
+- Aperçus pupitre : `.thumb.webp` (~320px) via `sharp` (catalogue éditorial uniquement)
+- Index stock historique :
+
+```bash
+cd /var/www/el-astro
+npm run media:index              # scan + upsert + thumbs
+npm run media:index -- --limit=200
+npm run media:index -- --dry-run
+```
+
+## Mots-clés
+
+- `tags` : slugs WP historiques (conservés)
+- `ia_keywords` : libellés Astro (copie humanisée des tags WP via `npm run keywords:from-wp-tags`)
+- Génération RAG desk : écrase `ia_keywords` à la demande
+
+## Chapô / excerpts
+
+Source unique : [`shared/excerpt.mjs`](shared/excerpt.mjs)  
+→ API `server/lib/excerpt.mjs` · Astro `@el/excerpt` · desk `desk/excerpt.js` (symlink ; **pas** `.mjs` en navigateur).
+
+```js
+chapo(article, 'hero')           // 130
+chapo(article, 'card')           // 28
+chapo(article, 'related')        // 32
+chapo(row, 'ios', { entitled })
+chapo(bodyHtml, 'store')
+```
 
 ## Comptes
 
@@ -45,8 +85,9 @@ Gérés au pupitre uniquement. Sync WP **off** (`EL_SYNC_USERS_FORCE=1` pour un 
 
 - Auth : `/api/auth/*` (login, logout, me, forgot, reset)
 - Contenu abonné : `/api/content/:wpId`
-- Desk : `/api/desk/*`
+- Desk : `/api/desk/*` (articles, users, newsletter, audience, **media**)
 - Compagnon : `/api/rag/askWeb` (entitled)
+- App iOS : `/api/ios/v1/*` (Bearer) — `/wp-json` coupé (410)
 
 ## Sitemaps / SEO
 

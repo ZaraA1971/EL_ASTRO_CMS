@@ -53,9 +53,9 @@ function asJsonArray(v) {
 
 function rewriteMediaUrls(html) {
   return String(html || '').replace(
-    /https?:\/\/(?:www\.)?electronlibre\.info\/wp-content\/uploads\//gi,
-    '/wp-content/uploads/'
-  );
+    /https?:\/\/(?:www\.)?electronlibre\.info\/(?:wp-content\/uploads|media)\//gi,
+    '/media/'
+  ).replace(/\/wp-content\/uploads\//gi, '/media/');
 }
 
 const env = loadEnvFile(ENV_FILE);

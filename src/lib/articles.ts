@@ -175,6 +175,27 @@ export function formatArchiveDate(date: Date): string {
   });
 }
 
+/** Mise à jour éditoriale : date + heure (fuseau Europe/Paris). */
+export function formatUpdateDateTime(
+  date: Date,
+  lang: 'fr' | 'en' = 'fr'
+): string {
+  const locale = lang === 'en' ? 'en-GB' : 'fr-FR';
+  const day = date.toLocaleDateString(locale, {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'Europe/Paris',
+  });
+  const time = date.toLocaleTimeString(locale, {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'Europe/Paris',
+  });
+  return lang === 'en' ? `${day}, ${time}` : `${day} à ${time}`;
+}
+
 /**
  * Date de mise à jour éditoriale à afficher, ou null si pas de vrai update
  * (modified absent / quasi égal à la date de publication).
@@ -213,8 +234,8 @@ export const KEYWORDS_LIMIT_CARD = 8;
 
 /**
  * Mots-clés affichés (cards / sujets liés) :
- * - articles abonnés + ia_keywords → remplacent les tags WP
- * - sinon tags WP (gratuits / importés sans IA)
+ * - articles abonnés + ia_keywords (dont copie tags WP) → priorité
+ * - sinon tags WP (gratuits / sans ia_keywords)
  * - sinon rien
  * @param limit tranche max ; ≤ 0 = tous
  */
@@ -234,14 +255,26 @@ export function tagPath(slug: string): string {
   return `/articles/tag/${encodeURIComponent(String(slug || '').trim())}/`;
 }
 
-export function trimExcerpt(text: string, words = 28): string {
-  const clean = String(text || '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (!clean) return '';
-  const parts = clean.split(' ');
-  if (parts.length <= words) return clean;
-  return parts.slice(0, words).join(' ') + '…';
+/** Charge le body uniquement pour l’article à la une (évite LONGTEXT sur toute la liste). */
+export async function hydrateFeaturedBody(
+  articles: Article[]
+): Promise<Article[]> {
+  if (!articles.length) return articles;
+  const wpId = Number(articles[0]?.data?.wp_id) || 0;
+  if (!wpId) return articles;
+  const pool = getPool();
+  const [rows] = await pool.query(
+    `SELECT body FROM el_articles WHERE wp_id = ? AND draft = 0 LIMIT 1`,
+    [wpId]
+  );
+  const body = String((rows as { body?: string }[])[0]?.body || '');
+  if (!body) return articles;
+  // body au top-level Article (listes ont body:'' — chapo lit via || / articleField)
+  const first = {
+    ...articles[0],
+    body,
+  };
+  return [first, ...articles.slice(1)];
 }
 
 /** URLs FR/EN via requêtes ciblées (pas de full scan). */

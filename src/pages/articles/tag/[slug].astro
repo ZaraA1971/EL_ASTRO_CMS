@@ -3,7 +3,11 @@ export const prerender = false;
 
 import BaseLayout from "../../../layouts/BaseLayout.astro";
 import ArticleCard from "../../../components/ArticleCard.astro";
-import { displayKeyword, getArticlesByTag } from "../../../lib/articles";
+import {
+  displayKeyword,
+  getArticlesByTag,
+  hydrateFeaturedBody,
+} from "../../../lib/articles";
 
 const { slug } = Astro.params;
 const tagSlug = decodeURIComponent(slug || "");
@@ -11,7 +15,9 @@ if (!tagSlug) {
   return Astro.redirect("/404/");
 }
 const name = displayKeyword(tagSlug);
-const articles = await getArticlesByTag(tagSlug, "all");
+const articles = await hydrateFeaturedBody(
+  await getArticlesByTag(tagSlug, "all")
+);
 const featured = articles[0];
 const rest = articles.slice(1);
 Astro.response.headers.set("Cache-Control", "public, max-age=30, stale-while-revalidate=60");

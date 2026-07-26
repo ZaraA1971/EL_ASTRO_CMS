@@ -12,8 +12,8 @@ import {
   formatArchiveDate,
   articleDisplayKeywords,
   KEYWORDS_LIMIT_CARD,
-  trimExcerpt,
 } from "../lib/articles";
+import { chapo } from "../lib/excerpt";
 
 interface Props {
   article: Article;
@@ -26,7 +26,10 @@ const related = variant === "related";
 const d = article.data;
 const href = articlePath(article);
 const dateLabel = formatArchiveDate(d.date);
-const excerpt = trimExcerpt(d.excerpt, featured ? 55 : related ? 32 : 28);
+const excerpt = chapo(
+  article,
+  featured ? "hero" : related ? "related" : "card"
+);
 // Hero : tous les tags WP ; grille : limite compacte
 const keywords = related
   ? []

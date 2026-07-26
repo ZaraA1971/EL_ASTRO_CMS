@@ -13,7 +13,11 @@ const en = lang === "en";
 const sectionTitle = en ? "Tools" : "Outils";
 ---
 
-<aside class="el-home-tools" aria-labelledby="el-home-tools-title">
+<aside
+  class="el-home-tools"
+  aria-labelledby="el-home-tools-title"
+  data-asset-v={ASSET_V}
+>
   <header class="el-section-head el-home-tools__head">
     <h2 id="el-home-tools-title" class="el-section-head__title el-home-tools__kicker">
       {sectionTitle}
@@ -229,17 +233,96 @@ const sectionTitle = en ? "Tools" : "Outils";
   </div>
 </aside>
 
-<script is:inline src={`/js/ia-compagnon.js?v=${ASSET_V}`}></script>
-<script is:inline src={`/js/ia-tools.js?v=${ASSET_V}`}></script>
-<script is:inline src={`/js/rag.js?v=${ASSET_V}`}></script>
 <script is:inline>
-  document.addEventListener("DOMContentLoaded", function () {
-    const textarea = document.getElementById("question");
-    if (textarea) {
-      textarea.addEventListener("input", function () {
-        textarea.style.height = "auto";
-        textarea.style.height = Math.min(textarea.scrollHeight, 160) + "px";
+  (function () {
+    var loaded = false;
+    var loading = null;
+    var pendingOpen = false;
+    var root = document.querySelector(".el-home-tools");
+    var assetV =
+      (root && root.getAttribute("data-asset-v")) || "20260726critpath1";
+
+    function loadScript(src) {
+      return new Promise(function (resolve, reject) {
+        var s = document.createElement("script");
+        s.src = src;
+        s.async = false;
+        s.onload = function () {
+          resolve();
+        };
+        s.onerror = function () {
+          reject(new Error("Failed to load " + src));
+        };
+        document.body.appendChild(s);
       });
     }
-  });
+
+    function loadIaChain() {
+      if (loaded) return Promise.resolve();
+      if (loading) return loading;
+      var v = assetV;
+      loading = loadScript("/js/ia-compagnon.js?v=" + v)
+        .then(function () {
+          return loadScript("/js/ia-tools.js?v=" + v);
+        })
+        .then(function () {
+          return loadScript("/js/rag.js?v=" + v);
+        })
+        .then(function () {
+          loaded = true;
+          var textarea = document.getElementById("question");
+          if (textarea && !textarea.dataset.elAutosize) {
+            textarea.dataset.elAutosize = "1";
+            textarea.addEventListener("input", function () {
+              textarea.style.height = "auto";
+              textarea.style.height =
+                Math.min(textarea.scrollHeight, 160) + "px";
+            });
+          }
+          if (pendingOpen && window.ELCompagnon && window.ELCompagnon.open) {
+            pendingOpen = false;
+            window.ELCompagnon.open();
+          }
+        })
+        .catch(function (err) {
+          loading = null;
+          console.error("[el] ia scripts", err);
+        });
+      return loading;
+    }
+
+    function onCompagnonIntent(e) {
+      var t = e.target;
+      if (!t || !t.closest) return;
+      if (
+        !t.closest("#el-compagnon-toggle") &&
+        !t.closest("[data-compagnon-cta]")
+      ) {
+        return;
+      }
+      if (loaded) return;
+      e.preventDefault();
+      e.stopPropagation();
+      pendingOpen = true;
+      loadIaChain();
+    }
+
+    document.addEventListener("click", onCompagnonIntent, true);
+
+    function scheduleIdle() {
+      if (typeof requestIdleCallback === "function") {
+        requestIdleCallback(
+          function () {
+            loadIaChain();
+          },
+          { timeout: 2500 }
+        );
+      } else {
+        setTimeout(loadIaChain, 1800);
+      }
+    }
+
+    if (document.readyState === "complete") scheduleIdle();
+    else window.addEventListener("load", scheduleIdle);
+  })();
 </script>
