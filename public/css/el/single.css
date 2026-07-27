@@ -211,10 +211,31 @@
   margin-top: 36px;
 }
 
-/* Sidebar */
-.el-single-sidebar {
+/* Colonne latérale : mots-clés (si présents) puis outils */
+.el-single-aside-col {
   position: sticky;
   top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  min-width: 0;
+  /* Place pour le hang des titres (« Définir », « Outils ») — sinon overflow coupe la 1ʳᵉ lettre */
+  padding-left: var(--el-section-hang, 6px);
+  max-height: calc(100vh - 36px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.el-single-aside-col .el-single-sidebar,
+.el-single-aside-col .el-home-tools {
+  position: static;
+  top: auto;
+  max-height: none;
+  overflow: visible;
+  /* Le hang est déjà absorbé par la colonne */
+  padding-left: 0;
 }
 
 /* Titre sidebar : styles unifiés via .el-section-head__title / .el-single-aside__title */
@@ -244,8 +265,10 @@
     grid-template-columns: 1fr;
   }
 
-  .el-single-sidebar {
+  .el-single-aside-col {
     position: static;
+    max-height: none;
+    overflow: visible;
   }
 }
 

@@ -3,6 +3,7 @@ export const prerender = false;
 
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import ArticleCard from "../../components/ArticleCard.astro";
+import HomeTools from "../../components/HomeTools.astro";
 import KeywordTags from "../../components/KeywordTags.astro";
 import {
   getArticleByIdSlug,
@@ -264,43 +265,46 @@ Astro.response.headers.set(
           }
         </div>
 
-        {
-          iaKeywords.length > 0 && (
-            <aside class="el-single-sidebar" aria-label={defineTitle}>
-              <header class="el-section-head el-single-sidebar-head">
-                <h2 class="el-section-head__title el-single-aside__title">
-                  {defineTitle}
-                </h2>
-              </header>
-              <div id="secondary">
-                <p class="el-keywords-define__help">{defineHelp}</p>
-                {/* Corps article chargé via /api/content — jamais en base64 dans le HTML */}
-                <div
-                  class="tags el-ia-keywords"
-                  data-wp-id={d.wp_id}
-                  data-title={d.title}
-                  data-excerpt={d.excerpt || ""}
-                >
-                  {iaKeywords.map((k) => (
-                    <button
-                      type="button"
-                      class="keyword-item el-ia-keyword"
-                      data-keyword={k}
-                      title={defineHelp}
-                    >
-                      {displayKeyword(k)}
-                    </button>
-                  ))}
+        <div class="el-single-aside-col">
+          {
+            iaKeywords.length > 0 && (
+              <aside class="el-single-sidebar" aria-label={defineTitle}>
+                <header class="el-section-head el-single-sidebar-head">
+                  <h2 class="el-section-head__title el-single-aside__title">
+                    {defineTitle}
+                  </h2>
+                </header>
+                <div id="secondary">
+                  <p class="el-keywords-define__help">{defineHelp}</p>
+                  {/* Corps article chargé via /api/content — jamais en base64 dans le HTML */}
+                  <div
+                    class="tags el-ia-keywords"
+                    data-wp-id={d.wp_id}
+                    data-title={d.title}
+                    data-excerpt={d.excerpt || ""}
+                  >
+                    {iaKeywords.map((k) => (
+                      <button
+                        type="button"
+                        class="keyword-item el-ia-keyword"
+                        data-keyword={k}
+                        title={defineHelp}
+                      >
+                        {displayKeyword(k)}
+                      </button>
+                    ))}
+                  </div>
+                  <div
+                    id="ai-definition-container"
+                    class="ai-definition"
+                    aria-live="polite"
+                  />
                 </div>
-                <div
-                  id="ai-definition-container"
-                  class="ai-definition"
-                  aria-live="polite"
-                />
-              </div>
-            </aside>
-          )
-        }
+              </aside>
+            )
+          }
+          <HomeTools lang={pageLang} />
+        </div>
       </div>
     </div>
   </div>

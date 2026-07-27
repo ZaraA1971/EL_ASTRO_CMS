@@ -127,6 +127,47 @@ const sectionTitle = en ? "Tools" : "Outils";
     </div>
 
     <a
+      class="el-home-tools__panel el-home-tools__panel--desinfo"
+      href="https://desinfo.electronlibre.info/"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      <div class="el-home-tools__panel-body">
+        <h3 class="el-home-tools__name">
+          {
+            en
+              ? "Disinformation Observatory"
+              : "Observatoire de la désinformation"
+          }
+        </h3>
+        <p class="el-home-tools__pitch">
+          {
+            en
+              ? "Rolling ranking from helpful Community Notes on X."
+              : "Palmarès roulant fondé sur les Community Notes utiles."
+          }
+        </p>
+        <span class="el-home-tools__cta el-home-tools__cta--desinfo">
+          {en ? "Open ranking" : "Voir le palmarès"}
+          <span aria-hidden="true">→</span>
+        </span>
+      </div>
+      <div class="el-home-tools__viz el-home-tools__viz--desinfo" aria-hidden="true">
+        <div class="el-home-tools__desinfo-ui">
+          <div class="el-home-tools__desinfo-tabs">
+            <span class="is-active">{en ? "Media" : "Médias"}</span>
+            <span>7d</span>
+          </div>
+          <ol class="el-home-tools__rank">
+            <li><span>01</span><em>CN / Posts</em><b>0.42</b></li>
+            <li><span>02</span><em>{en ? "Media A" : "Média A"}</em><b>0.31</b></li>
+            <li><span>03</span><em>{en ? "Media B" : "Média B"}</em><b>0.27</b></li>
+          </ol>
+        </div>
+      </div>
+    </a>
+
+    <a
       class="el-home-tools__panel el-home-tools__panel--geo"
       href="https://geo.electronlibre.info/"
       target="_blank"
@@ -185,47 +226,6 @@ const sectionTitle = en ? "Tools" : "Outils";
             <i style="width:20%"></i>
             <i style="width:16%"></i>
           </div>
-        </div>
-      </div>
-    </a>
-
-    <a
-      class="el-home-tools__panel el-home-tools__panel--desinfo"
-      href="https://desinfo.electronlibre.info/"
-      target="_blank"
-      rel="noopener noreferrer"
-    >
-      <div class="el-home-tools__panel-body">
-        <h3 class="el-home-tools__name">
-          {
-            en
-              ? "Disinformation Observatory"
-              : "Observatoire de la désinformation"
-          }
-        </h3>
-        <p class="el-home-tools__pitch">
-          {
-            en
-              ? "Rolling ranking from helpful Community Notes on X."
-              : "Palmarès roulant fondé sur les Community Notes utiles."
-          }
-        </p>
-        <span class="el-home-tools__cta el-home-tools__cta--desinfo">
-          {en ? "Open ranking" : "Voir le palmarès"}
-          <span aria-hidden="true">→</span>
-        </span>
-      </div>
-      <div class="el-home-tools__viz el-home-tools__viz--desinfo" aria-hidden="true">
-        <div class="el-home-tools__desinfo-ui">
-          <div class="el-home-tools__desinfo-tabs">
-            <span class="is-active">{en ? "Media" : "Médias"}</span>
-            <span>7d</span>
-          </div>
-          <ol class="el-home-tools__rank">
-            <li><span>01</span><em>CN / Posts</em><b>0.42</b></li>
-            <li><span>02</span><em>{en ? "Media A" : "Média A"}</em><b>0.31</b></li>
-            <li><span>03</span><em>{en ? "Media B" : "Média B"}</em><b>0.27</b></li>
-          </ol>
         </div>
       </div>
     </a>
