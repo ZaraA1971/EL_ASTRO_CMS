@@ -18,7 +18,10 @@ describe('x-generate', () => {
     });
     assert.equal(out.account, 'el');
     assert.equal(out.variants.length, 3);
-    assert.match(out.variants[0], /https:\/\/electronlibre\.info\/articles\/42-test-article\//);
+    assert.match(
+      out.variants[0],
+      /https:\/\/electronlibre\.info\/articles\/42-test-article\//
+    );
     assert.equal(out.source, 'fallback');
   });
 

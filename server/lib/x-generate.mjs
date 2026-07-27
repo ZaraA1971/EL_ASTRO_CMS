@@ -25,6 +25,8 @@ function trimHook(hook, url, max = X_MAX_LENGTH) {
   const fixed = xWeightedLength(`\n${url}`);
   const budget = Math.max(40, max - fixed);
   let h = String(hook || '').trim().replace(/\s+/g, ' ');
+  // Retirer une URL déjà collée par le modèle (on la remet proprement)
+  h = h.replace(/\s*https?:\/\/\S+/gi, '').trim();
   if (xWeightedLength(h) <= budget) return h;
   const chars = [...h];
   let cut = '';
@@ -46,7 +48,8 @@ function fallbackVariants(row, url) {
   const title = String(row.title || '').trim();
   const excerpt = chapo(row, 'card') || stripHtml(row.excerpt).slice(0, 180);
   const v1 = title || excerpt || 'À lire sur ElectronLibre';
-  const v2 = excerpt && excerpt !== title ? excerpt : `${title} — ce qu’il faut retenir`;
+  const v2 =
+    excerpt && excerpt !== title ? excerpt : `${title} — ce qu’il faut retenir`;
   const v3 = title
     ? `Et si on regardait ça de près ? ${title}`
     : 'Nouvelle analyse ElectronLibre';
@@ -78,7 +81,6 @@ function parseVariants(raw, url) {
       .replace(/^variante\s*\d+\s*[:.\-–—]\s*/i, '')
       .replace(/^[-*•]\s*/, '')
       .trim();
-    // Retirer une URL déjà collée par le modèle
     hook = hook.replace(/\s*https?:\/\/\S+\s*$/i, '').trim();
     if (!hook) continue;
     out.push(compose(hook, url));

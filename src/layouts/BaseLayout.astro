@@ -15,6 +15,8 @@ interface Props {
   noindex?: boolean;
   bodyClass?: string;
   ogType?: string;
+  /** URL absolue — absente = pas de vignette (évite le thumb vide sur X). */
+  ogImage?: string;
 }
 
 const {
@@ -25,12 +27,16 @@ const {
   noindex = false,
   bodyClass = "",
   ogType = "website",
+  ogImage = "",
 } = Astro.props;
 
 const assetV = ASSET_V;
 const canonicalUrl =
   canonical ||
   new URL(Astro.url.pathname, Astro.site || "https://electronlibre.info").href;
+const imageUrl = String(ogImage || "").trim();
+// Sans image : summary (pas summary_large_image) — sinon X affiche un thumb vide.
+const twitterCard = imageUrl ? "summary_large_image" : "summary";
 ---
 
 <!doctype html>
@@ -52,9 +58,11 @@ const canonicalUrl =
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonicalUrl} />
     <meta property="og:locale" content={lang === "en" ? "en_US" : "fr_FR"} />
-    <meta name="twitter:card" content="summary_large_image" />
+    {imageUrl && <meta property="og:image" content={imageUrl} />}
+    <meta name="twitter:card" content={twitterCard} />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
+    {imageUrl && <meta name="twitter:image" content={imageUrl} />}
     <title>{title}</title>
     <link rel="stylesheet" href={`/css/el/el-tokens.css?v=${assetV}`} />
     <link rel="stylesheet" href={`/css/el/el-reset.css?v=${assetV}`} />
