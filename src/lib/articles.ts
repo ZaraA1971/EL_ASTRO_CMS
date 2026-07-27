@@ -4,7 +4,8 @@ export type ArticleData = {
   wp_id: number;
   title: string;
   slug: string;
-  date: Date;
+  /** Null tant que l’article est brouillon (fixée à la publication). */
+  date: Date | null;
   modified?: Date;
   author: string;
   author_slug?: string;
@@ -34,16 +35,18 @@ export const ARTICLE_LIST_COLUMNS = `
   translation_fr, translation_en, access, lang, source_url, draft
 `.replace(/\s+/g, ' ').trim();
 
+function parseArticleDate(v: unknown): Date | null {
+  if (v == null || v === '') return null;
+  const d = v instanceof Date ? v : new Date(String(v));
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 function rowToArticle(
   row: Record<string, unknown>,
   { includeBody = true }: { includeBody?: boolean } = {}
 ): Article {
-  const date = row.date instanceof Date ? row.date : new Date(String(row.date));
-  const modified = row.modified
-    ? row.modified instanceof Date
-      ? row.modified
-      : new Date(String(row.modified))
-    : undefined;
+  const date = parseArticleDate(row.date);
+  const modified = parseArticleDate(row.modified) || undefined;
   return {
     id: `db-${row.wp_id}`,
     data: {
@@ -201,10 +204,11 @@ export function formatUpdateDateTime(
  * (modified absent / quasi égal à la date de publication).
  */
 export function articleUpdateDate(article: Article): Date | null {
+  if (article.data.draft) return null;
   const published = article.data.date;
   const modified = article.data.modified;
   if (!modified || Number.isNaN(modified.getTime())) return null;
-  if (Number.isNaN(published.getTime())) return modified;
+  if (!published || Number.isNaN(published.getTime())) return null;
   // Seuil : > 2 min après publication = mise à jour
   if (modified.getTime() - published.getTime() < 2 * 60 * 1000) return null;
   return modified;
@@ -442,7 +446,7 @@ export function toSearchDoc(article: Article): SearchDoc {
     excerpt: article.data.excerpt,
     href: articlePath(article),
     categories: article.data.category_names,
-    date: article.data.date.toISOString(),
+    date: article.data.date ? article.data.date.toISOString() : '',
     access: article.data.access,
   };
 }

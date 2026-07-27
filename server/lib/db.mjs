@@ -46,14 +46,16 @@ export function parseJsonArray(v) {
   return [];
 }
 
+function parseRowDate(v) {
+  if (v == null || v === '') return null;
+  const d = v instanceof Date ? v : new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 export function rowToArticle(row, { includeBody = true } = {}) {
   if (!row) return null;
-  const date = row.date instanceof Date ? row.date : new Date(row.date);
-  const modified = row.modified
-    ? row.modified instanceof Date
-      ? row.modified
-      : new Date(row.modified)
-    : null;
+  const date = parseRowDate(row.date);
+  const modified = parseRowDate(row.modified);
   return {
     id: `db-${row.wp_id}`,
     data: {
