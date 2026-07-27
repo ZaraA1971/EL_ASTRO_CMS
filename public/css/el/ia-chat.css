@@ -476,6 +476,14 @@
   margin-bottom: 2px;
 }
 
+.chat-responses .rag-sources .rag-source-excerpt,
+.ia-drawer .rag-sources .rag-source-excerpt {
+  margin: 0.15em 0 0.45em 1.55em;
+  font-size: 0.85em;
+  line-height: 1.35;
+  color: rgba(120, 128, 140, 0.95);
+}
+
 .chat-responses .rag-sources a {
   color: #1e73be;
   text-decoration: none;

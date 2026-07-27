@@ -11,16 +11,55 @@ function elRagOrderSourcesByIndex(sources) {
     return [...sources];
 }
 
+function elRagSourceExcerpt(src) {
+    const passages = src && Array.isArray(src.passages) ? src.passages : [];
+    const first = passages.find((p) => p && p.excerpt);
+    return first ? String(first.excerpt).trim() : '';
+}
+
+/**
+ * Text Fragment (#:~:text=…) — highlight navigateur si supporté ; no-op sinon.
+ * Pas de deep-link maison : on réutilise l'extrait de passage déjà fourni.
+ */
+function elRagTextFragmentUrl(url, excerpt) {
+    const base = String(url || '').trim();
+    if (!base || base === '#' || !/^https?:\/\//i.test(base)) return base || '#';
+    if (base.includes('#:~:text=')) return base;
+    const raw = String(excerpt || '').replace(/\s+/g, ' ').trim();
+    if (raw.length < 12) return base;
+    // Phrase assez courte pour rester stable (évite troncature mid-mot trop agressive)
+    let phrase = raw.slice(0, 80).trim();
+    const cut = phrase.lastIndexOf(' ');
+    if (cut >= 24) phrase = phrase.slice(0, cut);
+    phrase = phrase.replace(/[,:;.…]+$/g, '').trim();
+    if (phrase.length < 12) return base;
+    try {
+        return `${base}#:~:text=${encodeURIComponent(phrase)}`;
+    } catch (_) {
+        return base;
+    }
+}
+
+function elRagSourceHref(src) {
+    const url = (src && src.url) || '#';
+    return elRagTextFragmentUrl(url, elRagSourceExcerpt(src));
+}
+
 function elRagRenderSourcesList(sources) {
     const ordered = elRagOrderSourcesByIndex(sources);
     return ordered.map((src, i) => {
         const n = Number(src && src.index) || (i + 1);
         const title = elRagEscapeHtml((src && src.title) || '');
-        const url = (src && src.url) || '#';
+        const url = elRagSourceHref(src);
+        const excerpt = elRagSourceExcerpt(src);
+        const excerptHtml = excerpt
+            ? `<div class="rag-source-excerpt">${elRagEscapeHtml(excerpt)}</div>`
+            : '';
         return (
             `<li>` +
             `<span class="rag-source-idx">${n}</span> ` +
             `<a href="${url}" target="_blank" rel="noopener noreferrer">${title}</a>` +
+            excerptHtml +
             `</li>`
         );
     }).join('');
@@ -55,6 +94,13 @@ function elRagRenderAnswerHtml(text, sources) {
         '⁵': '5', '⁶': '6', '⁷': '7', '⁸': '8', '⁹': '9',
     };
 
+    function citeTooltip(src, fallback) {
+        const title = (src && src.title) || fallback || '';
+        const excerpt = elRagSourceExcerpt(src);
+        if (excerpt && title) return `${title} — ${excerpt}`;
+        return excerpt || title || fallback || '';
+    }
+
     function citeAnchor(label, url, title) {
         const titleAttr = elRagEscapeHtml(title || label || url);
         const display = elRagEscapeHtml(label);
@@ -69,7 +115,11 @@ function elRagRenderAnswerHtml(text, sources) {
     function citeFromIndex(n) {
         const src = byIndex[n];
         if (!src || !src.url) return null;
-        return citeAnchor(String(n), String(src.url).trim(), src.title || String(n));
+        return citeAnchor(
+            String(n),
+            elRagSourceHref(src),
+            citeTooltip(src, src.title || String(n))
+        );
     }
 
     let escaped = elRagEscapeHtml(raw);
@@ -78,12 +128,13 @@ function elRagRenderAnswerHtml(text, sources) {
     escaped = escaped.replace(
         /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,
         (_, label, url) => {
-            const src = byUrl[url];
+            const src = byUrl[url] || byIndex[parseInt(label, 10)];
             const n = parseInt(label, 10);
             const display = Number.isFinite(n) && String(n) === String(label).trim()
                 ? String(n)
                 : label;
-            return citeAnchor(display, url, (src && src.title) || label);
+            const href = src ? elRagSourceHref(src) : url;
+            return citeAnchor(display, href, citeTooltip(src, (src && src.title) || label));
         }
     );
 
@@ -413,6 +464,19 @@ RAG.Final = {
                 container.appendChild(sourcesDiv);
             }
         }
+    },
+
+    /** Efface la réponse streamée avant régénération (grounding fail). */
+    resetAnswer() {
+        RAG.Stream.currentAnswer = '';
+        RAG.Stream.currentSources = [];
+        RAG.DOM.clearSources();
+        const stream = document.getElementById('gpt-stream');
+        if (stream) {
+            stream.innerHTML = '';
+            stream.dataset.mode = 'gpt';
+            stream.classList.add('streaming');
+        }
     }
 };
 
@@ -503,20 +567,20 @@ RAG.Controller = {
             if (!data) return;
             RAG.Events.push(event, data);
 
-            if (event !== 'gpt_chunk' && event !== 'final') {
-                RAG.DOM.showBox();
-
+            if (event === 'answer_reset') {
+                RAG.Final.resetAnswer();
                 return;
             }
-
-            if (event === 'gpt_chunk' && typeof data.text === "string") {
+            if (event === 'gpt_chunk' && typeof data.text === 'string') {
                 RAG.Stream.appendChunk(data.text);
+                return;
             }
-
             if (event === 'final') {
                 RAG.Final.showFinal(data);
-                document.dispatchEvent(new Event("ai-answer-updated"));
+                document.dispatchEvent(new Event('ai-answer-updated'));
+                return;
             }
+            RAG.DOM.showBox();
         };
 
         while (true) {
