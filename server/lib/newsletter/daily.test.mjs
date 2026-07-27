@@ -27,15 +27,25 @@ describe('newsletter daily helpers', () => {
     assert.equal(b.display, '15/07/2026');
   });
 
-  it('sorts editorial (tags) before briefs', () => {
+  it('sorts subscriber editorials before free briefs', () => {
     const sorted = sortNewsletterArticles([
-      { tags: [], date: '2026-07-15T10:00:00Z', title: 'Brief' },
-      { tags: ['oracle'], date: '2026-07-15T09:00:00Z', title: 'Long' },
-      { tags: ['meta'], date: '2026-07-15T11:00:00Z', title: 'Long2' },
+      { access: 'granted', date: '2026-07-15T10:00:00Z', title: 'Brief' },
+      {
+        access: 'subscribers',
+        date: '2026-07-15T09:00:00Z',
+        title: 'Long',
+      },
+      {
+        access: 'subscribers',
+        date: '2026-07-15T11:00:00Z',
+        title: 'Long2',
+      },
+      { access: 'granted', tags: ['legacy'], date: '2026-07-15T08:00:00Z', title: 'FreeTagged' },
     ]);
     assert.equal(sorted[0].title, 'Long');
     assert.equal(sorted[1].title, 'Long2');
-    assert.equal(sorted[2].title, 'Brief');
+    assert.equal(sorted[2].title, 'FreeTagged');
+    assert.equal(sorted[3].title, 'Brief');
   });
 
   it('builds subtitle from tags ignoring stop words', () => {

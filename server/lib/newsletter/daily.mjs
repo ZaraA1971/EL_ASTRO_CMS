@@ -4,9 +4,10 @@
  */
 
 import { parseJsonArray } from '../db.mjs';
+import { chapo } from '../excerpt.mjs';
 
 const TZ = 'Europe/Paris';
-const EXCERPT_WORDS = 120;
+/** « Si vous l’aviez manqué » — court (hors contexte hero). */
 const MISSED_EXCERPT_WORDS = 18;
 
 const STOP_WORDS = [
@@ -131,12 +132,12 @@ export function trimWords(text, limit) {
   return `${words.slice(0, limit).join(' ')}…`;
 }
 
-export function articleExcerptFromBody(body, wordLimit = EXCERPT_WORDS) {
+export function articleExcerptFromBody(body, wordLimit = 120) {
   return trimWords(stripHtmlToText(body), wordLimit);
 }
 
-/** Chapô stocké d’abord (Modèle A), sinon trim du corps. */
-export function articleExcerptForNewsletter(article, wordLimit = EXCERPT_WORDS) {
+/** Extrait court (section « manqué ») — chapô stocké, sinon trim du corps. */
+export function articleExcerptForNewsletter(article, wordLimit = MISSED_EXCERPT_WORDS) {
   const stored = stripHtmlToText(article?.excerpt || '');
   if (stored) {
     return wordLimit ? trimWords(stored, wordLimit) : stored;
@@ -144,9 +145,9 @@ export function articleExcerptForNewsletter(article, wordLimit = EXCERPT_WORDS) 
   return articleExcerptFromBody(article?.body, wordLimit);
 }
 
+/** Édito (= Aujourd’hui) : articles abonnés. Brèves (= En bref) : accès gratuit. */
 export function isEditorialArticle(article) {
-  const tags = article.tags || [];
-  return tags.length > 0;
+  return String(article?.access || 'subscribers') !== 'granted';
 }
 
 export function tagLabel(article) {
@@ -236,6 +237,49 @@ function formatDateFr(date) {
   return `${dd}/${mm}/${yyyy}`;
 }
 
+/**
+ * Cartouches outils — couleurs alignées HomeTools (Une).
+ * Compagnon bleu #2f6dfb · Desinfo crème/#0f6b4c · GEO noir/#059669
+ */
+function renderHomeToolCartouches(siteUrl, t) {
+  const base = String(siteUrl || 'https://electronlibre.info').replace(/\/+$/, '');
+  const aiLink = `${base}/newsletter-open-ia`;
+  const shell = `width:100%;max-width:100%;margin:18px 0;border-radius:14px;overflow:hidden;`;
+  const pad = `padding:22px 24px;font-family:${t.fontUi};`;
+  const cta = (bg) =>
+    `display:inline-block;padding:10px 14px;background-color:${bg};color:#ffffff !important;border-radius:8px;font-size:13px;font-weight:700;text-decoration:none;font-family:${t.fontUi};`;
+
+  let html = '';
+
+  // EL Compagnon (glass sombre + accent bleu Une)
+  html += `<div style="${shell}background-color:#1c1c1d;border:1px solid #2a2a2d;color:#eaeaea;">`;
+  html += `<div style="${pad}">`;
+  html += `<p style="margin:0 0 10px;color:#2f6dfb;font-size:12px;line-height:1;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;font-family:${t.fontUi};">IA · EL Compagnon</p>`;
+  html += `<h2 style="margin:0 0 8px;color:#ffffff;font-size:20px;line-height:1.25;font-weight:700;font-family:${t.fontEditorial};">Interrogez notre <span style="color:#2f6dfb;">IA éditoriale</span></h2>`;
+  html += `<p style="margin:0 0 16px;color:#b8b8bc;font-size:14px;line-height:1.55;font-family:${t.fontUi};">Interrogez les archives ElectronLibre. Réponses sourcées, directement depuis le site ou l’app.</p>`;
+  html += `<a href="${escapeHtml(aiLink)}" target="_blank" style="${cta('#2f6dfb')}">Ouvrir EL Compagnon →</a>`;
+  html += `</div></div>`;
+
+  // Observatoire de la désinformation (crème / vert forêt)
+  html += `<div style="${shell}background-color:#f5f2e9;border:1px solid #e4dfd2;color:#1f2933;">`;
+  html += `<div style="${pad}">`;
+  html += `<h2 style="margin:0 0 8px;color:#0f6b4c;font-size:20px;line-height:1.2;font-weight:400;font-family:${t.fontEditorial};">Observatoire de la désinformation</h2>`;
+  html += `<p style="margin:0 0 16px;color:#4b5563;font-size:14px;line-height:1.55;font-family:${t.fontUi};">Palmarès roulant fondé sur les Community Notes utiles sur X.</p>`;
+  html += `<a href="https://desinfo.electronlibre.info/" target="_blank" style="${cta('#0f6b4c')}">Voir le palmarès →</a>`;
+  html += `</div></div>`;
+
+  // GEO (noir / émeraude)
+  html += `<div style="${shell}background-color:#050505;border:1px solid #27272a;color:#d4d4d8;">`;
+  html += `<div style="${pad}">`;
+  html += `<p style="margin:0 0 8px;color:#059669;font-size:11px;line-height:1.4;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;">Veille IA</p>`;
+  html += `<h2 style="margin:0 0 8px;color:#fafafa;font-size:22px;line-height:1.15;letter-spacing:-0.02em;font-weight:700;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;">GEO</h2>`;
+  html += `<p style="margin:0 0 16px;color:#a1a1aa;font-size:14px;line-height:1.55;font-family:${t.fontUi};">Comment les IA citent et classent marques, médias, marchés.</p>`;
+  html += `<a href="https://geo.electronlibre.info/" target="_blank" style="${cta('#059669')}">Ouvrir GEO →</a>`;
+  html += `</div></div>`;
+
+  return html;
+}
+
 function renderArticleCards(articles, siteUrl, t) {
   if (!articles.length) {
     return `<div style="width:100%;max-width:100%;margin:24px 0;border-radius:18px;overflow:hidden;"><div style="padding:28px;background-color:#ffffff;border-radius:18px;color:${t.body};text-align:center;font-family:${t.fontUi};">Aucun article publié aujourd’hui.</div></div>`;
@@ -244,7 +288,6 @@ function renderArticleCards(articles, siteUrl, t) {
   const sectionStyle = `width:100%;max-width:100%;margin:26px 0 14px;color:${t.accent};font-size:11px;letter-spacing:0.14em;text-transform:uppercase;font-family:${t.fontUi};font-weight:600;`;
   const cardShell = `width:100%;max-width:100%;margin-left:0;margin-right:0;border-radius:18px;overflow:hidden;`;
   const articleInner = `padding:24px 26px;background-color:#ffffff;border:1px solid ${t.border};border-radius:18px;font-family:${t.fontUi};`;
-  const darkInner = `padding:22px 24px;font-family:${t.fontUi};`;
 
   let html = `<div style="width:100%;max-width:100%;font-family:${t.fontUi};">`;
   html += `<h2 style="${sectionStyle}">Aujourd’hui dans ElectronLibre</h2>`;
@@ -270,7 +313,8 @@ function renderArticleCards(articles, siteUrl, t) {
     html += `<h2 style="${titleStyle}"><a href="${escapeHtml(href)}" rel="bookmark" style="color:${linkColor};text-decoration:none;">${escapeHtml(a.title)}</a></h2>`;
     html += `<div style="font-size:15px;color:${t.body};line-height:1.65;margin:0;font-family:${t.fontUi};">`;
     if (editorial) {
-      const excerpt = articleExcerptForNewsletter(a, EXCERPT_WORDS);
+      // Même longueur que la Une (hero = 130 mots, prolongé avec le corps)
+      const excerpt = chapo(a, 'hero');
       if (excerpt) {
         html += `<p style="margin:0 0 14px;color:${t.body};font-size:15px;line-height:1.65;font-family:${t.fontUi};">${escapeHtml(excerpt)}</p>`;
       }
@@ -283,19 +327,7 @@ function renderArticleCards(articles, siteUrl, t) {
     html += `</div></div></div>`;
 
     if (index === 1) {
-      const aiLink = `${String(siteUrl || 'https://electronlibre.info').replace(/\/+$/, '')}/newsletter-open-ia`;
-      html += `<div style="${cardShell}margin:22px 0;background-color:${t.dark};color:#ffffff;"><div style="${darkInner}">`;
-      html += `<h2 style="margin:0 0 8px;color:#ffffff;font-size:20px;line-height:1.25;font-weight:700;font-family:${t.fontEditorial};">Interrogez notre <span style="color:${t.accent};">IA éditoriale</span></h2>`;
-      html += `<p style="margin:0 0 16px;color:${t.onDarkMuted};font-size:14px;line-height:1.55;font-family:${t.fontUi};">Explorez les sujets du jour à partir des contenus et analyses publiés par ElectronLibre.</p>`;
-      html += `<a href="${escapeHtml(aiLink)}" target="_blank" style="display:inline-block;padding:10px 16px;background-color:${t.accent};color:#ffffff !important;border-radius:999px;font-size:13px;font-weight:700;text-decoration:none;font-family:${t.fontUi};">Ouvrir l’IA dans l’app →</a>`;
-      html += `</div></div>`;
-
-      html += `<div style="${cardShell}margin:22px 0;background-color:${t.dark};color:#ffffff;"><div style="${darkInner}">`;
-      html += `<p style="margin:0 0 8px;color:${t.accent};font-size:11px;line-height:1.4;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;font-family:${t.fontUi};">Bientôt</p>`;
-      html += `<h2 style="margin:0 0 8px;color:#ffffff;font-size:20px;line-height:1.25;font-weight:700;font-family:${t.fontEditorial};">GEO arrive dans l’écosystème ElectronLibre</h2>`;
-      html += `<p style="margin:0 0 16px;color:${t.onDarkMuted};font-size:14px;line-height:1.55;font-family:${t.fontUi};">Notre outil de pilotage de perception algorithmique permettra de mesurer la manière dont les IA comprennent, citent et classent une marque, une entreprise, un média ou un marché.</p>`;
-      html += `<a href="https://geo.electronlibre.info/#contact" target="_blank" style="display:inline-block;padding:10px 16px;background-color:${t.accent};color:#ffffff !important;border-radius:999px;font-size:13px;font-weight:700;text-decoration:none;font-family:${t.fontUi};">Découvrir GEO →</a>`;
-      html += `</div></div>`;
+      html += renderHomeToolCartouches(siteUrl, t);
     }
   }
   html += `</div>`;
