@@ -60,18 +60,17 @@ IATools.restoreFromLocalStorage = function () {
     if (!content) return;
 
     if (saved.answerHTML) {
-      let ansBox = content.querySelector('#final-answer');
+      let ansBox = content.querySelector('#gpt-stream');
       if (!ansBox) {
         ansBox = document.createElement('div');
-        ansBox.id = 'final-answer';
-        ansBox.classList.add('final-answer');
+        ansBox.id = 'gpt-stream';
+        ansBox.className = 'rag-stream-text';
         content.appendChild(ansBox);
       }
       ansBox.innerHTML = saved.answerHTML;
       if (!ansBox.innerHTML.trim().startsWith('<')) {
         ansBox.innerHTML = `<p>${ansBox.innerHTML}</p>`;
       }
-      ansBox.classList.add('final-answer');
     }
 
     if (saved.sourcesHTML) {
@@ -81,9 +80,9 @@ IATools.restoreFromLocalStorage = function () {
       temp.innerHTML = saved.sourcesHTML;
       const sourcesEl = temp.firstElementChild;
       if (sourcesEl) {
-        const finalBox = content.querySelector('#final-answer');
-        if (finalBox && finalBox.parentNode) {
-          finalBox.parentNode.insertBefore(sourcesEl, finalBox.nextSibling);
+        const streamBox = content.querySelector('#gpt-stream');
+        if (streamBox && streamBox.parentNode) {
+          streamBox.parentNode.insertBefore(sourcesEl, streamBox.nextSibling);
         } else {
           content.appendChild(sourcesEl);
         }
@@ -101,7 +100,7 @@ IATools.restoreFromLocalStorage = function () {
 
 IATools.persistToLocalStorage = function () {
   const question = (IATools.findElement('#question')?.value || '').trim();
-  const answerHTML = IATools.findElement('#final-answer')?.innerHTML || '';
+  const answerHTML = IATools.findElement('#gpt-stream')?.innerHTML || '';
   const sourcesEl = IATools.findElement('.rag-sources');
   const sourcesHTML = sourcesEl ? sourcesEl.outerHTML : '';
   localStorage.setItem(LS_KEY, JSON.stringify({ question, answerHTML, sourcesHTML }));
@@ -117,11 +116,8 @@ IATools.getShareableAIResult = function () {
     question = q.value.trim();
   }
 
-  const ans = document.querySelector('#el-compagnon #final-answer');
   const stream = document.querySelector('#el-compagnon #gpt-stream');
-  if (ans && ans.innerText.trim()) {
-    answer = ans.innerText.trim();
-  } else if (stream && stream.innerText.trim()) {
+  if (stream && stream.innerText.trim()) {
     answer = stream.innerText.trim();
   }
 
@@ -160,8 +156,6 @@ document.addEventListener('click', (e) => {
     }
     const stream = document.getElementById('gpt-stream');
     if (stream) stream.innerHTML = '';
-    const finalEl = document.getElementById('final-answer');
-    if (finalEl) finalEl.innerHTML = '';
     const root = IATools.getRoot();
     if (root) {
       root.querySelectorAll('.rag-sources').forEach((el) => el.remove());
@@ -207,10 +201,16 @@ document.addEventListener('ai-answer-updated', () => {
   IATools.persistToLocalStorage();
 });
 
-document.addEventListener('DOMContentLoaded', () => {
+function elIaToolsBoot() {
   if (document.getElementById('el-compagnon')) {
     IATools.restoreFromLocalStorage();
   }
-});
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', elIaToolsBoot);
+} else {
+  elIaToolsBoot();
+}
 
 window.IATools = IATools;

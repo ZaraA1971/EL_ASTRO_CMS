@@ -215,11 +215,6 @@ RAG.DOM = {
         }
     },
 
-    clearFinal() {
-        const finalDiv = document.getElementById('final-answer');
-        if (finalDiv) finalDiv.innerHTML = '';
-    },
-
     clearSources() {
         const container = this.getResponseContainer();
         if (!container) return;
@@ -236,12 +231,12 @@ RAG.DOM = {
 
     resetAll() {
         this.clearStream();
-        this.clearFinal();
         this.clearSources();
-        // clearRAG is now a no-op and not needed
         if (RAG.Stream) {
             RAG.Stream.currentAnswer = "";
         }
+        const tools = document.getElementById("ia-tools-actions");
+        if (tools) tools.classList.add("hidden");
     },
 };
 
@@ -375,10 +370,6 @@ RAG.Stream = {
         if (stream && this.currentAnswer) {
             elRagPaintAnswer(stream, this.currentAnswer, this.currentSources);
         }
-        const finalEl = document.getElementById('final-answer');
-        if (finalEl && this.currentAnswer) {
-            elRagPaintAnswer(finalEl, this.currentAnswer, this.currentSources);
-        }
     }
 };
 
@@ -389,25 +380,17 @@ RAG.Final = {
         const sources = elRagOrderSourcesByIndex(payload.sources || []);
 
         RAG.DOM.showBox();
-        // Do NOT clearStream or clearFinal
         RAG.DOM.clearSources();
 
         const container = RAG.DOM.getResponseContainer();
         if (!container) return;
 
-        // Do not alter stream rendering on final; stream is the single source of truth
         const stream = document.getElementById('gpt-stream');
-        if (stream) {
-            stream.classList.remove('streaming');
-        }
+        if (stream) stream.classList.remove('streaming');
 
-        // Cartouches : titres au survol via sources
         RAG.Stream.paint(sources);
-
-        // Outils visibles après la réponse finale
         RAG.DOM.showTools();
 
-        // Persist final answer
         try {
             localStorage.setItem("rag_answer", JSON.stringify({
                 answer: RAG.Stream.currentAnswer,
@@ -424,7 +407,11 @@ RAG.Final = {
                 '<br><strong>Sources :</strong><ul>' +
                 elRagRenderSourcesList(sources) +
                 '</ul>';
-            container.appendChild(sourcesDiv);
+            if (stream && stream.parentNode) {
+                stream.parentNode.insertBefore(sourcesDiv, stream.nextSibling);
+            } else {
+                container.appendChild(sourcesDiv);
+            }
         }
     }
 };
@@ -523,12 +510,10 @@ RAG.Controller = {
             }
 
             if (event === 'gpt_chunk' && typeof data.text === "string") {
-                // RAG.DOM.clearRAG(); // Obsolete, remove to prevent truncation
                 RAG.Stream.appendChunk(data.text);
             }
 
             if (event === 'final') {
-                // RAG.DOM.clearRAG(); // Obsolete, remove to prevent truncation
                 RAG.Final.showFinal(data);
                 document.dispatchEvent(new Event("ai-answer-updated"));
             }
@@ -559,60 +544,64 @@ window.gpt4oCall = async function gpt4oCall(question) {
 };
 
 // ---- Initialisation formulaire ----
+// rag.js est lazy-loadé après DOMContentLoaded (HomeTools) — init immédiat si déjà ready.
 
-document.addEventListener('DOMContentLoaded', () => {
+function elRagBootForm() {
     const form = document.getElementById('gpt4o-rag-form');
     const input = document.getElementById('question');
 
-    if (form && input) {
-        // Évite un reflow inutile
-        requestAnimationFrame(() => input.setAttribute('autocomplete', 'off'));
+    if (!form || !input || form.dataset.ragBound === '1') return;
+    form.dataset.ragBound = '1';
 
-        form.addEventListener('submit', (e) => {
-            e.preventDefault();
-            const question = input.value.trim();
-            if (question) {
-                window.gpt4oCall(question);
-            }
-        });
+    // Évite un reflow inutile
+    requestAnimationFrame(() => input.setAttribute('autocomplete', 'off'));
 
-        try {
-            const saved = localStorage.getItem("rag_answer");
-            if (saved) {
-                const data = JSON.parse(saved);
-                if (data.answer) {
-                    RAG.Stream.currentAnswer = data.answer;
-                    RAG.Stream.currentSources = Array.isArray(data.sources) ? data.sources : [];
-                    // Restaure le contenu sans ouvrir le tiroir
-                    const stream = RAG.DOM.ensureStreamDiv();
-                    if (stream) {
-                        stream.dataset.mode = 'gpt';
-                        stream.classList.remove('streaming');
-                        elRagPaintAnswer(stream, data.answer, RAG.Stream.currentSources);
-                    }
-                    const finalEl = document.getElementById('final-answer');
-                    if (finalEl) {
-                        elRagPaintAnswer(finalEl, data.answer, RAG.Stream.currentSources);
-                    }
-                }
-                if (data.sources) {
-                    // Only render sources without triggering full final logic
-                    const container = RAG.DOM.getResponseContainer();
-                    if (container && Array.isArray(data.sources) && data.sources.length > 0) {
-                        const sourcesDiv = document.createElement('div');
-                        sourcesDiv.className = 'rag-sources';
-                        sourcesDiv.innerHTML =
-                            '<br><strong>Sources :</strong><ul>' +
-                            elRagRenderSourcesList(data.sources) +
-                            '</ul>';
-                        container.appendChild(sourcesDiv);
-                    }
-                }
-            }
-        } catch (e) {
-            console.warn("⚠️ Failed to restore RAG answer", e);
+    form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const question = input.value.trim();
+        if (question) {
+            window.gpt4oCall(question);
         }
+    });
+
+    try {
+        const saved = localStorage.getItem("rag_answer");
+        if (saved) {
+            const data = JSON.parse(saved);
+            if (data.answer) {
+                RAG.Stream.currentAnswer = data.answer;
+                RAG.Stream.currentSources = Array.isArray(data.sources) ? data.sources : [];
+                const stream = RAG.DOM.ensureStreamDiv();
+                if (stream) {
+                    stream.dataset.mode = 'gpt';
+                    stream.classList.remove('streaming');
+                    elRagPaintAnswer(stream, data.answer, RAG.Stream.currentSources);
+                }
+            }
+            if (data.sources) {
+                // Only render sources without triggering full final logic
+                const container = RAG.DOM.getResponseContainer();
+                if (container && Array.isArray(data.sources) && data.sources.length > 0) {
+                    RAG.DOM.clearSources();
+                    const sourcesDiv = document.createElement('div');
+                    sourcesDiv.className = 'rag-sources';
+                    sourcesDiv.innerHTML =
+                        '<br><strong>Sources :</strong><ul>' +
+                        elRagRenderSourcesList(data.sources) +
+                        '</ul>';
+                    container.appendChild(sourcesDiv);
+                }
+            }
+        }
+    } catch (e) {
+        console.warn("⚠️ Failed to restore RAG answer", e);
     }
-});
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', elRagBootForm);
+} else {
+    elRagBootForm();
+}
 
 window.RAG = RAG;

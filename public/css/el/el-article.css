@@ -1230,8 +1230,7 @@ h2.el-section-head__title,
   opacity: 0.9;
 }
 
-.el-compagnon__body #gpt-stream,
-.el-compagnon__body #final-answer {
+.el-compagnon__body #gpt-stream {
   font-family: inherit;
   font-size: 15px;
   line-height: 1.55;
@@ -1243,14 +1242,14 @@ h2.el-section-head__title,
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.22);
 }
 
-.el-compagnon__body #gpt-stream:empty,
-.el-compagnon__body #final-answer:empty {
+.el-compagnon__body #gpt-stream:empty {
   display: none;
   padding: 0;
   border: 0;
   background: transparent;
   box-shadow: none;
 }
+
 
 .el-compagnon__body .rag-stream-text.streaming::after {
   background: #999;
