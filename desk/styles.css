@@ -163,6 +163,7 @@ a {
 }
 
 .push-panel,
+.x-panel,
 .uk-panel {
   margin-top: 4px;
   padding-top: 14px;
@@ -170,14 +171,107 @@ a {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  min-width: 0;
 }
 
-.push-panel .meta-title {
+.push-panel .meta-title,
+.x-panel .meta-title {
   margin: 0;
 }
 
 .uk-panel .meta-title {
   margin: 0;
+}
+
+.x-textarea {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-height: 110px;
+  resize: vertical;
+  font-family: inherit;
+  font-size: 0.92rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.x-count {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.x-count.is-over {
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+.x-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.x-variants {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.x-variant {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  text-align: left;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  overflow: hidden;
+}
+
+.x-variant:hover {
+  border-color: #94a3b8;
+}
+
+.x-variant.is-active {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+
+.x-variant-n {
+  flex: 0 0 auto;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 999px;
+  background: #0f172a;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.x-variant-t {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.84rem;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .uk-help {
@@ -355,6 +449,12 @@ a {
   background: #1d4ed8;
 }
 
+.btn-accent:disabled {
+  background: #94a3b8;
+  color: #fff;
+  opacity: 1;
+}
+
 .btn-ghost {
   background: transparent;
   border: 1px solid rgba(255, 255, 255, 0.28);
@@ -452,6 +552,28 @@ a {
 
 .user-actions .btn-danger {
   margin-left: auto;
+}
+
+.user-delete-confirm {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--danger);
+  border-radius: 10px;
+  background: var(--danger-soft);
+}
+
+.user-delete-confirm__title {
+  margin: 0 0 6px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--danger);
+}
+
+.user-delete-confirm__desc {
+  margin: 0 0 12px;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: var(--text, #1e293b);
 }
 
 .fab {
@@ -634,6 +756,16 @@ a {
   color: var(--ink);
   background: rgba(15, 23, 42, 0.04);
   border-color: var(--line);
+}
+
+.editor-toolbar .btn-align {
+  min-height: 20px;
+  padding: 0 5px;
+  font-size: 0.58rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: #64748b;
 }
 
 .editor-tabs {

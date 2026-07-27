@@ -12,6 +12,8 @@ import { URL } from 'node:url';
 import bcrypt from 'bcryptjs';
 import wordpressHash from 'wordpress-hash-node';
 import { loadEnvFile, createPool, rowToArticle } from './lib/db.mjs';
+import { anyXAccountConfigured } from './lib/x-accounts.mjs';
+import { ensureXPostsSchema } from './lib/x-schema.mjs';
 import { handleDesk, getContentGen } from './lib/desk.mjs';
 import { handleIos } from './lib/ios/handler.mjs';
 import {
@@ -116,6 +118,33 @@ const GOATCOUNTER_API_KEY =
   fileEnv.GOATCOUNTER_API_KEY ||
   prodEnv.GOATCOUNTER_API_KEY ||
   '';
+/** Qualif Admin → brouillons Desk (POST /api/desk/articles). */
+const DESK_INGEST_API_KEY =
+  process.env.DESK_INGEST_API_KEY || fileEnv.DESK_INGEST_API_KEY || '';
+
+/** X / Twitter — post depuis le Pupitre (OAuth 1.0a par compte). */
+const X_DRY_RUN =
+  String(process.env.X_DRY_RUN || fileEnv.X_DRY_RUN || '1') === '1';
+const X_ENV = {
+  X_EL_API_KEY: process.env.X_EL_API_KEY || fileEnv.X_EL_API_KEY || '',
+  X_EL_API_SECRET: process.env.X_EL_API_SECRET || fileEnv.X_EL_API_SECRET || '',
+  X_EL_ACCESS_TOKEN:
+    process.env.X_EL_ACCESS_TOKEN || fileEnv.X_EL_ACCESS_TOKEN || '',
+  X_EL_ACCESS_SECRET:
+    process.env.X_EL_ACCESS_SECRET || fileEnv.X_EL_ACCESS_SECRET || '',
+  X_BULLETIN_API_KEY:
+    process.env.X_BULLETIN_API_KEY || fileEnv.X_BULLETIN_API_KEY || '',
+  X_BULLETIN_API_SECRET:
+    process.env.X_BULLETIN_API_SECRET || fileEnv.X_BULLETIN_API_SECRET || '',
+  X_BULLETIN_ACCESS_TOKEN:
+    process.env.X_BULLETIN_ACCESS_TOKEN ||
+    fileEnv.X_BULLETIN_ACCESS_TOKEN ||
+    '',
+  X_BULLETIN_ACCESS_SECRET:
+    process.env.X_BULLETIN_ACCESS_SECRET ||
+    fileEnv.X_BULLETIN_ACCESS_SECRET ||
+    '',
+};
 
 const IOS_JWT_SECRET =
   process.env.EL_IOS_JWT_SECRET ||
@@ -773,6 +802,7 @@ const deskCtx = {
   readBody,
   clientIp,
   mediaRoot: MEDIA_ROOT,
+  deskIngestApiKey: DESK_INGEST_API_KEY,
   deeplApiKey: DEEPL_API_KEY,
   siteUrl: SITE_URL,
   ragUpstream: UPSTREAM,
@@ -799,6 +829,10 @@ const deskCtx = {
     site: GOATCOUNTER_SITE,
     apiKey: GOATCOUNTER_API_KEY,
   },
+  x: {
+    dryRun: X_DRY_RUN,
+    env: X_ENV,
+  },
 };
 
 const startedAt = Date.now();
@@ -822,6 +856,7 @@ const server = http.createServer(async (req, res) => {
         await ensureNewsletterSchema(pool);
         await ensureMediaSchema(pool);
         await ensurePasswordResetSchema(pool);
+        await ensureXPostsSchema(pool);
       } catch (err) {
         console.error('[api] health db', err.message);
       }
@@ -834,6 +869,9 @@ const server = http.createServer(async (req, res) => {
         brevo: BREVO_CONFIGURED,
         brevoDryRun: BREVO_DRY_RUN,
         goatcounter: Boolean(GOATCOUNTER_SITE && GOATCOUNTER_API_KEY),
+        deskIngest: Boolean(DESK_INGEST_API_KEY),
+        xPost: anyXAccountConfigured(X_ENV),
+        xPostDryRun: X_DRY_RUN,
         iosApi: Boolean(IOS_JWT_SECRET && IOS_JWT_SECRET.length >= 16),
         cookieSecure: COOKIE_SECURE,
         db: dbOk,

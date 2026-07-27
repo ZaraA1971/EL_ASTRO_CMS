@@ -48,6 +48,9 @@ const state = {
   q: "",
   filterDraft: "",
   article: null,
+  /** Empreinte titre+corps après chargement / enregistrement / publish — pour griser Publier. */
+  editBaseline: "",
+  editDirty: false,
   mode: "visual", // visual | html | preview
   users: [],
   usersTotal: 0,
@@ -58,6 +61,8 @@ const state = {
   authorPick: null, // { name, slug, userId } depuis l’autocomplete
   editUser: null, // null = create
   generatedPassword: "",
+  /** true = panneau de confirmation suppression compte affiché */
+  userDeleteConfirm: false,
   nlDate: new Date().toISOString().slice(0, 10),
   // Défaut sûr : admin seulement (évite l’envoi « tout le monde » par oubli de décocher)
   nlGroups: { admin: true, redacteurs: false, abonnes: false },
@@ -72,6 +77,13 @@ const state = {
   translating: false,
   generatingKeywords: false,
   assisting: false, // corriger | reformuler | chapo
+  x: {
+    account: "el",
+    text: "",
+    variants: [],
+    loading: false,
+    busy: "", // generate
+  },
   mediaPicker: {
     open: false,
     q: "",
@@ -151,8 +163,11 @@ function filterChips(ariaLabel, options, activeValue, dataAttr) {
 }
 
 function formatDate(d) {
+  if (d == null || d === "") return "";
   try {
-    return new Date(d).toLocaleDateString("fr-FR", {
+    const dt = new Date(d);
+    if (Number.isNaN(dt.getTime())) return "";
+    return dt.toLocaleDateString("fr-FR", {
       day: "numeric",
       month: "short",
       year: "numeric",
@@ -163,8 +178,11 @@ function formatDate(d) {
 }
 
 function formatDateTime(d) {
+  if (d == null || d === "") return "";
   try {
-    return new Date(d).toLocaleString("fr-FR", {
+    const dt = new Date(d);
+    if (Number.isNaN(dt.getTime())) return "";
+    return dt.toLocaleString("fr-FR", {
       day: "numeric",
       month: "short",
       year: "numeric",
@@ -176,8 +194,27 @@ function formatDateTime(d) {
   }
 }
 
-/** Affiche la mise à jour seulement si distincte de la publication (> 2 min). */
+/** Valeur pour <input type="datetime-local"> en heure locale (pas UTC). */
+function toDatetimeLocalValue(d) {
+  if (d == null || d === "") return "";
+  const dt = new Date(d);
+  if (Number.isNaN(dt.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+}
+
+/** Parse datetime-local (heure locale) → ISO UTC pour l’API. */
+function fromDatetimeLocalValue(s) {
+  const raw = String(s || "").trim();
+  if (!raw) return null;
+  const dt = new Date(raw);
+  if (Number.isNaN(dt.getTime())) return null;
+  return dt.toISOString();
+}
+
+/** Mise à jour éditoriale : uniquement articles en ligne, si ≠ date de publication. */
 function updateDateLabel(d) {
+  if (d?.draft) return "";
   if (!d?.date || !d?.modified) return "";
   const pub = new Date(d.date).getTime();
   const mod = new Date(d.modified).getTime();
@@ -208,6 +245,62 @@ function getBodyFromDom() {
     return el ? el.value : state.article?.body || "";
   }
   return state.article?.body || "";
+}
+
+function contentFingerprint(title, body) {
+  return JSON.stringify({
+    title: String(title || "").trim(),
+    body: cleanHtml(body || ""),
+  });
+}
+
+function setEditBaselineFromArticle(article = state.article) {
+  if (!article) {
+    state.editBaseline = "";
+    state.editDirty = false;
+    return;
+  }
+  state.editBaseline = contentFingerprint(article.data?.title, article.body);
+  state.editDirty = false;
+}
+
+function currentContentFingerprint() {
+  if (!state.article) return "";
+  if (state.view === "edit") {
+    const titleEl = document.getElementById("f-title");
+    const title =
+      titleEl != null
+        ? titleEl.value
+        : state.article.data?.title || "";
+    return contentFingerprint(title, getBodyFromDom());
+  }
+  return contentFingerprint(state.article.data?.title, state.article.body);
+}
+
+function refreshEditDirty() {
+  if (!state.article || state.article.data.draft) {
+    state.editDirty = false;
+    return;
+  }
+  state.editDirty = currentContentFingerprint() !== state.editBaseline;
+}
+
+/** Publier actif : brouillon, ou article en ligne dont le texte a changé. */
+function canClickPublish() {
+  if (!state.article || !state.caps.publish || state.saving) return false;
+  if (state.article.data.draft) return true;
+  return Boolean(state.editDirty);
+}
+
+function syncPublishButton() {
+  refreshEditDirty();
+  const btn = document.getElementById("btn-publish");
+  if (!btn) return;
+  const ok = canClickPublish();
+  btn.disabled = !ok;
+  btn.title = ok
+    ? "Publier"
+    : "Déjà publié — modifiez le texte pour republier";
 }
 
 /** Chapô WP-style : 1er `<p><strong>…</strong></p>` en tête de corps. */
@@ -244,7 +337,9 @@ function insertChapoAtTop(chapoPlain) {
 function collectForm() {
   const a = state.article;
   if (!a) return null;
-  const cats = [...document.querySelectorAll(".chip.on")].map((el) => el.dataset.value);
+  const cats = [...document.querySelectorAll("#chips .chip.on")].map(
+    (el) => el.dataset.value
+  );
   const iaRaw = document.getElementById("f-ia")?.value || "";
   const authorName =
     document.getElementById("f-author")?.value?.trim() || a.data.author || "";
@@ -271,9 +366,11 @@ function collectForm() {
     author: authorName,
     author_slug: pick?.slug || undefined,
     author_user_id: pick?.userId != null ? pick.userId : pick ? null : undefined,
-    date: document.getElementById("f-date")?.value
-      ? new Date(document.getElementById("f-date").value).toISOString()
-      : a.data.date,
+    date: a.data.draft
+      ? null
+      : document.getElementById("f-date")?.value
+        ? fromDatetimeLocalValue(document.getElementById("f-date").value)
+        : a.data.date || null,
     categories: cats,
     category_names: cats.map(catLabel),
     ia_keywords,
@@ -1254,7 +1351,7 @@ const listAc = createAutocomplete({
     const d = a.data;
     return {
       title: d.title,
-      sub: `${formatDate(d.date)} · ${d.author || ""}${d.draft ? " · brouillon" : ""}`,
+      sub: `${d.draft ? "Brouillon" : formatDate(d.date) || "Sans date"} · ${d.author || ""}`,
     };
   },
   onPick: (a) => openArticle(a.data.wp_id),
@@ -1392,6 +1489,7 @@ async function openUser(id) {
   state.error = "";
   state.status = "";
   state.generatedPassword = "";
+  state.userDeleteConfirm = false;
   if (!id) {
     state.editUser = emptyUserForm();
     state.view = "user-edit";
@@ -1405,17 +1503,12 @@ async function openUser(id) {
 }
 
 function accessUntilInputValue(v) {
-  if (!v) return "";
-  try {
-    return new Date(v).toISOString().slice(0, 16);
-  } catch {
-    return "";
-  }
+  return toDatetimeLocalValue(v);
 }
 
 async function saveUser(ev) {
   ev?.preventDefault?.();
-  if (!state.editUser) return;
+  if (!state.editUser || state.userDeleteConfirm) return;
   const isNew = !state.editUser.id;
   const login = document.getElementById("u-login")?.value?.trim().toLowerCase() || "";
   const email = document.getElementById("u-email")?.value?.trim().toLowerCase() || "";
@@ -1438,7 +1531,7 @@ async function saveUser(ev) {
     display_name: name,
     role,
     status,
-    access_until: accessRaw ? new Date(accessRaw).toISOString() : null,
+    access_until: fromDatetimeLocalValue(accessRaw),
     notes,
     newsletter_opt_in: newsletterOptIn,
   };
@@ -1510,23 +1603,22 @@ async function regenerateUserPassword() {
   }
 }
 
-async function deleteUser() {
-  if (!state.editUser?.id) return;
+function requestDeleteUser() {
+  if (!state.editUser?.id || state.saving) return;
+  state.userDeleteConfirm = true;
+  state.error = "";
+  state.status = "";
+  render();
+}
+
+function cancelDeleteUser() {
+  state.userDeleteConfirm = false;
+  render();
+}
+
+async function confirmDeleteUser() {
+  if (!state.editUser?.id || !state.userDeleteConfirm) return;
   const label = state.editUser.login || state.editUser.email || state.editUser.id;
-  if (
-    !confirm(
-      `Supprimer définitivement le compte « ${label} » ?\nCette action est irréversible.`
-    )
-  ) {
-    return;
-  }
-  if (
-    !confirm(
-      `Confirmer la suppression de « ${label} » (${ROLE_LABELS[state.editUser.role] || state.editUser.role}) ?`
-    )
-  ) {
-    return;
-  }
   state.saving = true;
   state.error = "";
   state.status = "Suppression…";
@@ -1535,6 +1627,7 @@ async function deleteUser() {
     await api(`/api/desk/users/${state.editUser.id}`, { method: "DELETE" });
     state.editUser = null;
     state.generatedPassword = "";
+    state.userDeleteConfirm = false;
     state.view = "users";
     state.status = `Compte « ${label} » supprimé`;
     state.saving = false;
@@ -1543,6 +1636,7 @@ async function deleteUser() {
     state.error = err.message || "Échec suppression";
     state.status = "";
     state.saving = false;
+    state.userDeleteConfirm = true;
     render();
   }
 }
@@ -1558,7 +1652,9 @@ function articlesItemsHtml(articles) {
         <button class="list-item" type="button" data-open="${d.wp_id}">
           <div class="row" style="justify-content:space-between">
             ${badge}
-            <span class="sub">${escapeHtml(formatDate(d.date))} · ${escapeHtml(d.lang || "fr")}</span>
+            <span class="sub">${escapeHtml(
+              d.draft ? "—" : formatDate(d.date) || "—"
+            )} · ${escapeHtml(d.lang || "fr")}</span>
           </div>
           <h2>${escapeHtml(d.title)}</h2>
           <div class="sub">${escapeHtml(d.author || "")}</div>
@@ -1687,15 +1783,63 @@ async function loadList({ soft = false, fromAc = false } = {}) {
   }
 }
 
+function xWeightedLength(text) {
+  const s = String(text || "");
+  const urlRe = /https?:\/\/[^\s]+/gi;
+  let len = 0;
+  let last = 0;
+  let m;
+  while ((m = urlRe.exec(s))) {
+    len += [...s.slice(last, m.index)].length;
+    len += 23;
+    last = m.index + m[0].length;
+  }
+  len += [...s.slice(last)].length;
+  return len;
+}
+
+function resetXPanel() {
+  state.x = {
+    account: "el",
+    text: "",
+    variants: [],
+    loading: false,
+    busy: "",
+  };
+}
+
+async function loadXPanel(account) {
+  if (!state.article) return;
+  const wpId = state.article.data.wp_id;
+  const acc = account || state.x.account || "el";
+  state.x.loading = true;
+  try {
+    const data = await api(
+      `/api/desk/articles/${wpId}/x?account=${encodeURIComponent(acc)}`
+    );
+    state.x.account = data.account || acc;
+    state.x.text = data.draft?.text || "";
+    state.x.variants = data.draft?.variants || [];
+  } catch (err) {
+    state.x.text = state.x.text || "";
+    console.warn("[desk] x load", err.message);
+  } finally {
+    state.x.loading = false;
+  }
+}
+
 async function openArticle(wpId) {
   state.status = "";
   state.error = "";
   state.authorPick = null;
   authorAc.reset();
+  resetXPanel();
   const data = await api(`/api/desk/articles/${wpId}`);
   state.article = data.article;
+  setEditBaselineFromArticle(data.article);
   state.view = "edit";
   state.mode = "visual";
+  await loadXPanel("el");
   render();
 }
 
@@ -1714,9 +1858,12 @@ async function createArticle() {
       }),
     });
     state.article = data.article;
+    setEditBaselineFromArticle(data.article);
     state.view = "edit";
     state.mode = "visual";
     state.status = "";
+    resetXPanel();
+    await loadXPanel("el");
     render();
   } catch (err) {
     state.error = err.message;
@@ -1765,6 +1912,9 @@ async function saveArticle({ publish = false } = {}) {
     Boolean(state.caps.publish) &&
     Boolean(document.getElementById("f-push")?.checked);
   const hadKw = (payload.ia_keywords || []).length > 0;
+  // Sync avant re-render (sinon le DOM reconstruit depuis un state périmé
+  // perd texte / rubriques / accès / mots-clés si l’API échoue).
+  flushFormToState();
   state.saving = true;
   state.error = "";
   state.status =
@@ -1790,6 +1940,7 @@ async function saveArticle({ publish = false } = {}) {
         body: JSON.stringify({ push: wantPush }),
       });
       state.article = pub.article;
+      setEditBaselineFromArticle(pub.article);
       if (wantPush && pub.push?.ok) {
         state.status = pub.push.dryRun
           ? "Publié — push DRY-RUN (aucun envoi réel)"
@@ -1802,6 +1953,7 @@ async function saveArticle({ publish = false } = {}) {
       }
     } else {
       state.article = data.article;
+      setEditBaselineFromArticle(data.article);
       const n = (data.article?.data?.ia_keywords || []).length;
       state.status =
         !hadKw && payload.access === "subscribers" && n
@@ -1947,7 +2099,9 @@ async function toggleDraft() {
     state.article.body = localBody;
     Object.assign(state.article.data, localData, {
       draft: Boolean(data.article?.data?.draft),
+      date: data.article?.data?.date ?? null,
     });
+    setEditBaselineFromArticle(state.article);
     state.status = state.article.data.draft ? "Brouillon" : "En ligne";
   } catch (err) {
     state.error = err.message || "Échec brouillon";
@@ -1989,6 +2143,67 @@ async function pushNow() {
     state.saving = false;
     render();
   }
+}
+
+async function xGenerate() {
+  if (!state.article || state.x.busy) return;
+  const wpId = state.article.data.wp_id;
+  state.x.busy = "generate";
+  state.error = "";
+  state.status = "Génération des variantes X…";
+  render();
+  try {
+    const data = await api(`/api/desk/articles/${wpId}/x/generate`, {
+      method: "POST",
+      body: JSON.stringify({ account: state.x.account }),
+    });
+    state.x.variants = data.variants || [];
+    state.x.text = data.text || state.x.variants[0] || "";
+    state.x.account = data.account || state.x.account;
+    state.status =
+      data.source === "fallback"
+        ? "Variantes de secours (IA indisponible)"
+        : "Variantes X prêtes — choisissez ou éditez";
+  } catch (err) {
+    state.error = err.message;
+    state.status = "";
+  } finally {
+    state.x.busy = "";
+    render();
+  }
+}
+
+async function xCopyText() {
+  const text = String(state.x.text || "").trim();
+  if (!text) {
+    state.error = "Texte X vide";
+    render();
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    state.error = "";
+    state.status = "Texte copié — collez-le sur X";
+  } catch {
+    state.error = "Copie impossible — sélectionnez le texte manuellement";
+    state.status = "";
+  }
+  render();
+}
+
+function xOpenIntent() {
+  const text = String(state.x.text || "").trim();
+  if (!text) {
+    state.error = "Texte X vide";
+    render();
+    return;
+  }
+  const url =
+    "https://x.com/intent/tweet?text=" + encodeURIComponent(text);
+  window.open(url, "_blank", "noopener,noreferrer");
+  state.error = "";
+  state.status = "Composer X ouvert";
+  render();
 }
 
 /**
@@ -2373,19 +2588,36 @@ function renderUserEdit() {
         ${state.error ? `<p class="err">${escapeHtml(state.error)}</p>` : ""}
         ${state.status ? `<p class="ok">${escapeHtml(state.status)}</p>` : ""}
         <div class="row user-actions" style="gap:10px;flex-wrap:wrap">
-          <button class="btn btn-primary" type="submit" ${state.saving ? "disabled" : ""}>Enregistrer</button>
+          <button class="btn btn-primary" type="submit" ${state.saving || state.userDeleteConfirm ? "disabled" : ""}>Enregistrer</button>
           ${
             !isNew
-              ? `<button class="btn" type="button" id="btn-regen-pwd" ${state.saving ? "disabled" : ""}>Régénérer le mot de passe</button>`
+              ? `<button class="btn" type="button" id="btn-regen-pwd" ${state.saving || state.userDeleteConfirm ? "disabled" : ""}>Régénérer le mot de passe</button>`
               : ""
           }
           <button class="btn" type="button" id="btn-cancel-user">Annuler</button>
           ${
-            !isNew && !isSelf
+            !isNew && !isSelf && !state.userDeleteConfirm
               ? `<button class="btn btn-danger" type="button" id="btn-delete-user" ${state.saving ? "disabled" : ""}>Supprimer</button>`
               : ""
           }
         </div>
+        ${
+          !isNew && !isSelf && state.userDeleteConfirm
+            ? `<div class="user-delete-confirm" role="alertdialog" aria-labelledby="user-delete-title" aria-describedby="user-delete-desc">
+                <p id="user-delete-title" class="user-delete-confirm__title">Confirmer la suppression</p>
+                <p id="user-delete-desc" class="user-delete-confirm__desc">
+                  Supprimer définitivement le compte
+                  <strong>${escapeHtml(u.login || u.email || String(u.id))}</strong>
+                  (${escapeHtml(ROLE_LABELS[u.role] || u.role || "")})&nbsp;?
+                  Cette action est irréversible.
+                </p>
+                <div class="row" style="gap:10px;flex-wrap:wrap">
+                  <button class="btn" type="button" id="btn-delete-cancel" ${state.saving ? "disabled" : ""}>Ne pas supprimer</button>
+                  <button class="btn btn-danger" type="button" id="btn-delete-confirm" ${state.saving ? "disabled" : ""}>Oui, supprimer le compte</button>
+                </div>
+              </div>`
+            : ""
+        }
       </form>
     </main>`;
 
@@ -2393,19 +2625,25 @@ function renderUserEdit() {
     state.view = "users";
     state.editUser = null;
     state.generatedPassword = "";
+    state.userDeleteConfirm = false;
     await loadUsers();
   };
   document.getElementById("btn-cancel-user").onclick = async () => {
     state.view = "users";
     state.editUser = null;
     state.generatedPassword = "";
+    state.userDeleteConfirm = false;
     await loadUsers();
   };
   document.getElementById("user-form").onsubmit = (e) => saveUser(e);
   const regenBtn = document.getElementById("btn-regen-pwd");
   if (regenBtn) regenBtn.onclick = () => regenerateUserPassword();
   const delBtn = document.getElementById("btn-delete-user");
-  if (delBtn) delBtn.onclick = () => deleteUser();
+  if (delBtn) delBtn.onclick = () => requestDeleteUser();
+  const delCancel = document.getElementById("btn-delete-cancel");
+  if (delCancel) delCancel.onclick = () => cancelDeleteUser();
+  const delConfirm = document.getElementById("btn-delete-confirm");
+  if (delConfirm) delConfirm.onclick = () => confirmDeleteUser();
   const copyBtn = document.getElementById("btn-copy-pwd");
   if (copyBtn) {
     copyBtn.onclick = async () => {
@@ -2425,9 +2663,8 @@ function renderEdit() {
   closeMediaPicker();
   const a = state.article;
   const d = a.data;
-  const dateVal = d.date
-    ? new Date(d.date).toISOString().slice(0, 16)
-    : "";
+  const dateVal =
+    !d.draft && d.date ? toDatetimeLocalValue(d.date) : "";
   const updatedLabel = updateDateLabel(d);
   const chips = CATEGORIES.map((c) => {
     const on = (d.categories || []).includes(c.value) ? "on" : "";
@@ -2465,12 +2702,14 @@ function renderEdit() {
                       state.mode === "visual"
                         ? `<button type="button" class="btn" data-cmd="bold">Gras</button>
                     <button type="button" class="btn" data-cmd="italic">Italique</button>
-                    <button type="button" class="btn" data-cmd="h2">Titre</button>
-                    <button type="button" class="btn" data-cmd="p">Paragraphe</button>
                     <button type="button" class="btn" data-cmd="ul">Liste</button>
                     <button type="button" class="btn" data-cmd="link">Lien</button>
                     <button type="button" class="btn" data-cmd="image">Document</button>
                     <button type="button" class="btn" data-cmd="clean">Nettoyer</button>
+                    <span class="toolbar-sep" aria-hidden="true"></span>
+                    <button type="button" class="btn btn-align" data-cmd="alignLeft" title="Aligner à gauche" aria-label="Aligner à gauche">Gauche</button>
+                    <button type="button" class="btn btn-align" data-cmd="alignCenter" title="Centrer" aria-label="Centrer">Centre</button>
+                    <button type="button" class="btn btn-align" data-cmd="alignRight" title="Aligner à droite" aria-label="Aligner à droite">Droite</button>
                     <span class="toolbar-sep" aria-hidden="true"></span>`
                         : ""
                     }
@@ -2504,15 +2743,22 @@ function renderEdit() {
             </div>
             <div class="field">
               <label for="f-date">Date de publication</label>
-              <input id="f-date" type="datetime-local" value="${dateVal}" />
-              <p class="uk-help">Fait foi pour le tri et l’affichage principal.</p>
+              ${
+                d.draft
+                  ? `<input id="f-date" type="datetime-local" value="" disabled />
+              <p class="uk-help">Fixée automatiquement au moment de la publication.</p>`
+                  : `<input id="f-date" type="datetime-local" value="${dateVal}" />
+              <p class="uk-help">Fait foi pour le tri et l’affichage principal.</p>`
+              }
             </div>
             <div class="field">
               <label>Mise à jour</label>
               <p class="date-updated" id="f-modified">${
-                updatedLabel
-                  ? escapeHtml(updatedLabel)
-                  : "— <span class=\"sub\">renseignée automatiquement à l’enregistrement</span>"
+                d.draft
+                  ? "— <span class=\"sub\">après publication, si l’article est modifié</span>"
+                  : updatedLabel
+                    ? escapeHtml(updatedLabel)
+                    : "— <span class=\"sub\">renseignée automatiquement à l’enregistrement</span>"
               }</p>
             </div>
             <div class="field"><label>Rubriques</label><div class="chips" id="chips">${chips}</div></div>
@@ -2569,6 +2815,41 @@ function renderEdit() {
                 : `<div class="push-panel"><p class="uk-help">Publication et push réservés aux éditeurs / admins. Vous pouvez enregistrer en brouillon.</p></div>`
             }
 
+            <div class="x-panel">
+              <p class="meta-title">X</p>
+              <div class="x-variants" id="x-variants">
+                ${(state.x.variants || [])
+                  .map(
+                    (v, i) =>
+                      `<button type="button" class="x-variant ${
+                        state.x.text === v ? "is-active" : ""
+                      }" data-x-variant="${i}" ${
+                        state.x.busy ? "disabled" : ""
+                      }><span class="x-variant-n">${i + 1}</span><span class="x-variant-t">${escapeHtml(
+                        v
+                      )}</span></button>`
+                  )
+                  .join("")}
+              </div>
+              <textarea id="f-x-text" class="x-textarea" rows="5" maxlength="500" ${
+                state.x.busy || state.x.loading ? "disabled" : ""
+              } placeholder="Accroche X…">${escapeHtml(state.x.text || "")}</textarea>
+              <p class="x-count ${
+                xWeightedLength(state.x.text) > 280 ? "is-over" : ""
+              }">${xWeightedLength(state.x.text)} / 280</p>
+              <div class="x-actions">
+                <button class="btn" type="button" id="btn-x-generate" ${
+                  state.x.busy || state.x.loading ? "disabled" : ""
+                }>Générer</button>
+                <button class="btn" type="button" id="btn-x-copy" ${
+                  state.x.busy || state.x.loading ? "disabled" : ""
+                }>Copier</button>
+                <button class="btn btn-accent" type="button" id="btn-x-intent" ${
+                  state.x.busy || state.x.loading ? "disabled" : ""
+                }>Ouvrir sur X</button>
+              </div>
+            </div>
+
             <div class="uk-panel">
               <p class="meta-title">Version UK</p>
               ${
@@ -2596,7 +2877,13 @@ function renderEdit() {
       <button class="btn" type="button" id="btn-save" ${state.saving ? "disabled" : ""}>Enregistrer</button>
       ${
         state.caps.publish
-          ? `<button class="btn btn-accent" type="button" id="btn-publish" ${state.saving ? "disabled" : ""}>Publier</button>`
+          ? `<button class="btn btn-accent" type="button" id="btn-publish" ${
+              canClickPublish() ? "" : "disabled"
+            } title="${
+              !d.draft && !canClickPublish()
+                ? "Déjà publié — modifiez le texte pour republier"
+                : "Publier"
+            }">Publier</button>`
           : ""
       }
     </div>`;
@@ -2608,10 +2895,39 @@ function renderEdit() {
   document.getElementById("btn-save").onclick = () => saveArticle({ publish: false });
   const btnPublish = document.getElementById("btn-publish");
   if (btnPublish) btnPublish.onclick = () => saveArticle({ publish: true });
+  const onEditDirty = () => syncPublishButton();
+  document.getElementById("f-title")?.addEventListener("input", onEditDirty);
   const btnDraft = document.getElementById("btn-draft");
   if (btnDraft) btnDraft.onclick = () => toggleDraft();
   const btnPushNow = document.getElementById("btn-push-now");
   if (btnPushNow) btnPushNow.onclick = () => pushNow();
+  const xText = document.getElementById("f-x-text");
+  if (xText) {
+    xText.oninput = () => {
+      state.x.text = xText.value;
+      const counter = app.querySelector(".x-count");
+      if (counter) {
+        const n = xWeightedLength(state.x.text);
+        counter.textContent = `${n} / 280`;
+        counter.classList.toggle("is-over", n > 280);
+      }
+    };
+  }
+  app.querySelectorAll("[data-x-variant]").forEach((btn) => {
+    btn.onclick = () => {
+      const i = Number(btn.dataset.xVariant);
+      const v = state.x.variants[i];
+      if (v == null) return;
+      state.x.text = v;
+      render();
+    };
+  });
+  const btnXGen = document.getElementById("btn-x-generate");
+  if (btnXGen) btnXGen.onclick = () => xGenerate();
+  const btnXCopy = document.getElementById("btn-x-copy");
+  if (btnXCopy) btnXCopy.onclick = () => xCopyText();
+  const btnXIntent = document.getElementById("btn-x-intent");
+  if (btnXIntent) btnXIntent.onclick = () => xOpenIntent();
   const accessSel = document.getElementById("f-access");
   if (accessSel) {
     accessSel.onchange = () => onAccessChange();
@@ -2666,15 +2982,17 @@ function renderEdit() {
   if (state.mode === "visual") {
     const ed = document.getElementById("visual-editor");
     ed.innerHTML = body || "<p><br></p>";
+    ed.addEventListener("input", () => syncPublishButton());
     app.querySelectorAll("[data-cmd]").forEach((btn) => {
       btn.onmousedown = (e) => {
         e.preventDefault();
         const cmd = btn.dataset.cmd;
         if (cmd === "bold") exec("bold");
         else if (cmd === "italic") exec("italic");
-        else if (cmd === "h2") exec("formatBlock", "h2");
-        else if (cmd === "p") exec("formatBlock", "p");
         else if (cmd === "ul") exec("insertUnorderedList");
+        else if (cmd === "alignLeft") exec("justifyLeft");
+        else if (cmd === "alignCenter") exec("justifyCenter");
+        else if (cmd === "alignRight") exec("justifyRight");
         else if (cmd === "link") {
           const url = prompt("URL du lien");
           if (url) exec("createLink", url);
@@ -2683,14 +3001,21 @@ function renderEdit() {
         } else if (cmd === "clean") {
           ed.innerHTML = cleanHtml(ed.innerHTML);
         }
+        syncPublishButton();
       };
     });
+  }
+  if (state.mode === "html") {
+    document
+      .getElementById("html-editor")
+      ?.addEventListener("input", () => syncPublishButton());
   }
   if (state.mode === "preview") {
     document.getElementById("preview-pane").innerHTML = purifyHtml(
       body || "<p><em>Vide</em></p>"
     );
   }
+  syncPublishButton();
 }
 
 function mediaPickerRoot() {

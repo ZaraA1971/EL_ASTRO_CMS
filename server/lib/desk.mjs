@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { parseJsonArray, rowToArticle } from './db.mjs';
 import { translateArticleFrToUk } from './deepl.mjs';
 import { sendArticlePush } from './onesignal.mjs';
@@ -15,8 +16,58 @@ import { purgeFrontCache } from './front-cache.mjs';
 import { callEditorialAssist } from './editorial-assist.mjs';
 import { chapo } from './excerpt.mjs';
 import { handleDeskMedia } from './media/handler.mjs';
+import { handleDeskArticleX } from './x-desk.mjs';
+import {
+  anyXAccountConfigured,
+  listXAccountsPublic,
+} from './x-accounts.mjs';
 
 export { canAccessDesk, canEditAll, canPublish };
+
+/** Qualif / services machine — création brouillon uniquement. */
+const DESK_INGEST_SESSION = Object.freeze({
+  uid: null,
+  login: 'qualif',
+  name: 'Qualif',
+  role: 'editor',
+  ingest: true,
+});
+
+function safeEqualStr(a, b) {
+  const ba = Buffer.from(String(a || ''));
+  const bb = Buffer.from(String(b || ''));
+  if (!ba.length || ba.length !== bb.length) return false;
+  return crypto.timingSafeEqual(ba, bb);
+}
+
+function readDeskIngestKey(req) {
+  const header = req.headers['x-desk-ingest-key'];
+  if (typeof header === 'string' && header.trim()) return header.trim();
+  const auth = req.headers.authorization;
+  if (typeof auth === 'string') {
+    const m = auth.match(/^Bearer\s+(.+)$/i);
+    if (m) return m[1].trim();
+  }
+  return '';
+}
+
+/**
+ * Auth machine Qualif → Desk (clé partagée).
+ * Autorise uniquement POST /api/desk/articles (création brouillon).
+ */
+function resolveDeskIngestSession(req, parts, apiKey) {
+  if (!apiKey) return null;
+  const provided = readDeskIngestKey(req);
+  if (!provided || !safeEqualStr(provided, apiKey)) return null;
+  const isCreate =
+    parts[2] === 'articles' && !parts[3] && req.method === 'POST';
+  if (!isCreate) {
+    const err = new Error('Ingest Desk : création de brouillon uniquement');
+    err.status = 403;
+    throw err;
+  }
+  return DESK_INGEST_SESSION;
+}
 
 /**
  * Valide un lien de traduction : la cible doit exister et être éditable
@@ -136,6 +187,21 @@ function nowMysql() {
   return toMysqlDate(new Date());
 }
 
+let dateNullableEnsured = false;
+
+/** Brouillons : date de publication NULL jusqu’au premier publish. */
+async function ensureArticleDateNullable(pool) {
+  if (dateNullableEnsured) return;
+  const [cols] = await pool.query(`SHOW COLUMNS FROM el_articles LIKE 'date'`);
+  const col = cols[0];
+  if (col && String(col.Null).toUpperCase() === 'NO') {
+    await pool.query(
+      'ALTER TABLE el_articles MODIFY COLUMN date DATETIME NULL DEFAULT NULL'
+    );
+  }
+  dateNullableEnsured = true;
+}
+
 function asJson(v) {
   if (!v) return JSON.stringify([]);
   if (Array.isArray(v)) return JSON.stringify(v.map(String));
@@ -164,6 +230,33 @@ async function uniqueSlug(pool, base, excludeWpId = null) {
     n += 1;
     if (n > 50) return `${slug}-${Date.now()}`;
   }
+}
+
+const PLACEHOLDER_SLUGS = new Set([
+  'nouvel-article',
+  'new-article',
+  'untitled',
+  'article',
+]);
+
+/**
+ * Slug URL : suit le titre tant que brouillon / placeholder / slug = ancien titre.
+ * Sinon conserve le slug publié (URLs stables), sauf override explicite.
+ */
+async function resolveArticleSlug(pool, existing, title, payloadSlug) {
+  if (payloadSlug != null && String(payloadSlug).trim()) {
+    return uniqueSlug(pool, String(payloadSlug).trim(), existing.wp_id);
+  }
+  const current = String(existing.slug || '').trim();
+  const fromTitle = slugify(title);
+  const fromOldTitle = slugify(existing.title);
+  const isDraft = Number(existing.draft) === 1;
+  const isPlaceholder = !current || PLACEHOLDER_SLUGS.has(current);
+  const tracksOldTitle = current && current === fromOldTitle;
+  if (isDraft || isPlaceholder || tracksOldTitle) {
+    return uniqueSlug(pool, title || current || 'article', existing.wp_id);
+  }
+  return current;
 }
 
 /**
@@ -268,6 +361,7 @@ async function translateUk(req, res, sourceRow, ctx) {
   const accessEn = fr.access === 'granted' ? 'granted' : 'subscribers';
   const ia = accessEn === 'granted' ? [] : parseJsonArray(fr.ia_keywords);
 
+  await ensureArticleDateNullable(pool);
   if (enExisting) {
     // Écrasement : contenu + méta, forcé brouillon pour relecture humaine
     const slug = await uniqueSlug(pool, title, enExisting.wp_id);
@@ -284,7 +378,7 @@ async function translateUk(req, res, sourceRow, ctx) {
         title,
         excerpt,
         body,
-        toMysqlDate(fr.date) || toMysqlDate(enExisting.date),
+        null,
         now,
         fr.author,
         fr.author_slug,
@@ -316,7 +410,7 @@ async function translateUk(req, res, sourceRow, ctx) {
         title,
         excerpt,
         body,
-        toMysqlDate(fr.date) || now,
+        null,
         now,
         fr.author,
         fr.author_slug,
@@ -377,16 +471,28 @@ export function getContentGen() {
 
 export async function handleDesk(req, res, parts, ctx) {
   const { pool, sendJson, readBody, resolveDeskSession, clientIp } = ctx;
-  // Toujours recharger le rôle depuis MySQL (cookie seul = stale jusqu’à 14 j)
-  const resolved = resolveDeskSession
-    ? await resolveDeskSession(req)
-    : null;
-  const session = resolved?.session || null;
+  let session = null;
+  try {
+    session = resolveDeskIngestSession(req, parts, ctx.deskIngestApiKey);
+  } catch (err) {
+    return sendJson(res, err.status || 403, {
+      error: err.message || 'Accès pupitre refusé',
+    });
+  }
+  if (!session) {
+    // Toujours recharger le rôle depuis MySQL (cookie seul = stale jusqu’à 14 j)
+    const resolved = resolveDeskSession
+      ? await resolveDeskSession(req)
+      : null;
+    session = resolved?.session || null;
+  }
   if (!session || !canAccessDesk(session.role)) {
     return sendJson(res, 403, { error: 'Accès pupitre refusé' });
   }
   const ip = typeof clientIp === 'function' ? clientIp(req) : undefined;
-  const actor = { uid: session.uid, login: session.login };
+  const actor = session.ingest
+    ? { uid: null, login: session.login }
+    : { uid: session.uid, login: session.login };
 
   // /api/desk/me
   if (parts[2] === 'me' && req.method === 'GET') {
@@ -413,6 +519,12 @@ export async function handleDesk(req, res, parts, ctx) {
         audience: Boolean(canPublish(session.role)),
         media: true,
         mediaDelete: canEditAll(session.role),
+        xPost: Boolean(
+          canPublish(session.role) &&
+            (ctx.x?.dryRun || anyXAccountConfigured(ctx.x?.env || {}))
+        ),
+        xPostDryRun: Boolean(ctx.x?.dryRun),
+        xAccounts: listXAccountsPublic(ctx.x?.env || {}),
       },
       contentGen: getContentGen(),
     });
@@ -636,31 +748,47 @@ export async function handleDesk(req, res, parts, ctx) {
       );
       const wpId = Number(maxRow.next_id);
       const now = nowMysql();
-      // Author : toujours brouillon à la création
-      const draft = canPublish(session.role)
-        ? payload.draft === false
-          ? 0
-          : 1
-        : 1;
+      await ensureArticleDateNullable(pool);
+      // Ingest Qualif / author : toujours brouillon à la création
+      const draft = session.ingest
+        ? 1
+        : canPublish(session.role)
+          ? payload.draft === false
+            ? 0
+            : 1
+          : 1;
       const bodyHtml = cleanHtml(payload.body || '');
+      const sourceUrl = payload.source_url
+        ? String(payload.source_url).trim().slice(0, 500) || null
+        : null;
+      // Ingest Qualif peut imposer un auteur rédaction (ex. Emmanuel Torregano)
+      const authorUserId = session.ingest
+        ? payload.author_user_id != null
+          ? Number(payload.author_user_id) || null
+          : null
+        : session.uid || null;
+      // Date de publication : seulement si déjà en ligne à la création
+      const pubDate = draft ? null : toMysqlDate(payload.date) || now;
       await pool.query(
         `INSERT INTO el_articles (
           wp_id, slug, title, excerpt, body, date, modified,
           author, author_slug, author_user_id,
           categories, category_names, tags, ia_keywords,
-          access, lang, draft
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          access, lang, draft, source_url
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [
           wpId,
           slug,
           title,
           chapo(bodyHtml, 'store'),
           bodyHtml,
-          toMysqlDate(payload.date) || now,
+          pubDate,
           now,
           String(payload.author || session.name || session.login),
-          payload.author_slug ? String(payload.author_slug) : slugify(session.login),
-          session.uid,
+          payload.author_slug
+            ? String(payload.author_slug)
+            : slugify(session.login),
+          authorUserId,
           asJson(payload.categories),
           asJson(payload.category_names),
           asJson(payload.tags),
@@ -672,9 +800,20 @@ export async function handleDesk(req, res, parts, ctx) {
           payload.access === 'granted' ? 'granted' : 'subscribers',
           String(payload.lang || 'fr').toLowerCase(),
           draft,
+          sourceUrl,
         ]
       );
       bumpContentGen();
+      if (session.ingest) {
+        await auditLog(pool, {
+          actor,
+          action: 'article.create_ingest',
+          targetType: 'article',
+          targetId: wpId,
+          meta: { source: 'qualif', source_url: sourceUrl },
+          ip,
+        });
+      }
       const [rows] = await pool.query('SELECT * FROM el_articles WHERE wp_id = ?', [
         wpId,
       ]);
@@ -712,13 +851,25 @@ export async function handleDesk(req, res, parts, ctx) {
       return sendJson(res, 400, { error: 'JSON invalide' });
     }
 
-    // Publier : pas de « mise à jour » artificielle.
-    // Première mise en ligne : modified = date de publication.
+    // Première mise en ligne : date de publication = maintenant (pas avant).
+    await ensureArticleDateNullable(pool);
     const wasDraft = Number(existing.draft) === 1;
+    const slug = await resolveArticleSlug(
+      pool,
+      existing,
+      existing.title,
+      null
+    );
     if (wasDraft) {
+      const pubDate = nowMysql();
       await pool.query(
-        'UPDATE el_articles SET draft = 0, modified = date WHERE wp_id = ?',
-        [wpId]
+        'UPDATE el_articles SET draft = 0, date = ?, modified = ?, slug = ? WHERE wp_id = ?',
+        [pubDate, pubDate, slug, wpId]
+      );
+    } else if (slug !== existing.slug) {
+      await pool.query(
+        'UPDATE el_articles SET draft = 0, slug = ? WHERE wp_id = ?',
+        [slug, wpId]
       );
     } else {
       await pool.query('UPDATE el_articles SET draft = 0 WHERE wp_id = ?', [
@@ -781,11 +932,27 @@ export async function handleDesk(req, res, parts, ctx) {
         error: 'Publication réservée éditeur/admin',
       });
     }
-    // Brouillon on/off : pas de date de mise à jour
-    await pool.query('UPDATE el_articles SET draft = ? WHERE wp_id = ?', [
-      wantDraft ? 1 : 0,
-      wpId,
-    ]);
+    await ensureArticleDateNullable(pool);
+    if (wantDraft) {
+      // Retour brouillon : efface la date de publication
+      await pool.query(
+        'UPDATE el_articles SET draft = 1, date = NULL WHERE wp_id = ?',
+        [wpId]
+      );
+    } else {
+      // Mise en ligne via le bouton brouillon : date = maintenant + slug depuis titre
+      const pubDate = nowMysql();
+      const slug = await resolveArticleSlug(
+        pool,
+        existing,
+        existing.title,
+        null
+      );
+      await pool.query(
+        'UPDATE el_articles SET draft = 0, date = ?, modified = ?, slug = ? WHERE wp_id = ?',
+        [pubDate, pubDate, slug, wpId]
+      );
+    }
     bumpContentGen();
     await auditLog(pool, {
       actor,
@@ -897,6 +1064,16 @@ export async function handleDesk(req, res, parts, ctx) {
     }
   }
 
+  if (parts[4] === 'x') {
+    return handleDeskArticleX(
+      req,
+      res,
+      parts,
+      { ...ctx, session, actor, ip },
+      existing
+    );
+  }
+
   if (parts[4] === 'push' && req.method === 'POST') {
     if (!canPublish(session.role)) {
       return sendJson(res, 403, {
@@ -962,11 +1139,12 @@ export async function handleDesk(req, res, parts, ctx) {
       payload.title != null
         ? String(payload.title).trim() || existing.title
         : existing.title;
-    let slug = existing.slug;
-    if (payload.slug != null) {
-      const wanted = String(payload.slug).trim() || existing.slug;
-      slug = await uniqueSlug(pool, wanted, wpId);
-    }
+    const slug = await resolveArticleSlug(
+      pool,
+      existing,
+      title,
+      payload.slug
+    );
     const cats =
       payload.categories != null
         ? payload.categories
@@ -1060,7 +1238,13 @@ export async function handleDesk(req, res, parts, ctx) {
       }
     }
 
-    // date = publication (formulaire) ; modified = date de mise à jour (auto)
+    await ensureArticleDateNullable(pool);
+    const isDraft = Number(draftVal) === 1;
+    // Brouillon : pas de date de publication. En ligne : date formulaire ou existante.
+    const nextDate = isDraft
+      ? null
+      : toMysqlDate(payload.date) || toMysqlDate(existing.date) || nowMysql();
+    // modified = dernière édition (tri desk) ; affichage « Mise à jour » seulement si publié
     await pool.query(
       `UPDATE el_articles SET
         slug=?, title=?, excerpt=?, body=?, date=?, modified=?,
@@ -1074,7 +1258,7 @@ export async function handleDesk(req, res, parts, ctx) {
         title,
         excerpt,
         bodyHtml,
-        toMysqlDate(payload.date) || toMysqlDate(existing.date),
+        nextDate,
         nowMysql(),
         authorName,
         authorSlug,
