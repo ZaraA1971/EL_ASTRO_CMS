@@ -1,12 +1,12 @@
 ---
 interface Props {
-  title: string;
+  title?: string;
   description?: string;
   kicker?: string;
 }
 
 const {
-  title,
+  title = "",
   description = "",
   kicker = title,
 } = Astro.props;
@@ -17,7 +17,7 @@ const {
     <h1 class="el-section-head__title">{kicker}</h1>
   </header>
   <article class="el-static-page__card">
-    <h2 class="el-static-page__title">{title}</h2>
+    {title ? <h2 class="el-static-page__title">{title}</h2> : null}
     <div class="el-static-page__body entry-content">
       <slot />
     </div>

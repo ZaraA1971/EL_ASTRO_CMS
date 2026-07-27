@@ -4,7 +4,7 @@ import BaseLayout from "../layouts/BaseLayout.astro";
 
 const title = "Abonnement à ElectronLibre";
 const description =
-  "Abonnez-vous à ElectronLibre pour un accès illimité aux analyses, rapports et au Compagnon IA.";
+  "Abonnez-vous à ElectronLibre : analyses sur le numérique et l’IA, newsletter, application iOS et EL Compagnon.";
 const mailtoSubscribe =
   "mailto:info@electronlibre.info?subject=" +
   encodeURIComponent("Abonnement Professionnel ElectronLibre");
@@ -24,46 +24,91 @@ const mailtoQuestion =
     </header>
 
     <article class="el-subscribe__card">
-      <p class="el-subscribe__login-hint">
-        Déjà abonné ?
-        <a href="/login/">Connectez-vous</a>
-        via l’espace client en haut à droite.
-      </p>
-
-      <h2 class="el-subscribe__title">
-        Rejoignez la communauté des professionnels sur ElectronLibre
-      </h2>
-      <p class="el-subscribe__lead">
-        Une source d’informations exclusive pour les professionnels.
-        <strong>Abonnez-vous</strong> pour un accès illimité aux analyses, rapports
-        de marché et discussions d’experts.
-      </p>
-
-      <div class="el-subscribe__grid">
-        <div class="el-subscribe__block">
-          <h3 class="el-subscribe__block-title">Pourquoi s’abonner ?</h3>
-          <ul class="el-subscribe__list">
-            <li>Accès exclusif à des articles et rapports spécialisés</li>
-            <li>Invitations à des événements et webinaires réservés aux abonnés</li>
-            <li>Newsletter quotidienne avec des insights du secteur</li>
-            <li>Application mobile avec alertes et accès à tous les contenus</li>
-            <li>EL Compagnon : assistant IA réservé aux abonnés</li>
-          </ul>
-        </div>
-
-        <div class="el-subscribe__block">
-          <h3 class="el-subscribe__block-title">Comment s’abonner ?</h3>
-          <p>
-            Cliquez sur le bouton ci-dessous et mentionnez votre nom, votre
-            organisation et votre rôle professionnel. Nous vous recontactons
-            rapidement.
-          </p>
-          <div class="el-subscribe__actions">
-            <a class="btn-subscribe" href={mailtoSubscribe}>Demander un abonnement</a>
-            <a class="el-subscribe__secondary" href="/login/">J’ai déjà un compte</a>
-          </div>
+      <div class="el-subscribe__hero">
+        <h2 class="el-subscribe__title">
+          L’analyse du numérique et de l’IA, pour les professionnels
+        </h2>
+        <p class="el-subscribe__lead">
+          Accès illimité aux articles et rapports ElectronLibre, à la newsletter
+          quotidienne, à l’application iOS et à <strong>EL Compagnon</strong>,
+          l’assistant IA réservé aux abonnés.
+        </p>
+        <div class="el-subscribe__hero-actions">
+          <a class="btn-subscribe el-subscribe__cta" href={mailtoSubscribe}
+            >Demander un abonnement</a
+          >
+          <a class="el-subscribe__secondary" href="/login/"
+            >Déjà abonné&nbsp;? Connexion</a
+          >
         </div>
       </div>
+
+      <section class="el-subscribe__benefits" aria-labelledby="el-subscribe-why">
+        <h3 id="el-subscribe-why" class="el-subscribe__block-title">
+          Pourquoi s’abonner&nbsp;?
+        </h3>
+        <ul class="el-subscribe__list">
+          <li>Accès exclusif à des articles et rapports spécialisés</li>
+          <li>Invitations à des événements et webinaires réservés aux abonnés</li>
+          <li>Newsletter quotidienne avec des insights du secteur</li>
+          <li>Application mobile avec alertes et accès à tous les contenus</li>
+          <li>EL Compagnon : assistant IA réservé aux abonnés</li>
+        </ul>
+      </section>
+
+      <section class="el-subscribe__how" aria-labelledby="el-subscribe-how">
+        <h3 id="el-subscribe-how" class="el-subscribe__block-title">
+          Comment s’abonner&nbsp;?
+        </h3>
+        <p>
+          Cliquez sur le bouton ci-dessous et mentionnez votre nom, votre
+          organisation et votre rôle professionnel. Nous vous recontactons
+          rapidement.
+        </p>
+        <div class="el-subscribe__actions">
+          <a class="btn-subscribe el-subscribe__cta" href={mailtoSubscribe}
+            >Demander un abonnement</a
+          >
+          <a class="el-subscribe__secondary" href="/login/">J’ai déjà un compte</a>
+        </div>
+      </section>
+
+      <section class="el-subscribe__tools" aria-labelledby="el-subscribe-tools">
+        <h3 id="el-subscribe-tools" class="el-subscribe__block-title">
+          Aussi par ElectronLibre
+        </h3>
+        <p class="el-subscribe__tools-note">
+          Des outils du groupe, accessibles séparément — non inclus dans
+          l’abonnement média.
+        </p>
+        <div class="el-subscribe__tools-grid">
+          <a
+            class="el-subscribe__tool el-subscribe__tool--desinfo"
+            href="https://desinfo.electronlibre.info/"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <span class="el-subscribe__tool-name">Observatoire de la désinformation</span>
+            <span class="el-subscribe__tool-pitch"
+              >Palmarès roulant fondé sur les Community Notes utiles.</span
+            >
+            <span class="el-subscribe__tool-cta">Voir le palmarès →</span>
+          </a>
+          <a
+            class="el-subscribe__tool el-subscribe__tool--geo"
+            href="https://geo.electronlibre.info/"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <span class="el-subscribe__tool-eyebrow">Veille IA</span>
+            <span class="el-subscribe__tool-name">GEO</span>
+            <span class="el-subscribe__tool-pitch"
+              >Comment les IA citent et classent marques, médias, marchés.</span
+            >
+            <span class="el-subscribe__tool-cta">Ouvrir GEO →</span>
+          </a>
+        </div>
+      </section>
 
       <div class="el-subscribe__partners">
         <h3 class="el-subscribe__block-title">Ils nous font confiance</h3>
