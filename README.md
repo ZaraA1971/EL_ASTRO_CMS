@@ -107,6 +107,12 @@ sudo find /var/cache/nginx/el-astro-prod -type f -delete
 
 OneSignal : `ONESIGNAL_DRY_RUN=1` jusqu’au premier push contrôlé.
 
+### X (Twitter) — studio Pupitre
+
+Panneau dans l’éditeur article (`/desk/`) : variantes d’accroche orientées engagement, compte cible (`@3l3ctr0nLibr3` / `@Bulletin_UE`), puis **publication manuelle** (Copier ou Ouvrir le composer X). Pas d’API X payante en prod.
+
+Routes : `GET|PUT /api/desk/articles/:id/x`, `POST …/x/generate` (brouillon + Assist).
+
 Archive MD d’import : backup `/var/backups/electronlibre-astro/articles-md-import-*.tar.gz` (hors live).
 
 Health : `GET /api/health` · RAG `GET http://127.0.0.1:8080/health/index`
