@@ -3373,28 +3373,6 @@ function renderEdit() {
               <p class="uk-help" id="date-help">Fait foi pour le tri et l’affichage principal.</p>`
               }
             </div>
-            <div class="field">
-              <label>Rubriques</label>
-              <div class="chips" id="chips">${chips}<button type="button" class="chip-add" id="btn-add-category" title="Ajouter une rubrique" aria-label="Ajouter une rubrique"><span aria-hidden="true">+</span></button></div>
-            </div>
-            <div class="field"><label for="f-access">Accès</label>
-              <select id="f-access"><option value="subscribers" ${d.access !== "granted" ? "selected" : ""}>Abonnés</option><option value="granted" ${d.access === "granted" ? "selected" : ""}>Gratuit</option></select>
-            </div>
-            ${
-              d.access !== "granted"
-                ? `<div class="field field--keywords">
-              <label for="f-ia">Mots-clés IA</label>
-              <textarea id="f-ia" class="kw-textarea" rows="5" placeholder="Union européenne, Meta, réseaux sociaux…" autocomplete="off" ${
-                state.generatingKeywords || state.saving ? "disabled" : ""
-              }>${escapeHtml((d.ia_keywords || []).join(", "))}</textarea>
-              <p class="uk-help" id="kw-help">${
-                state.generatingKeywords
-                  ? "Analyse IA en cours…"
-                  : "Auto à la sélection Abonnés et à l’enregistrement s’ils sont vides. Modifiables ensuite."
-              }</p>
-            </div>`
-                : `<p class="uk-help">Article gratuit : tags WP à l’affichage (pas de mots-clés IA).</p>`
-            }
             <div class="field field--updated">
               <label>Mise à jour</label>
               <p class="date-updated" id="f-modified">${
@@ -3419,6 +3397,28 @@ function renderEdit() {
                     : "Appuyer pour passer en brouillon. Remise en ligne : éditeur."
               }</p>
             </div>
+            <div class="field">
+              <label>Rubriques</label>
+              <div class="chips" id="chips">${chips}<button type="button" class="chip-add" id="btn-add-category" title="Ajouter une rubrique" aria-label="Ajouter une rubrique"><span aria-hidden="true">+</span></button></div>
+            </div>
+            <div class="field"><label for="f-access">Accès</label>
+              <select id="f-access"><option value="subscribers" ${d.access !== "granted" ? "selected" : ""}>Abonnés</option><option value="granted" ${d.access === "granted" ? "selected" : ""}>Gratuit</option></select>
+            </div>
+            ${
+              d.access !== "granted"
+                ? `<div class="field field--keywords">
+              <label for="f-ia">Mots-clés IA</label>
+              <textarea id="f-ia" class="kw-textarea" rows="5" placeholder="Union européenne, Meta, réseaux sociaux…" autocomplete="off" ${
+                state.generatingKeywords || state.saving ? "disabled" : ""
+              }>${escapeHtml((d.ia_keywords || []).join(", "))}</textarea>
+              <p class="uk-help" id="kw-help">${
+                state.generatingKeywords
+                  ? "Analyse IA en cours…"
+                  : "Auto à la sélection Abonnés et à l’enregistrement s’ils sont vides. Modifiables ensuite."
+              }</p>
+            </div>`
+                : `<p class="uk-help">Article gratuit : tags WP à l’affichage (pas de mots-clés IA).</p>`
+            }
 
             ${
               (() => {
