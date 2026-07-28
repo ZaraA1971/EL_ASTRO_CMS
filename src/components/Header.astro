@@ -3,6 +3,7 @@
  * Header ElectronLibre — port structurel de header.php + assets CSS/JS du thème.
  */
 import { ASSET_V } from "../lib/assets";
+import { listNavCategories } from "../lib/categories";
 
 interface Props {
   lang?: "fr" | "en";
@@ -13,17 +14,12 @@ const { lang = "fr" } = Astro.props;
 type NavChild = { label: string; href: string; rel?: string };
 type NavItem = { label: string; href: string; children?: NavChild[] };
 
+const navCategories = await listNavCategories();
 const navItems: NavItem[] = [
-  { label: "Web 1,2,3", href: "/articles/category/web_1_2_3/" },
-  { label: "Culture", href: "/articles/category/so_cult/" },
-  { label: "Piratage", href: "/articles/category/peer2peer/" },
-  { label: "Médias", href: "/articles/category/old_fashion_media/" },
-  { label: "High-Tech", href: "/articles/category/so_amazing/" },
-  { label: "Robotic", href: "/articles/category/robotic/" },
-  { label: "Gaming", href: "/articles/category/gaming/" },
-  { label: "Economie", href: "/articles/category/le_flouze/" },
-  { label: "Politique", href: "/articles/category/politique/" },
-  { label: "Marketing", href: "/articles/category/marketing_room/" },
+  ...navCategories.map((c) => ({
+    label: c.name,
+    href: `/articles/category/${c.slug}/`,
+  })),
   {
     label: "Espace Client",
     href: "/a-propos/",

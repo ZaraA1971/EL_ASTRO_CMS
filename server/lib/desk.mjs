@@ -22,6 +22,10 @@ import {
   anyXAccountConfigured,
   listXAccountsPublic,
 } from './x-accounts.mjs';
+import {
+  listCategories,
+  createCategory,
+} from './categories.mjs';
 
 export { canAccessDesk, canEditAll, canPublish };
 
@@ -532,6 +536,43 @@ export async function handleDesk(req, res, parts, ctx) {
     });
   }
 
+  // /api/desk/categories — liste + création rubrique
+  if (parts[2] === 'categories' && !parts[3]) {
+    if (req.method === 'GET') {
+      const categories = await listCategories(pool);
+      return sendJson(res, 200, { categories });
+    }
+    if (req.method === 'POST') {
+      let body = {};
+      try {
+        body = JSON.parse(await readBody(req));
+      } catch {
+        return sendJson(res, 400, { error: 'JSON invalide' });
+      }
+      try {
+        const category = await createCategory(pool, {
+          name: body.name,
+          slug: body.slug,
+        });
+        await auditLog(pool, {
+          actor,
+          action: 'category.create',
+          targetType: 'category',
+          targetId: category.slug,
+          meta: { name: category.name },
+          ip,
+        });
+        purgeFrontCache();
+        return sendJson(res, 201, { category });
+      } catch (err) {
+        return sendJson(res, err.status || 500, {
+          error: err.message || 'Création rubrique impossible',
+        });
+      }
+    }
+    return sendJson(res, 405, { error: 'Méthode non autorisée' });
+  }
+
   // /api/desk/content-gen
   if (parts[2] === 'content-gen' && req.method === 'GET') {
     return sendJson(res, 200, { contentGen: getContentGen() });
@@ -843,7 +884,7 @@ export async function handleDesk(req, res, parts, ctx) {
       return sendJson(res, 400, { error: 'JSON invalide' });
     }
 
-    // Première mise en ligne : date de publication = maintenant (pas avant).
+    // Première mise en ligne : date = maintenant. Republish après brouillon : garder la date.
     await ensureArticleDateNullable(pool);
     const wasDraft = Number(existing.draft) === 1;
     const slug = await resolveArticleSlug(
@@ -853,10 +894,11 @@ export async function handleDesk(req, res, parts, ctx) {
       null
     );
     if (wasDraft) {
-      const pubDate = nowMysql();
+      const pubDate = toMysqlDate(existing.date) || nowMysql();
+      const mod = nowMysql();
       await pool.query(
         'UPDATE el_articles SET draft = 0, date = ?, modified = ?, slug = ? WHERE wp_id = ?',
-        [pubDate, pubDate, slug, wpId]
+        [pubDate, mod, slug, wpId]
       );
     } else if (slug !== existing.slug) {
       await pool.query(
@@ -926,14 +968,14 @@ export async function handleDesk(req, res, parts, ctx) {
     }
     await ensureArticleDateNullable(pool);
     if (wantDraft) {
-      // Retour brouillon : efface la date de publication
-      await pool.query(
-        'UPDATE el_articles SET draft = 1, date = NULL WHERE wp_id = ?',
-        [wpId]
-      );
+      // Retour brouillon : conserve la date de 1ʳᵉ publication (remise en ligne = même date).
+      await pool.query('UPDATE el_articles SET draft = 1 WHERE wp_id = ?', [
+        wpId,
+      ]);
     } else {
-      // Mise en ligne via le bouton brouillon : date = maintenant + slug depuis titre
-      const pubDate = nowMysql();
+      // Mise en ligne via /draft : date existante ou maintenant + slug
+      const pubDate = toMysqlDate(existing.date) || nowMysql();
+      const mod = nowMysql();
       const slug = await resolveArticleSlug(
         pool,
         existing,
@@ -942,7 +984,7 @@ export async function handleDesk(req, res, parts, ctx) {
       );
       await pool.query(
         'UPDATE el_articles SET draft = 0, date = ?, modified = ?, slug = ? WHERE wp_id = ?',
-        [pubDate, pubDate, slug, wpId]
+        [pubDate, mod, slug, wpId]
       );
     }
     bumpContentGen();
@@ -1232,9 +1274,9 @@ export async function handleDesk(req, res, parts, ctx) {
 
     await ensureArticleDateNullable(pool);
     const isDraft = Number(draftVal) === 1;
-    // Brouillon : pas de date de publication. En ligne : date formulaire ou existante.
+    // Brouillon : conserver date si déjà publiée un jour. En ligne : formulaire ou existante.
     const nextDate = isDraft
-      ? null
+      ? toMysqlDate(existing.date) || toMysqlDate(payload.date) || null
       : toMysqlDate(payload.date) || toMysqlDate(existing.date) || nowMysql();
     // modified = dernière édition (tri desk) ; affichage « Mise à jour » seulement si publié
     await pool.query(

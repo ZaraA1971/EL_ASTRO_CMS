@@ -1,7 +1,11 @@
 import { stripLeadingChapoHtml, chapo } from "./excerpt.js";
 import { cleanHtml as cleanArticleHtml } from "./html-clean.js";
+import { applyDeskUiTokens } from "./ui.js";
 
-const CATEGORIES = [
+applyDeskUiTokens();
+
+/** Fallback si API rubriques indisponible */
+const FALLBACK_RUBRICS = [
   { value: "web_1_2_3", label: "Web 1,2,3" },
   { value: "so_cult", label: "Culture" },
   { value: "peer2peer", label: "Piratage" },
@@ -37,9 +41,16 @@ function purifyHtml(html) {
   });
 }
 
+/** URL publique article (enregistré) : /articles/{id}-{slug}/ */
+function articlePublicPath(article) {
+  const d = article?.data;
+  if (!d?.wp_id || !d?.slug) return "";
+  return `/articles/${d.wp_id}-${d.slug}/`;
+}
+
 /**
  * Document HTML pour l’iframe Aperçu — CSS site (single article).
- * Corps complet (pas de paywall) ; titre/metas = brouillon local.
+ * previewView: "full" (abonné / éditeur) | "visitor" (teaser paywall si accès abonnés).
  */
 function buildArticlePreviewDoc({
   title = "",
@@ -49,9 +60,18 @@ function buildArticlePreviewDoc({
   categories = [],
   categoryNames = [],
   updateLabel = "",
+  access = "subscribers",
+  previewView = "full",
+  excerpt = "",
 } = {}) {
   const safeTitle = escapeHtml(title || "Sans titre");
   const safeBody = purifyHtml(cleanBody(body) || "<p><em>Vide</em></p>");
+  const showPaywall =
+    previewView === "visitor" && String(access) !== "granted";
+  const teaserText =
+    String(excerpt || "").trim() ||
+    extractLeadingChapo(body) ||
+    stripTagsPlain(stripLeadingChapoHtml(body)).split(/\s+/).slice(0, 55).join(" ");
   const dateLabel = formatDate(date) || "—";
   const dateIso =
     date != null && date !== ""
@@ -75,6 +95,21 @@ function buildArticlePreviewDoc({
   const catBlock = catLinks
     ? `<div class="category">${catLinks}</div>`
     : "";
+
+  const contentBlock = showPaywall
+    ? `<div class="el-article__teaser">
+        ${
+          teaserText
+            ? `<p class="el-article-chapo el-article-chapo--teaser">${escapeHtml(teaserText)}</p>`
+            : ""
+        }
+        <div class="el-paywall abonnement-cta">
+          <p>Cet article est réservé aux abonnés ElectronLibre.</p>
+          <a class="btn-subscribe" href="/login/">Connexion</a>
+          <a class="btn-subscribe" href="/abonnement/">Je m’abonne</a>
+        </div>
+      </div>`
+    : `<div class="inner-article-content entry-content">${safeBody}</div>`;
 
   const css = [
     "/css/el/el-tokens.css",
@@ -117,11 +152,33 @@ ${css}
       </div>
       <h1 class="news-title page-title">${safeTitle}</h1>
       ${catBlock}
-      <div class="inner-article-content entry-content">${safeBody}</div>
+      ${contentBlock}
     </article>
   </div>
 </body>
 </html>`;
+}
+
+/** Remplit l’iframe Aperçu depuis le brouillon local. */
+function fillArticlePreviewFrame() {
+  const frame = document.getElementById("article-preview-frame");
+  if (!frame || !state.article) return;
+  const d = state.article.data;
+  const body = state.article.body || "";
+  const excerpt =
+    String(d.excerpt || "").trim() || chapo(body, "store") || "";
+  frame.srcdoc = buildArticlePreviewDoc({
+    title: d.title,
+    body,
+    author: d.author || "",
+    date: d.draft ? null : d.date,
+    categories: d.categories || [],
+    categoryNames: d.category_names || [],
+    updateLabel: updateDateLabel(d),
+    access: d.access || "subscribers",
+    previewView: state.previewView || "full",
+    excerpt,
+  });
 }
 
 /** Flush champs édition vers state avant re-render (changement d’onglet). */
@@ -158,6 +215,8 @@ const state = {
   user: null,
   caps: { manageUsers: false, editAll: false, publish: false, audience: false },
   view: "list", // list | edit | users | user-edit | newsletter | audience | login
+  /** Rubriques (chips) — chargées via GET /api/desk/categories */
+  rubrics: null,
   articles: [],
   total: 0,
   page: 1,
@@ -170,6 +229,8 @@ const state = {
   editBaseline: "",
   editDirty: false,
   mode: "visual", // visual | html | preview
+  /** Aperçu : "full" (corps) | "visitor" (teaser paywall si abonnés). */
+  previewView: "full",
   users: [],
   usersTotal: 0,
   usersQ: "",
@@ -258,7 +319,58 @@ async function apiForm(path, formData) {
 }
 
 function catLabel(slug) {
-  return CATEGORIES.find((c) => c.value === slug)?.label || slug;
+  return rubricList().find((c) => c.value === slug)?.label || slug;
+}
+
+function rubricList() {
+  return state.rubrics && state.rubrics.length
+    ? state.rubrics
+    : FALLBACK_RUBRICS;
+}
+
+async function loadRubrics({ force = false } = {}) {
+  if (!force && state.rubrics && state.rubrics.length) return state.rubrics;
+  try {
+    const data = await api("/api/desk/categories");
+    state.rubrics = (data.categories || []).map((c) => ({
+      value: String(c.slug),
+      label: String(c.name),
+    }));
+  } catch {
+    if (!state.rubrics) state.rubrics = FALLBACK_RUBRICS.slice();
+  }
+  return state.rubrics;
+}
+
+async function createRubric() {
+  const name = window.prompt("Nom de la nouvelle rubrique :");
+  if (name == null) return;
+  const label = String(name).trim();
+  if (!label) return;
+  state.error = "";
+  try {
+    const data = await api("/api/desk/categories", {
+      method: "POST",
+      body: JSON.stringify({ name: label }),
+    });
+    const cat = data.category;
+    if (!cat?.slug) throw new Error("Réponse invalide");
+    await loadRubrics({ force: true });
+    if (state.article?.data) {
+      const cats = new Set((state.article.data.categories || []).map(String));
+      cats.add(cat.slug);
+      state.article.data.categories = [...cats];
+      state.article.data.category_names = state.article.data.categories.map(
+        (s) => (s === cat.slug ? cat.name : catLabel(s))
+      );
+      onEditDirty();
+    }
+    state.status = `Rubrique « ${cat.name} » créée — archive et menu site actifs`;
+    render();
+  } catch (err) {
+    state.error = err.message || "Création rubrique impossible";
+    render();
+  }
 }
 
 function escapeHtml(s) {
@@ -350,6 +462,15 @@ function exec(cmd, value) {
   document.execCommand(cmd, false, value);
 }
 
+/** formatBlock cross-browser (Chrome préfère `<h2>`). */
+function execFormatBlock(tag) {
+  const t = String(tag || "p").toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (!t) return;
+  if (!document.execCommand("formatBlock", false, `<${t}>`)) {
+    document.execCommand("formatBlock", false, t);
+  }
+}
+
 function getVisualEditor() {
   return document.getElementById("visual-editor");
 }
@@ -415,10 +536,51 @@ function onVisualPaste(e) {
   syncPublishButton();
 }
 
-function contentFingerprint(title, body) {
+/** Date comparable (datetime-local local, à la minute). */
+function fingerprintDate(d) {
+  if (d == null || d === "") return "";
+  const raw = String(d);
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(raw) && !/[zZ]|[+-]\d{2}:?\d{2}$/.test(raw)) {
+    return raw.slice(0, 16);
+  }
+  return toDatetimeLocalValue(d) || "";
+}
+
+function normalizeKeywordList(list) {
+  return [...(list || [])]
+    .map((k) => String(k || "").trim())
+    .filter(Boolean);
+}
+
+/**
+ * Empreinte éditoriale : titre, corps, auteur, date, rubriques, accès, mots-clés IA.
+ * @param {object} p
+ */
+function editFingerprint(p = {}) {
+  const cats = [...(p.categories || [])].map(String).filter(Boolean).sort();
+  const kws = normalizeKeywordList(p.ia_keywords);
   return JSON.stringify({
-    title: String(title || "").trim(),
-    body: cleanBody(body || ""),
+    title: String(p.title || "").trim(),
+    body: cleanBody(p.body || ""),
+    author: String(p.author || "").trim(),
+    date: fingerprintDate(p.date),
+    categories: cats,
+    access: p.access === "granted" ? "granted" : "subscribers",
+    ia_keywords: kws,
+  });
+}
+
+function editFingerprintFromArticle(article) {
+  if (!article) return "";
+  const d = article.data || {};
+  return editFingerprint({
+    title: d.title,
+    body: article.body,
+    author: d.author,
+    date: d.date,
+    categories: d.categories,
+    access: d.access,
+    ia_keywords: d.ia_keywords,
   });
 }
 
@@ -428,21 +590,54 @@ function setEditBaselineFromArticle(article = state.article) {
     state.editDirty = false;
     return;
   }
-  state.editBaseline = contentFingerprint(article.data?.title, article.body);
+  state.editBaseline = editFingerprintFromArticle(article);
   state.editDirty = false;
 }
 
-function currentContentFingerprint() {
+function currentEditFingerprint() {
   if (!state.article) return "";
-  if (state.view === "edit") {
-    const titleEl = document.getElementById("f-title");
-    const title =
-      titleEl != null
-        ? titleEl.value
-        : state.article.data?.title || "";
-    return contentFingerprint(title, getBodyFromDom());
+  if (state.view !== "edit") return editFingerprintFromArticle(state.article);
+  const a = state.article;
+  const titleEl = document.getElementById("f-title");
+  const authorEl = document.getElementById("f-author");
+  const accessEl = document.getElementById("f-access");
+  const dateEl = document.getElementById("f-date");
+  const iaEl = document.getElementById("f-ia");
+  const chipsRoot = document.getElementById("chips");
+  const cats = chipsRoot
+    ? [...chipsRoot.querySelectorAll(".chip.on")].map((el) => el.dataset.value)
+    : a.data.categories || [];
+  const access = accessEl?.value || a.data.access || "subscribers";
+  const ia_keywords =
+    access === "granted"
+      ? []
+      : iaEl
+        ? iaEl.value
+            .split(",")
+            .map((t) => t.trim())
+            .filter(Boolean)
+        : a.data.ia_keywords || [];
+  // Brouillon : date conservée en BDD (champ désactivé) — utiliser state.
+  let date = a.data.date;
+  if (!a.data.draft && dateEl && !dateEl.disabled && dateEl.value) {
+    date = fromDatetimeLocalValue(dateEl.value) || date;
   }
-  return contentFingerprint(state.article.data?.title, state.article.body);
+  return editFingerprint({
+    title: titleEl != null ? titleEl.value : a.data.title,
+    body: getBodyFromDom(),
+    author: authorEl != null ? authorEl.value : a.data.author,
+    date,
+    categories: cats,
+    access,
+    ia_keywords,
+  });
+}
+
+/** Titre / corps / metas modifiés depuis le dernier save / chargement. */
+function isEditContentDirty() {
+  if (!state.article || state.view !== "edit") return false;
+  if (!state.editBaseline) return false;
+  return currentEditFingerprint() !== state.editBaseline;
 }
 
 function refreshEditDirty() {
@@ -450,10 +645,18 @@ function refreshEditDirty() {
     state.editDirty = false;
     return;
   }
-  state.editDirty = currentContentFingerprint() !== state.editBaseline;
+  state.editDirty = isEditContentDirty();
 }
 
-/** Publier actif : brouillon, ou article en ligne dont le texte a changé. */
+/** Quitter l’édition : confirm si dirty (texte ou metas). */
+function confirmLeaveEdit() {
+  if (!isEditContentDirty()) return true;
+  return confirm(
+    "Modifications non enregistrées. Quitter sans enregistrer ?"
+  );
+}
+
+/** Publier actif : brouillon, ou article en ligne dont texte/metas ont changé. */
 function canClickPublish() {
   if (!state.article || !state.caps.publish || state.saving) return false;
   if (state.article.data.draft) return true;
@@ -465,10 +668,152 @@ function syncPublishButton() {
   const btn = document.getElementById("btn-publish");
   if (!btn) return;
   const ok = canClickPublish();
-  btn.disabled = !ok;
+  btn.disabled = !ok || state.saving;
   btn.title = ok
     ? "Publier"
-    : "Déjà publié — modifiez le texte pour republier";
+    : "Déjà publié — modifiez le texte ou les métas pour republier";
+}
+
+/** Messages sous l’éditeur — sans reconstruire le DOM. */
+function paintEditMessages() {
+  const err = document.getElementById("edit-error");
+  const ok = document.getElementById("edit-status");
+  if (err) {
+    err.hidden = !state.error;
+    err.textContent = state.error || "";
+  }
+  if (ok) {
+    ok.hidden = !state.status;
+    ok.textContent = state.status || "";
+  }
+}
+
+/**
+ * Busy save/publish : désactive les actions, garde l’éditeur (curseur/scroll).
+ * @param {boolean} busy
+ */
+function setEditBusy(busy) {
+  state.saving = busy;
+  const ids = [
+    "btn-save",
+    "btn-draft",
+    "btn-push-now",
+    "btn-translate-uk",
+    "btn-retranslate",
+    "btn-x-generate",
+    "btn-x-copy",
+    "btn-x-intent",
+  ];
+  for (const id of ids) {
+    const el = document.getElementById(id);
+    if (el) el.disabled = busy;
+  }
+  document.querySelectorAll("[data-assist]").forEach((btn) => {
+    btn.disabled = busy || state.assisting;
+  });
+  const ia = document.getElementById("f-ia");
+  if (ia) ia.disabled = busy || state.generatingKeywords;
+  if (!busy) syncPublishButton();
+  else {
+    const pub = document.getElementById("btn-publish");
+    if (pub) pub.disabled = true;
+  }
+  paintEditMessages();
+}
+
+function paintEditTopMeta() {
+  const meta = document.querySelector(".main-edit .topbar .meta");
+  if (!meta || !state.article) return;
+  const d = state.article.data;
+  meta.textContent = `#${d.wp_id} · ${d.draft ? "brouillon" : "en ligne"}`;
+}
+
+function paintModifiedLabel() {
+  const el = document.getElementById("f-modified");
+  if (!el || !state.article) return;
+  const d = state.article.data;
+  if (d.draft) {
+    el.innerHTML =
+      '— <span class="sub">après publication, si l’article est modifié</span>';
+    return;
+  }
+  const label = updateDateLabel(d);
+  el.innerHTML = label
+    ? escapeHtml(label)
+    : '— <span class="sub">renseignée automatiquement à l’enregistrement</span>';
+}
+
+/** Champ date + aide selon draft / date conservée. */
+function paintDateField() {
+  const dateEl = document.getElementById("f-date");
+  const help = document.getElementById("date-help");
+  if (!dateEl || !state.article) return;
+  const d = state.article.data;
+  if (d.draft) {
+    dateEl.disabled = true;
+    dateEl.value = d.date ? toDatetimeLocalValue(d.date) : "";
+    if (help) {
+      help.textContent = d.date
+        ? "Conservée — restaurée à la remise en ligne (pas de nouvelle date)."
+        : "Fixée automatiquement à la première publication.";
+    }
+  } else {
+    dateEl.disabled = false;
+    dateEl.value = d.date ? toDatetimeLocalValue(d.date) : "";
+    if (help) {
+      help.textContent = "Fait foi pour le tri et l’affichage principal.";
+    }
+  }
+}
+
+function paintDraftButton() {
+  const btn = document.getElementById("btn-draft");
+  const help = document.getElementById("draft-help");
+  if (!btn || !state.article) return;
+  const d = state.article.data;
+  btn.classList.toggle("is-pressed", Boolean(d.draft));
+  btn.setAttribute("aria-pressed", d.draft ? "true" : "false");
+  btn.disabled = state.saving || state.translating;
+  if (help) {
+    help.textContent = d.draft
+      ? "Enfoncé = hors ligne. Effet immédiat."
+      : state.caps.publish
+        ? "Appuyer pour passer en brouillon tout de suite."
+        : "Appuyer pour passer en brouillon. Remise en ligne : éditeur.";
+  }
+}
+
+function paintKeywordsFromArticle() {
+  const ia = document.getElementById("f-ia");
+  if (!ia || !state.article) return;
+  if (state.article.data.access === "granted") return;
+  const kws = state.article.data.ia_keywords || [];
+  ia.value = kws.join(", ");
+  ia.style.height = "auto";
+  ia.style.height = `${Math.max(120, ia.scrollHeight)}px`;
+}
+
+/**
+ * Après save / draft : met à jour chrome sans détruire l’éditeur.
+ * @param {{ fullIfDraftFlip?: boolean, wasDraft?: boolean }} [opts]
+ * @returns {boolean} true si un render() complet a été fait
+ */
+function paintEditAfterMutation({ fullIfDraftFlip = false, wasDraft = false } = {}) {
+  const nowDraft = Boolean(state.article?.data?.draft);
+  if (fullIfDraftFlip && wasDraft && !nowDraft) {
+    // brouillon → en ligne : bouton push, date éditable, etc.
+    render();
+    return true;
+  }
+  paintEditTopMeta();
+  paintModifiedLabel();
+  paintDateField();
+  paintDraftButton();
+  paintKeywordsFromArticle();
+  setEditBusy(false);
+  paintEditMessages();
+  syncPublishButton();
+  return false;
 }
 
 /** Chapô WP-style : 1er `<p><strong>…</strong></p>` en tête de corps. */
@@ -534,8 +879,9 @@ function collectForm() {
     author: authorName,
     author_slug: pick?.slug || undefined,
     author_user_id: pick?.userId != null ? pick.userId : pick ? null : undefined,
+    // Brouillon : conserver la date de 1ʳᵉ publication (ne pas l’effacer à l’enregistrement).
     date: a.data.draft
-      ? null
+      ? a.data.date || null
       : document.getElementById("f-date")?.value
         ? fromDatetimeLocalValue(document.getElementById("f-date").value)
         : a.data.date || null,
@@ -793,6 +1139,7 @@ async function bootstrap() {
     } catch {
       /* ignore */
     }
+    await loadRubrics();
     await openDesiredView();
   } catch {
     state.view = "login";
@@ -1997,11 +2344,19 @@ async function loadXPanel(account) {
 }
 
 async function openArticle(wpId) {
+  if (
+    state.view === "edit" &&
+    state.article?.data?.wp_id != null &&
+    Number(state.article.data.wp_id) !== Number(wpId)
+  ) {
+    if (!confirmLeaveEdit()) return;
+  }
   state.status = "";
   state.error = "";
   state.authorPick = null;
   authorAc.reset();
   resetXPanel();
+  await loadRubrics();
   const data = await api(`/api/desk/articles/${wpId}`);
   state.article = data.article;
   setEditBaselineFromArticle(data.article);
@@ -2065,25 +2420,40 @@ function flushFormToState() {
   }
 }
 
-async function saveArticle({ publish = false } = {}) {
+/**
+ * @param {{ publish?: boolean, skipPublishConfirm?: boolean, allowPush?: boolean }} [opts]
+ *   allowPush=false : remise en ligne via Brouillon (pas de push).
+ *   skipPublishConfirm : confirm déjà géré (ex. undraft dirty).
+ */
+async function saveArticle({
+  publish = false,
+  skipPublishConfirm = false,
+  allowPush = true,
+} = {}) {
   const payload = collectForm();
   if (!payload || !state.article) return;
   if (publish) {
     if (!state.caps.publish) {
       state.error = "Publication réservée éditeur/admin";
-      render();
+      paintEditMessages();
       return;
     }
     payload.draft = false;
   }
   const wantPush =
+    Boolean(allowPush) &&
     Boolean(state.caps.publish) &&
     Boolean(document.getElementById("f-push")?.checked);
+  if (publish && !skipPublishConfirm) {
+    const msg = wantPush
+      ? "Publier maintenant et envoyer un push OneSignal ?"
+      : "Publier maintenant ?";
+    if (!confirm(msg)) return;
+  }
   const hadKw = (payload.ia_keywords || []).length > 0;
-  // Sync avant re-render (sinon le DOM reconstruit depuis un state périmé
-  // perd texte / rubriques / accès / mots-clés si l’API échoue).
+  const wasDraft = Boolean(state.article.data.draft);
+  // Sync state sans reconstruire l’éditeur (garde curseur / scroll).
   flushFormToState();
-  state.saving = true;
   state.error = "";
   state.status =
     payload.access === "subscribers" && !hadKw
@@ -2095,7 +2465,7 @@ async function saveArticle({ publish = false } = {}) {
           ? "Publication + push…"
           : "Publication…"
         : "Enregistrement…";
-  render();
+  setEditBusy(true);
   try {
     const wpId = state.article.data.wp_id;
     const data = await api(`/api/desk/articles/${wpId}`, {
@@ -2133,7 +2503,11 @@ async function saveArticle({ publish = false } = {}) {
     state.status = "";
   } finally {
     state.saving = false;
-    render();
+    if (state.view === "edit" && state.article) {
+      paintEditAfterMutation({ fullIfDraftFlip: publish, wasDraft });
+    } else {
+      render();
+    }
   }
 }
 
@@ -2237,7 +2611,11 @@ async function onAccessChange() {
   await generateKeywords({ force: true });
 }
 
-/** Bascule brouillon immédiatement (sans Enregistrer). */
+/**
+ * Bascule brouillon.
+ * Remise en ligne = même chemin que Publier (PUT corps local puis /publish), sans push.
+ * Passage brouillon = PUT (si besoin) puis POST /draft.
+ */
 async function toggleDraft() {
   if (!state.article || state.saving || state.generatingKeywords) return;
   const nextDraft = !state.article.data.draft;
@@ -2250,33 +2628,63 @@ async function toggleDraft() {
     }
     return;
   }
+
+  // Remise en ligne : persister le brouillon local puis /publish (pas le body BDD stale).
+  if (!nextDraft) {
+    if (isEditContentDirty()) {
+      const ok = confirm(
+        "Des modifications non enregistrées seront mises en ligne. Continuer ?"
+      );
+      if (!ok) return;
+    }
+    await saveArticle({
+      publish: true,
+      skipPublishConfirm: true,
+      allowPush: false,
+    });
+    return;
+  }
+
+  // Passage en brouillon : enregistrer d’abord si dirty, puis draft API.
+  if (isEditContentDirty()) {
+    const ok = confirm(
+      "Enregistrer les modifications et passer en brouillon ?"
+    );
+    if (!ok) return;
+  }
+
+  const payload = collectForm();
+  if (!payload) return;
   flushFormToState();
-  state.saving = true;
   state.error = "";
-  state.status = nextDraft ? "Passage en brouillon…" : "Remise en ligne…";
-  render();
+  state.status = "Passage en brouillon…";
+  setEditBusy(true);
   try {
     const wpId = state.article.data.wp_id;
-    const data = await api(`/api/desk/articles/${wpId}/draft`, {
-      method: "POST",
-      body: JSON.stringify({ draft: nextDraft }),
+    const data = await api(`/api/desk/articles/${wpId}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
     });
-    const localBody = state.article.body;
-    const localData = { ...state.article.data };
     state.article = data.article;
-    state.article.body = localBody;
-    Object.assign(state.article.data, localData, {
-      draft: Boolean(data.article?.data?.draft),
-      date: data.article?.data?.date ?? null,
+    const drafted = await api(`/api/desk/articles/${wpId}/draft`, {
+      method: "POST",
+      body: JSON.stringify({ draft: true }),
     });
+    state.article = drafted.article;
     setEditBaselineFromArticle(state.article);
-    state.status = state.article.data.draft ? "Brouillon" : "En ligne";
+    state.status = "Brouillon";
   } catch (err) {
     state.error = err.message || "Échec brouillon";
     state.status = "";
   } finally {
     state.saving = false;
-    render();
+    if (state.view === "edit" && state.article) {
+      paintEditAfterMutation();
+      // Retirer « push maintenant » si présent (article hors ligne).
+      document.getElementById("btn-push-now")?.remove();
+    } else {
+      render();
+    }
   }
 }
 
@@ -2834,10 +3242,17 @@ function renderEdit() {
   const dateVal =
     !d.draft && d.date ? toDatetimeLocalValue(d.date) : "";
   const updatedLabel = updateDateLabel(d);
-  const chips = CATEGORIES.map((c) => {
-    const on = (d.categories || []).includes(c.value) ? "on" : "";
-    return `<button type="button" class="chip ${on}" data-value="${c.value}">${escapeHtml(c.label)}</button>`;
-  }).join("");
+  const selected = new Set((d.categories || []).map(String));
+  const known = rubricList();
+  const extras = [...selected]
+    .filter((slug) => !known.some((c) => c.value === slug))
+    .map((slug) => ({ value: slug, label: catLabel(slug) }));
+  const chips = [...known, ...extras]
+    .map((c) => {
+      const on = selected.has(c.value) ? "on" : "";
+      return `<button type="button" class="chip ${on}" data-value="${escapeHtml(c.value)}">${escapeHtml(c.label)}</button>`;
+    })
+    .join("");
 
   const body = a.body || "";
   const editorPane =
@@ -2867,28 +3282,55 @@ function renderEdit() {
             </div>
             ${
               state.mode === "preview"
-                ? `<p class="editor-preview-hint">Aperçu mise en page site (non enregistré)</p>`
+                ? (() => {
+                    const liveHref = !d.draft ? articlePublicPath(a) : "";
+                    const isGranted = d.access === "granted";
+                    const view = state.previewView || "full";
+                    return `<div class="editor-preview-bar">
+              <p class="editor-preview-hint">Aperçu mise en page site (non enregistré)</p>
+              <div class="preview-view-toggle" role="group" aria-label="Mode d’aperçu">
+                <button type="button" class="btn ${view === "full" ? "active" : ""}" data-preview-view="full">Corps complet</button>
+                <button type="button" class="btn ${view === "visitor" ? "active" : ""}" data-preview-view="visitor" ${
+                      isGranted ? "disabled title=\"Article gratuit — pas de paywall\"" : 'title="Teaser + paywall (lecteur non abonné)"'
+                    }>Vue non abonné</button>
+              </div>
+              ${
+                liveHref
+                  ? `<a class="btn btn-ghost preview-live-link" href="${escapeHtml(liveHref)}" target="_blank" rel="noopener">Voir en ligne</a>`
+                  : `<span class="preview-live-link sub">Voir en ligne : après publication</span>`
+              }
+            </div>`;
+                  })()
                 : ""
             }
             ${
               state.mode === "visual" || state.mode === "html"
-                ? `<div class="editor-toolbar">
+                ? `<div class="editor-toolbar" role="toolbar" aria-label="Outils d’édition">
                     ${
                       state.mode === "visual"
-                        ? `<button type="button" class="btn" data-cmd="bold">Gras</button>
+                        ? `<div class="toolbar-group toolbar-group--history" role="group" aria-label="Historique et nettoyage">
+                    <button type="button" class="btn" data-cmd="undo" title="Annuler (Ctrl+Z)">Annuler</button>
+                    <button type="button" class="btn" data-cmd="redo" title="Rétablir (Ctrl+Shift+Z)">Rétablir</button>
+                    <button type="button" class="btn" data-cmd="clean" title="Retire couleurs/polices collées (Word, Docs) — conserve le centrage">Nettoyer</button>
+                  </div>
+                  <div class="toolbar-group toolbar-group--format" role="group" aria-label="Mise en forme">
+                    <button type="button" class="btn" data-cmd="bold">Gras</button>
                     <button type="button" class="btn" data-cmd="italic">Italique</button>
                     <button type="button" class="btn" data-cmd="ul">Liste</button>
+                    <button type="button" class="btn" data-cmd="quote" title="Citation">Citation</button>
                     <button type="button" class="btn" data-cmd="link">Lien</button>
                     <button type="button" class="btn" data-cmd="image">Document</button>
-                    <span class="toolbar-sep" aria-hidden="true"></span>
+                  </div>
+                  <div class="toolbar-group toolbar-group--align" role="group" aria-label="Alignement">
                     <button type="button" class="btn btn-align" data-cmd="alignLeft" title="Aligner à gauche" aria-label="Aligner à gauche">Gauche</button>
                     <button type="button" class="btn btn-align" data-cmd="alignCenter" title="Centrer" aria-label="Centrer">Centre</button>
                     <button type="button" class="btn btn-align" data-cmd="alignRight" title="Aligner à droite" aria-label="Aligner à droite">Droite</button>
-                    <span class="toolbar-sep" aria-hidden="true"></span>`
-                        : ""
-                    }
+                  </div>`
+                        : `<div class="toolbar-group toolbar-group--clean" role="group" aria-label="Nettoyage">
                     <button type="button" class="btn" data-cmd="clean" title="Retire couleurs/polices collées (Word, Docs) — conserve le centrage">Nettoyer</button>
-                    <span class="toolbar-sep" aria-hidden="true"></span>
+                  </div>`
+                    }
+                  <div class="toolbar-group toolbar-group--assist" role="group" aria-label="Assistance IA">
                     <button type="button" class="btn" data-assist="corriger" ${
                       state.assisting || state.saving ? "disabled" : ""
                     }>Corriger</button>
@@ -2898,6 +3340,7 @@ function renderEdit() {
                     <button type="button" class="btn" data-assist="chapo" ${
                       state.assisting || state.saving ? "disabled" : ""
                     }>Chapô</button>
+                  </div>
                   </div>`
                 : ""
             }
@@ -2921,23 +3364,19 @@ function renderEdit() {
               <label for="f-date">Date de publication</label>
               ${
                 d.draft
-                  ? `<input id="f-date" type="datetime-local" value="" disabled />
-              <p class="uk-help">Fixée automatiquement au moment de la publication.</p>`
+                  ? d.date
+                    ? `<input id="f-date" type="datetime-local" value="${toDatetimeLocalValue(d.date)}" disabled />
+              <p class="uk-help" id="date-help">Conservée — restaurée à la remise en ligne (pas de nouvelle date).</p>`
+                    : `<input id="f-date" type="datetime-local" value="" disabled />
+              <p class="uk-help" id="date-help">Fixée automatiquement à la première publication.</p>`
                   : `<input id="f-date" type="datetime-local" value="${dateVal}" />
-              <p class="uk-help">Fait foi pour le tri et l’affichage principal.</p>`
+              <p class="uk-help" id="date-help">Fait foi pour le tri et l’affichage principal.</p>`
               }
             </div>
             <div class="field">
-              <label>Mise à jour</label>
-              <p class="date-updated" id="f-modified">${
-                d.draft
-                  ? "— <span class=\"sub\">après publication, si l’article est modifié</span>"
-                  : updatedLabel
-                    ? escapeHtml(updatedLabel)
-                    : "— <span class=\"sub\">renseignée automatiquement à l’enregistrement</span>"
-              }</p>
+              <label>Rubriques</label>
+              <div class="chips" id="chips">${chips}<button type="button" class="chip-add" id="btn-add-category" title="Ajouter une rubrique" aria-label="Ajouter une rubrique"><span aria-hidden="true">+</span></button></div>
             </div>
-            <div class="field"><label>Rubriques</label><div class="chips" id="chips">${chips}</div></div>
             <div class="field"><label for="f-access">Accès</label>
               <select id="f-access"><option value="subscribers" ${d.access !== "granted" ? "selected" : ""}>Abonnés</option><option value="granted" ${d.access === "granted" ? "selected" : ""}>Gratuit</option></select>
             </div>
@@ -2956,7 +3395,15 @@ function renderEdit() {
             </div>`
                 : `<p class="uk-help">Article gratuit : tags WP à l’affichage (pas de mots-clés IA).</p>`
             }
-            <div class="field">
+            <div class="field field--updated">
+              <label>Mise à jour</label>
+              <p class="date-updated" id="f-modified">${
+                d.draft
+                  ? "— <span class=\"sub\">après publication, si l’article est modifié</span>"
+                  : updatedLabel
+                    ? escapeHtml(updatedLabel)
+                    : "— <span class=\"sub\">renseignée automatiquement à l’enregistrement</span>"
+              }</p>
               <button
                 type="button"
                 id="btn-draft"
@@ -2964,7 +3411,7 @@ function renderEdit() {
                 aria-pressed="${d.draft ? "true" : "false"}"
                 ${state.saving || state.translating ? "disabled" : ""}
               >Brouillon</button>
-              <p class="uk-help">${
+              <p class="uk-help" id="draft-help">${
                 d.draft
                   ? "Enfoncé = hors ligne. Effet immédiat."
                   : state.caps.publish
@@ -2974,10 +3421,13 @@ function renderEdit() {
             </div>
 
             ${
-              state.caps.publish
-                ? `<div class="push-panel">
-              <p class="meta-title">OneSignal</p>
-              <label class="row" style="min-height:var(--tap)">
+              (() => {
+                const foldOpen =
+                  typeof window !== "undefined" &&
+                  window.matchMedia("(min-width: 960px)").matches;
+                const openAttr = foldOpen ? " open" : "";
+                const pushInner = state.caps.publish
+                  ? `<label class="row" style="min-height:var(--tap)">
                 <input type="checkbox" id="f-push" />
                 Envoyer un push à la publication
               </label>
@@ -2986,14 +3436,9 @@ function renderEdit() {
                 !d.draft
                   ? `<button class="btn" type="button" id="btn-push-now" ${state.saving || state.translating ? "disabled" : ""}>Envoyer un push maintenant</button>`
                   : ""
-              }
-            </div>`
-                : `<div class="push-panel"><p class="uk-help">Publication et push réservés aux éditeurs / admins. Vous pouvez enregistrer en brouillon.</p></div>`
-            }
-
-            <div class="x-panel">
-              <p class="meta-title">X</p>
-              <div class="x-variants" id="x-variants">
+              }`
+                  : `<p class="uk-help">Publication et push réservés aux éditeurs / admins. Vous pouvez enregistrer en brouillon.</p>`;
+                const xInner = `<div class="x-variants" id="x-variants">
                 ${(state.x.variants || [])
                   .map(
                     (v, i) =>
@@ -3023,28 +3468,32 @@ function renderEdit() {
                 <button class="btn btn-accent" type="button" id="btn-x-intent" ${
                   state.x.busy || state.x.loading ? "disabled" : ""
                 }>Ouvrir sur X</button>
-              </div>
-            </div>
-
-            <div class="uk-panel">
-              <p class="meta-title">Version UK</p>
-              ${
-                (d.lang || "fr") === "en"
-                  ? `<p class="uk-help">Article anglais (DeepL EN-GB). Publication après relecture.</p>
-                     ${
-                       d.translation_fr
-                         ? `<button class="btn" type="button" id="btn-open-fr">Ouvrir le FR #${d.translation_fr}</button>
-                            <button class="btn btn-uk" type="button" id="btn-retranslate" ${state.translating || state.saving ? "disabled" : ""}>Retraduire depuis le FR</button>`
-                         : `<p class="sub">Pas de lien FR.</p>`
-                     }`
-                  : d.translation_en
-                    ? `<p class="uk-help">Lié à l’EN <strong>#${d.translation_en}</strong></p>
-                       <button class="btn" type="button" id="btn-open-en">Ouvrir la version UK</button>
-                       <button class="btn btn-uk" type="button" id="btn-retranslate" ${state.translating || state.saving ? "disabled" : ""}>Retraduire (écraser)</button>`
-                    : `<p class="uk-help">Crée un brouillon EN-GB via DeepL (titre, corps). Validation humaine ensuite.</p>
-                       <button class="btn btn-uk" type="button" id="btn-translate-uk" ${state.translating || state.saving ? "disabled" : ""}>Créer version UK</button>`
-              }
-            </div>
+              </div>`;
+                const ukBusy = state.translating || state.saving ? "disabled" : "";
+                const ukActions =
+                  (d.lang || "fr") === "en"
+                    ? d.translation_fr
+                      ? `<button class="btn" type="button" id="btn-open-fr">FR #${d.translation_fr}</button>
+                       <button class="btn btn-uk" type="button" id="btn-retranslate" ${ukBusy}>Retraduire</button>`
+                      : ""
+                    : d.translation_en
+                      ? `<button class="btn" type="button" id="btn-open-en">Ouvrir</button>
+                       <button class="btn btn-uk" type="button" id="btn-retranslate" ${ukBusy}>Retraduire</button>`
+                      : `<button class="btn btn-uk" type="button" id="btn-translate-uk" ${ukBusy}>Traduire</button>`;
+                return `<details class="meta-fold push-panel"${openAttr}>
+              <summary class="meta-title">OneSignal</summary>
+              ${pushInner}
+            </details>
+            <details class="meta-fold x-panel"${openAttr}>
+              <summary class="meta-title">X</summary>
+              ${xInner}
+            </details>
+            <div class="uk-bar meta-fold">
+              <span class="meta-title">Version UK</span>
+              <div class="uk-bar-actions">${ukActions}</div>
+            </div>`;
+              })()
+            }
           </div>
         </aside>
       </div>
@@ -3057,7 +3506,7 @@ function renderEdit() {
               canClickPublish() ? "" : "disabled"
             } title="${
               !d.draft && !canClickPublish()
-                ? "Déjà publié — modifiez le texte pour republier"
+                ? "Déjà publié — modifiez le texte ou les métas pour republier"
                 : "Publier"
             }">Publier</button>`
           : ""
@@ -3065,14 +3514,21 @@ function renderEdit() {
     </div>`;
 
   document.getElementById("btn-back").onclick = async () => {
+    if (!confirmLeaveEdit()) return;
     state.view = "list";
     await loadList();
   };
   document.getElementById("btn-save").onclick = () => saveArticle({ publish: false });
   const btnPublish = document.getElementById("btn-publish");
-  if (btnPublish) btnPublish.onclick = () => saveArticle({ publish: true });
+  if (btnPublish) {
+    btnPublish.onclick = () =>
+      saveArticle({ publish: true, skipPublishConfirm: false, allowPush: true });
+  }
   const onEditDirty = () => syncPublishButton();
   document.getElementById("f-title")?.addEventListener("input", onEditDirty);
+  document.getElementById("f-author")?.addEventListener("input", onEditDirty);
+  document.getElementById("f-date")?.addEventListener("change", onEditDirty);
+  document.getElementById("f-date")?.addEventListener("input", onEditDirty);
   const btnDraft = document.getElementById("btn-draft");
   if (btnDraft) btnDraft.onclick = () => toggleDraft();
   const btnPushNow = document.getElementById("btn-push-now");
@@ -3118,7 +3574,10 @@ function renderEdit() {
       kwField.style.height = `${Math.max(120, kwField.scrollHeight)}px`;
     };
     autosize();
-    kwField.oninput = autosize;
+    kwField.oninput = () => {
+      autosize();
+      onEditDirty();
+    };
   }
   const authorInput = document.getElementById("f-author");
   if (authorInput) {
@@ -3150,8 +3609,13 @@ function renderEdit() {
   });
 
   app.querySelectorAll("#chips .chip").forEach((chip) => {
-    chip.onclick = () => chip.classList.toggle("on");
+    chip.onclick = () => {
+      chip.classList.toggle("on");
+      onEditDirty();
+    };
   });
+  const btnAddCat = document.getElementById("btn-add-category");
+  if (btnAddCat) btnAddCat.onclick = () => createRubric();
 
   if (state.mode === "visual") {
     const ed = getVisualEditor();
@@ -3169,6 +3633,9 @@ function renderEdit() {
         if (cmd === "bold") exec("bold");
         else if (cmd === "italic") exec("italic");
         else if (cmd === "ul") exec("insertUnorderedList");
+        else if (cmd === "quote") execFormatBlock("blockquote");
+        else if (cmd === "undo") exec("undo");
+        else if (cmd === "redo") exec("redo");
         else if (cmd === "alignLeft") exec("justifyLeft");
         else if (cmd === "alignCenter") exec("justifyCenter");
         else if (cmd === "alignRight") exec("justifyRight");
@@ -3189,18 +3656,22 @@ function renderEdit() {
     });
   }
   if (state.mode === "preview") {
-    const frame = document.getElementById("article-preview-frame");
-    if (frame) {
-      frame.srcdoc = buildArticlePreviewDoc({
-        title: d.title,
-        body,
-        author: d.author || "",
-        date: d.draft ? null : d.date,
-        categories: d.categories || [],
-        categoryNames: d.category_names || [],
-        updateLabel: updatedLabel,
-      });
+    if (d.access === "granted" && state.previewView === "visitor") {
+      state.previewView = "full";
     }
+    fillArticlePreviewFrame();
+    app.querySelectorAll("[data-preview-view]").forEach((btn) => {
+      btn.onclick = () => {
+        if (btn.disabled) return;
+        const next = btn.dataset.previewView === "visitor" ? "visitor" : "full";
+        if (state.previewView === next) return;
+        state.previewView = next;
+        app.querySelectorAll("[data-preview-view]").forEach((b) => {
+          b.classList.toggle("active", b.dataset.previewView === next);
+        });
+        fillArticlePreviewFrame();
+      };
+    });
   }
   syncPublishButton();
 }
@@ -3418,5 +3889,15 @@ function render() {
   if (state.view === "audience") return renderAudience();
   return renderList();
 }
+
+/** Garde onglet navigateur si titre/corps dirty en édition. */
+function onBeforeUnload(e) {
+  if (state.view !== "edit" || state.saving) return;
+  if (!isEditContentDirty()) return;
+  e.preventDefault();
+  e.returnValue = "";
+}
+
+window.addEventListener("beforeunload", onBeforeUnload);
 
 bootstrap();

@@ -7,14 +7,15 @@ import {
   categoryArchiveBase,
   getCategoryArchivePage,
 } from "../../../lib/archive";
-import { CATEGORIES, categoryName } from "../../../lib/categories";
+import { getCategory } from "../../../lib/categories";
 
 const { slug } = Astro.params;
-if (!slug || !CATEGORIES.some((c) => c.slug === slug)) {
+const category = slug ? await getCategory(slug) : null;
+if (!category) {
   return Astro.redirect("/404/");
 }
 
-const name = categoryName(slug);
+const name = category.name;
 const { featured, rest, page, totalPages } = await getCategoryArchivePage(
   slug,
   "fr",

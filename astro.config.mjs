@@ -24,6 +24,7 @@ export default defineConfig({
     resolve: {
       alias: {
         '@el/excerpt': path.join(root, 'shared/excerpt.mjs'),
+        '@el/categories': path.join(root, 'shared/categories.mjs'),
       },
     },
     server: {
