@@ -37,6 +37,123 @@ function purifyHtml(html) {
   });
 }
 
+/**
+ * Document HTML pour l’iframe Aperçu — CSS site (single article).
+ * Corps complet (pas de paywall) ; titre/metas = brouillon local.
+ */
+function buildArticlePreviewDoc({
+  title = "",
+  body = "",
+  author = "",
+  date = null,
+  categories = [],
+  categoryNames = [],
+  updateLabel = "",
+} = {}) {
+  const safeTitle = escapeHtml(title || "Sans titre");
+  const safeBody = purifyHtml(cleanBody(body) || "<p><em>Vide</em></p>");
+  const dateLabel = formatDate(date) || "—";
+  const dateIso =
+    date != null && date !== ""
+      ? (() => {
+          const dt = new Date(date);
+          return Number.isNaN(dt.getTime()) ? "" : dt.toISOString();
+        })()
+      : "";
+  const authorLi = author
+    ? `<li class="post-author"><span>${escapeHtml(author)}</span></li>`
+    : "";
+  const updatedBlock = updateLabel
+    ? `<p class="post-updated"><time>${escapeHtml(`Mis à jour le ${updateLabel}`)}</time></p>`
+    : "";
+  const catLinks = (categories || [])
+    .map((slug, i) => {
+      const name = categoryNames[i] || catLabel(slug) || slug;
+      return `<a href="/articles/category/${escapeHtml(slug)}/">${escapeHtml(name)}</a>`;
+    })
+    .join("");
+  const catBlock = catLinks
+    ? `<div class="category">${catLinks}</div>`
+    : "";
+
+  const css = [
+    "/css/el/el-tokens.css",
+    "/css/el/el-reset.css",
+    "/css/el/el-global.css",
+    "/css/el/el-article.css",
+    "/css/el/single.css",
+  ]
+    .map((href) => `<link rel="stylesheet" href="${href}" />`)
+    .join("\n");
+
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<base target="_blank" />
+${css}
+<style>
+  html, body { margin: 0; min-height: 100%; }
+  body.el-single-page {
+    background: var(--el-surface-alt, #f6f7f9);
+    padding: 20px 16px 40px;
+  }
+  .desk-preview-wrap {
+    max-width: 720px;
+    margin: 0 auto;
+  }
+</style>
+</head>
+<body class="el-single-page">
+  <div class="desk-preview-wrap">
+    <article class="news-snippet el-single-article-card">
+      <div class="ihead info">
+        <ul class="list-inline">
+          <li><time${dateIso ? ` datetime="${escapeHtml(dateIso)}"` : ""}>${escapeHtml(dateLabel)}</time></li>
+          ${authorLi}
+        </ul>
+        ${updatedBlock}
+      </div>
+      <h1 class="news-title page-title">${safeTitle}</h1>
+      ${catBlock}
+      <div class="inner-article-content entry-content">${safeBody}</div>
+    </article>
+  </div>
+</body>
+</html>`;
+}
+
+/** Flush champs édition vers state avant re-render (changement d’onglet). */
+function flushEditFormToState() {
+  if (!state.article) return;
+  if (state.mode === "visual" || state.mode === "html") {
+    state.article.body = getBodyFromDom();
+  }
+  const titleEl = document.getElementById("f-title");
+  if (titleEl) {
+    state.article.data.title =
+      titleEl.value.trim() || state.article.data.title || "";
+  }
+  const authorEl = document.getElementById("f-author");
+  if (authorEl) {
+    state.article.data.author =
+      authorEl.value.trim() || state.article.data.author || "";
+  }
+  const chips = [...document.querySelectorAll("#chips .chip.on")].map(
+    (el) => el.dataset.value
+  );
+  if (chips.length) {
+    state.article.data.categories = chips;
+    state.article.data.category_names = chips.map(catLabel);
+  }
+  const dateEl = document.getElementById("f-date");
+  if (dateEl && !dateEl.disabled && dateEl.value) {
+    const iso = fromDatetimeLocalValue(dateEl.value);
+    if (iso) state.article.data.date = iso;
+  }
+}
+
 const state = {
   user: null,
   caps: { manageUsers: false, editAll: false, publish: false, audience: false },
@@ -2727,7 +2844,7 @@ function renderEdit() {
     state.mode === "html"
       ? `<textarea class="html-editor" id="html-editor">${escapeHtml(body)}</textarea>`
       : state.mode === "preview"
-        ? `<div class="visual-editor" id="preview-pane"></div>`
+        ? `<iframe class="article-preview-frame" id="article-preview-frame" title="Aperçu mise en page site" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>`
         : `<div class="visual-editor" id="visual-editor" contenteditable="true" role="textbox" aria-label="Texte"></div>`;
 
   app.innerHTML = `
@@ -2738,7 +2855,9 @@ function renderEdit() {
     <main class="main main-edit">
       <div class="edit-grid">
         <section class="edit-col-write" aria-label="Rédaction">
-          <input class="title-input" id="f-title" value="${escapeHtml(d.title)}" placeholder="Titre" />
+          <input class="title-input" id="f-title" value="${escapeHtml(d.title)}" placeholder="Titre" ${
+            state.mode === "preview" ? "hidden" : ""
+          } />
 
           <div class="editor-chrome">
             <div class="editor-tabs">
@@ -2746,6 +2865,11 @@ function renderEdit() {
               <button type="button" data-mode="preview" class="${state.mode === "preview" ? "active" : ""}">Aperçu</button>
               <button type="button" data-mode="html" class="${state.mode === "html" ? "active" : ""}">HTML</button>
             </div>
+            ${
+              state.mode === "preview"
+                ? `<p class="editor-preview-hint">Aperçu mise en page site (non enregistré)</p>`
+                : ""
+            }
             ${
               state.mode === "visual" || state.mode === "html"
                 ? `<div class="editor-toolbar">
@@ -3019,9 +3143,7 @@ function renderEdit() {
 
   app.querySelectorAll(".editor-tabs [data-mode]").forEach((btn) => {
     btn.onclick = () => {
-      if (state.mode === "visual" || state.mode === "html") {
-        state.article.body = getBodyFromDom();
-      }
+      flushEditFormToState();
       state.mode = btn.dataset.mode;
       render();
     };
@@ -3067,9 +3189,18 @@ function renderEdit() {
     });
   }
   if (state.mode === "preview") {
-    document.getElementById("preview-pane").innerHTML = purifyHtml(
-      body || "<p><em>Vide</em></p>"
-    );
+    const frame = document.getElementById("article-preview-frame");
+    if (frame) {
+      frame.srcdoc = buildArticlePreviewDoc({
+        title: d.title,
+        body,
+        author: d.author || "",
+        date: d.draft ? null : d.date,
+        categories: d.categories || [],
+        categoryNames: d.category_names || [],
+        updateLabel: updatedLabel,
+      });
+    }
   }
   syncPublishButton();
 }
