@@ -15,6 +15,7 @@ import {
 import { purgeFrontCache } from './front-cache.mjs';
 import { callEditorialAssist } from './editorial-assist.mjs';
 import { chapo } from './excerpt.mjs';
+import { cleanHtml } from './html-clean.mjs';
 import { handleDeskMedia } from './media/handler.mjs';
 import { handleDeskArticleX } from './x-desk.mjs';
 import {
@@ -155,15 +156,6 @@ export function canEditArticle(session, row) {
   if (!session || !canAccessDesk(session.role)) return false;
   if (canEditAll(session.role)) return true;
   return Number(row.author_user_id) === Number(session.uid);
-}
-
-function cleanHtml(html) {
-  if (typeof html !== 'string') return '';
-  return html
-    .replace(/\s*data-(?:start|end|pm-slice|pm-paste)=["'][^"']*["']/gi, '')
-    .replace(/\s{2,}/g, ' ')
-    .replace(/\s+>/g, '>')
-    .trim();
 }
 
 function slugify(title) {
@@ -350,7 +342,7 @@ async function translateUk(req, res, sourceRow, ctx) {
   }
 
   const title = (translated.title || '').trim() || `${fr.title} (EN)`;
-  const body = cleanHtml(translated.body || '');
+  const body = cleanHtml(translated.body || '', 'store');
   // Excerpt = début proportionnel du corps EN (pas le chapô gras)
   const excerpt = chapo(body, 'store');
   const now = nowMysql();
@@ -757,7 +749,7 @@ export async function handleDesk(req, res, parts, ctx) {
             ? 0
             : 1
           : 1;
-      const bodyHtml = cleanHtml(payload.body || '');
+      const bodyHtml = cleanHtml(payload.body || '', 'store');
       const sourceUrl = payload.source_url
         ? String(payload.source_url).trim().slice(0, 500) || null
         : null;
@@ -999,7 +991,7 @@ export async function handleDesk(req, res, parts, ctx) {
         ? String(payload.excerpt)
         : existing.excerpt || '';
     const body =
-      payload.body != null ? cleanHtml(payload.body) : existing.body || '';
+      payload.body != null ? cleanHtml(payload.body, 'store') : existing.body || '';
     const lang =
       payload.lang != null
         ? String(payload.lang)
@@ -1175,7 +1167,7 @@ export async function handleDesk(req, res, parts, ctx) {
         : existing.author_user_id;
 
     const bodyHtml =
-      payload.body != null ? cleanHtml(payload.body) : existing.body || '';
+      payload.body != null ? cleanHtml(payload.body, 'store') : existing.body || '';
     const excerpt = chapo(bodyHtml, 'store');
     const accessNext =
       payload.access === 'granted'

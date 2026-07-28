@@ -121,6 +121,16 @@ describe('ios article dto', () => {
     assert.match(clean, />x</);
   });
 
+  it('strips inline color styles for dark mode', () => {
+    const dirty =
+      '<p style="color: rgb(0, 0, 0); font-family: arial; text-align: center">x</p>';
+    const clean = sanitizeHtmlForIos(dirty);
+    assert.doesNotMatch(clean, /color:/i);
+    assert.doesNotMatch(clean, /font-family/i);
+    assert.match(clean, /text-align:\s*center/i);
+    assert.match(clean, />x</);
+  });
+
   it('escapes plain-text HTML special chars', () => {
     const clean = sanitizeHtmlForIos('a < b & c');
     assert.match(clean, /&lt;/);

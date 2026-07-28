@@ -1,4 +1,5 @@
 import { stripLeadingChapoHtml, chapo } from "./excerpt.js";
+import { cleanHtml as cleanArticleHtml } from "./html-clean.js";
 
 const CATEGORIES = [
   { value: "web_1_2_3", label: "Web 1,2,3" },
@@ -223,34 +224,84 @@ function updateDateLabel(d) {
   return formatDateTime(d.modified);
 }
 
-function cleanHtml(html) {
-  return String(html || "")
-    .replace(/\s*data-(?:start|end|pm-slice|pm-paste)=["'][^"']*["']/gi, "")
-    .replace(/\s{2,}/g, " ")
-    .replace(/\s+>/g, ">")
-    .trim();
+/** Corps article : toujours via contexte desk (styles collés, data-pm, etc.). */
+function cleanBody(html) {
+  return cleanArticleHtml(html, "desk");
 }
 
 function exec(cmd, value) {
   document.execCommand(cmd, false, value);
 }
 
+function getVisualEditor() {
+  return document.getElementById("visual-editor");
+}
+
+function getHtmlEditor() {
+  return document.getElementById("html-editor");
+}
+
+/** Lit le corps depuis l’UI et le normalise (visuel + HTML). */
 function getBodyFromDom() {
   if (state.mode === "visual") {
-    const el = document.getElementById("visual-editor");
-    return el ? cleanHtml(el.innerHTML) : state.article?.body || "";
+    const el = getVisualEditor();
+    return el ? cleanBody(el.innerHTML) : state.article?.body || "";
   }
   if (state.mode === "html") {
-    const el = document.getElementById("html-editor");
-    return el ? el.value : state.article?.body || "";
+    const el = getHtmlEditor();
+    return el ? cleanBody(el.value) : state.article?.body || "";
   }
   return state.article?.body || "";
+}
+
+/** Applique Nettoyer dans l’éditeur courant (sans save). */
+function applyBodyClean() {
+  if (state.mode === "visual") {
+    const ed = getVisualEditor();
+    if (!ed) return;
+    const next = cleanBody(ed.innerHTML) || "<p><br></p>";
+    ed.innerHTML = next;
+    if (state.article) state.article.body = next === "<p><br></p>" ? "" : next;
+  } else if (state.mode === "html") {
+    const el = getHtmlEditor();
+    if (!el) return;
+    el.value = cleanBody(el.value);
+    if (state.article) state.article.body = el.value;
+  }
+  syncPublishButton();
+}
+
+/**
+ * Colle du HTML / texte déjà nettoyé (évite color:rgb noir-sur-noir).
+ * @param {ClipboardEvent} e
+ */
+function onVisualPaste(e) {
+  const ed = getVisualEditor();
+  if (!ed) return;
+  const clip = e.clipboardData;
+  if (!clip) return;
+  e.preventDefault();
+  const html = clip.getData("text/html");
+  const plain = clip.getData("text/plain");
+  let insert = "";
+  if (html && /<[a-z][\s\S]*>/i.test(html)) {
+    insert = cleanBody(html);
+  } else if (plain) {
+    insert = plain
+      .split(/\n{2,}/)
+      .map((p) => `<p>${escapeHtml(p).replace(/\n/g, "<br>")}</p>`)
+      .join("");
+  }
+  if (!insert) return;
+  exec("insertHTML", insert);
+  if (state.article) state.article.body = cleanBody(ed.innerHTML);
+  syncPublishButton();
 }
 
 function contentFingerprint(title, body) {
   return JSON.stringify({
     title: String(title || "").trim(),
-    body: cleanHtml(body || ""),
+    body: cleanBody(body || ""),
   });
 }
 
@@ -317,12 +368,12 @@ function insertChapoAtTop(chapoPlain) {
   const lead = `<p><strong>${escapeHtml(plain)}</strong></p>`;
   let body = getBodyFromDom();
   body = stripLeadingChapoHtml(body);
-  const next = cleanHtml(`${lead}\n${body}`);
+  const next = cleanBody(`${lead}\n${body}`);
   if (state.mode === "html") {
-    const el = document.getElementById("html-editor");
+    const el = getHtmlEditor();
     if (el) el.value = next;
   } else if (state.mode === "visual") {
-    const ed = document.getElementById("visual-editor");
+    const ed = getVisualEditor();
     if (ed) ed.innerHTML = next;
   } else {
     // aperçu : bascule en écriture pour afficher le chapô
@@ -406,7 +457,7 @@ function getAssistSourceText() {
 function assistResultToHtml(text) {
   const t = String(text || "").trim();
   if (!t) return "";
-  if (/<[a-z][\s\S]*>/i.test(t)) return cleanHtml(t);
+  if (/<[a-z][\s\S]*>/i.test(t)) return cleanBody(t);
   return t
     .split(/\n{2,}/)
     .map((p) => `<p>${escapeHtml(p).replace(/\n/g, "<br>")}</p>`)
@@ -452,7 +503,7 @@ function replaceSelectionOrBody(html) {
   } else {
     ed.innerHTML = html;
   }
-  state.article.body = cleanHtml(ed.innerHTML);
+  state.article.body = cleanBody(ed.innerHTML);
 }
 
 function stripTagsPlain(html) {
@@ -2705,7 +2756,6 @@ function renderEdit() {
                     <button type="button" class="btn" data-cmd="ul">Liste</button>
                     <button type="button" class="btn" data-cmd="link">Lien</button>
                     <button type="button" class="btn" data-cmd="image">Document</button>
-                    <button type="button" class="btn" data-cmd="clean">Nettoyer</button>
                     <span class="toolbar-sep" aria-hidden="true"></span>
                     <button type="button" class="btn btn-align" data-cmd="alignLeft" title="Aligner à gauche" aria-label="Aligner à gauche">Gauche</button>
                     <button type="button" class="btn btn-align" data-cmd="alignCenter" title="Centrer" aria-label="Centrer">Centre</button>
@@ -2713,6 +2763,8 @@ function renderEdit() {
                     <span class="toolbar-sep" aria-hidden="true"></span>`
                         : ""
                     }
+                    <button type="button" class="btn" data-cmd="clean" title="Retire couleurs/polices collées (Word, Docs) — conserve le centrage">Nettoyer</button>
+                    <span class="toolbar-sep" aria-hidden="true"></span>
                     <button type="button" class="btn" data-assist="corriger" ${
                       state.assisting || state.saving ? "disabled" : ""
                     }>Corriger</button>
@@ -2980,13 +3032,18 @@ function renderEdit() {
   });
 
   if (state.mode === "visual") {
-    const ed = document.getElementById("visual-editor");
+    const ed = getVisualEditor();
     ed.innerHTML = body || "<p><br></p>";
     ed.addEventListener("input", () => syncPublishButton());
+    ed.addEventListener("paste", onVisualPaste);
     app.querySelectorAll("[data-cmd]").forEach((btn) => {
       btn.onmousedown = (e) => {
         e.preventDefault();
         const cmd = btn.dataset.cmd;
+        if (cmd === "clean") {
+          applyBodyClean();
+          return;
+        }
         if (cmd === "bold") exec("bold");
         else if (cmd === "italic") exec("italic");
         else if (cmd === "ul") exec("insertUnorderedList");
@@ -2998,17 +3055,16 @@ function renderEdit() {
           if (url) exec("createLink", url);
         } else if (cmd === "image") {
           openMediaPicker();
-        } else if (cmd === "clean") {
-          ed.innerHTML = cleanHtml(ed.innerHTML);
         }
         syncPublishButton();
       };
     });
   }
   if (state.mode === "html") {
-    document
-      .getElementById("html-editor")
-      ?.addEventListener("input", () => syncPublishButton());
+    getHtmlEditor()?.addEventListener("input", () => syncPublishButton());
+    app.querySelectorAll('[data-cmd="clean"]').forEach((btn) => {
+      btn.onclick = () => applyBodyClean();
+    });
   }
   if (state.mode === "preview") {
     document.getElementById("preview-pane").innerHTML = purifyHtml(
@@ -3035,10 +3091,10 @@ function insertMediaIntoEditor(item) {
     state.mediaPicker.alt || item.alt || item.filename || "Document"
   ).trim();
   const html = `<p><a class="el-doc" href="${escapeHtml(url)}">${escapeHtml(label)}</a></p>`;
-  const ed = document.getElementById("visual-editor");
+  const ed = getVisualEditor();
   if (ed) {
     ed.focus();
-    document.execCommand("insertHTML", false, html);
+    exec("insertHTML", html);
     if (state.article) state.article.body = getBodyFromDom();
   }
   closeMediaPicker();

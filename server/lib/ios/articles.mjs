@@ -2,6 +2,7 @@
  * Articles iOS — lecture el_articles (draft=0), DTO compatible WP plugin.
  */
 import { chapo } from '../excerpt.mjs';
+import { cleanHtml } from '../html-clean.mjs';
 
 function normalizeLang(lang) {
   const l = String(lang || 'FR').toUpperCase();
@@ -54,7 +55,8 @@ export function sanitizeHtmlForIos(html) {
   );
   // srcdoc
   h = h.replace(/\s+srcdoc\s*=\s*("[^"]*"|'[^']*')/gi, '');
-  return h;
+  // Styles collés (color noir, font Arial…) — dark mode WebView
+  return cleanHtml(h, 'ios');
 }
 
 function rowDateIso(row) {
