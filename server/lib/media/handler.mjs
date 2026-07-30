@@ -17,7 +17,7 @@ import {
   toMediaDto,
   MAX_UPLOAD_BYTES,
 } from './storage.mjs';
-import { detectImageMime, writeImageWithThumb } from './process.mjs';
+import { detectMediaMime, writeMediaFile } from './process.mjs';
 
 function parseMultipart(req, { maxBytes = MAX_UPLOAD_BYTES } = {}) {
   return new Promise((resolve, reject) => {
@@ -146,18 +146,28 @@ export async function handleDeskMedia(req, res, parts, ctx) {
     }
     let mime;
     try {
-      mime = await detectImageMime(parsed.file.buffer);
+      mime = await detectMediaMime(
+        parsed.file.buffer,
+        parsed.file.filename || ''
+      );
     } catch (err) {
       return sendJson(res, err.status || 400, {
         error: err.message || 'Type invalide',
       });
     }
     const { relDir } = yyyymmDirs();
-    const filename = slugifyFilename(parsed.file.filename);
+    let filename;
+    try {
+      filename = slugifyFilename(parsed.file.filename, mime);
+    } catch (err) {
+      return sendJson(res, err.status || 400, {
+        error: err.message || 'Nom de fichier invalide',
+      });
+    }
     const relPath = uniqueRelPath(mediaRoot, relDir, filename);
     let processed;
     try {
-      processed = await writeImageWithThumb(
+      processed = await writeMediaFile(
         mediaRoot,
         relPath,
         parsed.file.buffer,

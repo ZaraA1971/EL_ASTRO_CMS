@@ -20,7 +20,7 @@
     "import:articles:db": "node scripts/import-md-to-el-articles.mjs",
     "media:index": "node scripts/index-el-media.mjs",
     "keywords:from-wp-tags": "node scripts/sync-ia-keywords.mjs",
-    "test": "node --test server/lib/*.test.mjs server/lib/newsletter/*.test.mjs server/lib/ios/*.test.mjs server/lib/media/*.test.mjs server/lib/x-*.test.mjs",
+    "test": "node --test server/lib/*.test.mjs server/lib/newsletter/*.test.mjs server/lib/ios/*.test.mjs server/lib/media/*.test.mjs server/lib/billing/*.test.mjs server/lib/x-*.test.mjs",
     "desk": "echo 'Pupitre: https://electronlibre.info/desk/'"
   },
   "dependencies": {
@@ -36,6 +36,7 @@
     "mysql2": "^3.23.1",
     "nodemailer": "^9.0.3",
     "sharp": "^0.35.3",
+    "stripe": "^22.3.2",
     "tailwindcss": "^4.3.3",
     "wordpress-hash-node": "^1.0.0"
   },

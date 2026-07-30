@@ -4,10 +4,10 @@ import BaseLayout from "../layouts/BaseLayout.astro";
 
 const title = "Abonnement à ElectronLibre";
 const description =
-  "Abonnez-vous à ElectronLibre : analyses sur le numérique et l’IA, newsletter, application iOS et EL Compagnon.";
+  "Abonnement ElectronLibre : information et documents exclusifs sur le numérique, la réglementation, l’économie et les nouvelles technologies. 100 € / mois ou devis annuel 900 €.";
 const mailtoSubscribe =
   "mailto:info@electronlibre.info?subject=" +
-  encodeURIComponent("Abonnement Professionnel ElectronLibre");
+  encodeURIComponent("Devis abonnement annuel ElectronLibre (900 €)");
 const mailtoQuestion =
   "mailto:info@electronlibre.info?subject=" +
   encodeURIComponent("Question abonnement ElectronLibre");
@@ -26,21 +26,9 @@ const mailtoQuestion =
     <article class="el-subscribe__card">
       <div class="el-subscribe__hero">
         <h2 class="el-subscribe__title">
-          L’analyse du numérique et de l’IA, pour les professionnels
+          L’information exclusive du numérique, pour les professionnels
         </h2>
-        <p class="el-subscribe__lead">
-          Accès illimité aux articles et rapports ElectronLibre, à la newsletter
-          quotidienne, à l’application iOS et à <strong>EL Compagnon</strong>,
-          l’assistant IA réservé aux abonnés.
-        </p>
-        <div class="el-subscribe__hero-actions">
-          <a class="btn-subscribe el-subscribe__cta" href={mailtoSubscribe}
-            >Demander un abonnement</a
-          >
-          <a class="el-subscribe__secondary" href="/login/"
-            >Déjà abonné&nbsp;? Connexion</a
-          >
-        </div>
+        <p class="el-subscribe__lead" set:html={`Accédez à une <strong>information exclusive</strong> et à des <strong>documents réservés</strong> aux abonnés&nbsp;: analyses de l’industrie et de la culture numérique, suivi de la réglementation et des lois, lectures sur l’économie, la politique et les nouvelles technologies. Chaque jour, la newsletter vous livre l’essentiel&nbsp;; l’application iOS vous alerte en mobilité&nbsp;; <strong>EL Compagnon</strong>, l’assistant IA réservé aux abonnés, vous aide à explorer et croiser ces contenus.`} />
       </div>
 
       <section class="el-subscribe__benefits" aria-labelledby="el-subscribe-why">
@@ -48,28 +36,157 @@ const mailtoQuestion =
           Pourquoi s’abonner&nbsp;?
         </h3>
         <ul class="el-subscribe__list">
-          <li>Accès exclusif à des articles et rapports spécialisés</li>
-          <li>Invitations à des événements et webinaires réservés aux abonnés</li>
-          <li>Newsletter quotidienne avec des insights du secteur</li>
-          <li>Application mobile avec alertes et accès à tous les contenus</li>
-          <li>EL Compagnon : assistant IA réservé aux abonnés</li>
+          <li>Une veille claire pour décider plus vite</li>
+          <li>Le contexte réglementaire et politique, décrypté</li>
+          <li>Des dossiers et archives au-delà de l’actualité du jour</li>
+          <li>Un accès unifié web, mobile et assistant IA</li>
         </ul>
+      </section>
+
+      <section
+        class="el-subscribe__plans"
+        aria-labelledby="el-subscribe-plans"
+      >
+        <h3 id="el-subscribe-plans" class="el-subscribe__block-title">
+          Choisir une formule
+        </h3>
+        <div class="el-subscribe__plans-grid">
+          <div class="el-subscribe__plan el-subscribe__plan--monthly">
+            <div class="el-subscribe__plan-visual">
+              <span class="el-subscribe__plan-visual-kicker"
+                >10&nbsp;jours d’essai offerts</span
+              >
+              <span class="el-subscribe__plan-visual-price">100&nbsp;€</span>
+              <span class="el-subscribe__plan-visual-unit">par mois</span>
+            </div>
+            <p class="el-subscribe__plan-eyebrow">En ligne · CB ou PayPal</p>
+            <h4 class="el-subscribe__plan-name">Mensuel</h4>
+            <p class="el-subscribe__plan-tagline">
+              Sans engagement — résiliez quand vous voulez.
+            </p>
+            <ul class="el-subscribe__plan-perks">
+              <li>Articles &amp; rapports en illimité</li>
+              <li>EL Compagnon + app iOS</li>
+              <li>Newsletter quotidienne incluse</li>
+            </ul>
+            <form id="el-checkout-form" class="el-subscribe__checkout" novalidate>
+              <div class="el-subscribe__name-row">
+                <div class="el-subscribe__field">
+                  <label for="el-co-given">Prénom</label>
+                  <input
+                    id="el-co-given"
+                    name="given-name"
+                    type="text"
+                    autocomplete="given-name"
+                    autocapitalize="words"
+                    spellcheck="false"
+                    enterkeyhint="next"
+                    required
+                    placeholder="Marie"
+                  />
+                </div>
+                <div class="el-subscribe__field">
+                  <label for="el-co-family">Nom</label>
+                  <input
+                    id="el-co-family"
+                    name="family-name"
+                    type="text"
+                    autocomplete="family-name"
+                    autocapitalize="words"
+                    spellcheck="false"
+                    enterkeyhint="next"
+                    required
+                    placeholder="Dupont"
+                  />
+                </div>
+              </div>
+              <label for="el-co-email">E-mail professionnel</label>
+              <input
+                id="el-co-email"
+                name="email"
+                type="email"
+                autocomplete="email"
+                required
+                placeholder="vous@entreprise.fr"
+              />
+              <!-- honeypot anti-spam -->
+              <div class="el-subscribe__hp" aria-hidden="true">
+                <label for="el-co-website">Site web</label>
+                <input
+                  id="el-co-website"
+                  name="website"
+                  type="text"
+                  tabindex="-1"
+                  autocomplete="off"
+                />
+              </div>
+              <p class="el-subscribe__form-info">
+                Sans engagement, résiliable à tout moment depuis votre espace.
+              </p>
+              <p id="el-checkout-error" class="el-subscribe__form-error" hidden>
+              </p>
+              <button
+                type="submit"
+                class="btn-subscribe el-subscribe__cta el-subscribe__cta--monthly"
+                id="el-checkout-btn"
+                disabled
+              >
+                …
+              </button>
+            </form>
+          </div>
+
+          <div class="el-subscribe__plan el-subscribe__plan--annual">
+            <p class="el-subscribe__save-badge">
+              Économisez <strong>300&nbsp;€</strong>
+            </p>
+            <p class="el-subscribe__plan-eyebrow">Meilleur tarif</p>
+            <h4 class="el-subscribe__plan-name">Annuel</h4>
+            <p class="el-subscribe__plan-price el-subscribe__plan-price--stack">
+              <span class="el-subscribe__plan-was"
+                ><span class="el-subscribe__sr">Au lieu de </span
+                >1&nbsp;200&nbsp;€</span
+              >
+              <span class="el-subscribe__plan-now">
+                <span class="el-subscribe__plan-amount">900&nbsp;€</span>
+                <span class="el-subscribe__plan-period">/ an</span>
+              </span>
+            </p>
+            <p class="el-subscribe__plan-equiv">
+              Soit <strong>75&nbsp;€ / mois</strong> — 25&nbsp;% de moins que
+              12 × 100&nbsp;€.
+            </p>
+            <p class="el-subscribe__plan-note">
+              Même accès premium, newsletter quotidienne incluse. Compte et
+              facture annuelle après votre devis.
+            </p>
+            <a
+              class="btn-subscribe el-subscribe__cta el-subscribe__cta--annual"
+              href={mailtoSubscribe}
+              >Demandez un devis</a
+            >
+          </div>
+        </div>
       </section>
 
       <section class="el-subscribe__how" aria-labelledby="el-subscribe-how">
         <h3 id="el-subscribe-how" class="el-subscribe__block-title">
-          Comment s’abonner&nbsp;?
+          Après l’inscription en ligne
         </h3>
         <p>
-          Cliquez sur le bouton ci-dessous et mentionnez votre nom, votre
-          organisation et votre rôle professionnel. Nous vous recontactons
-          rapidement.
+          Votre compte est créé automatiquement dès le checkout. Un e-mail vous
+          permet de choisir votre mot de passe&nbsp;; l’accès premium démarre
+          tout de suite pour 10&nbsp;jours d’essai. Ensuite, factures, moyen de
+          paiement et résiliation se gèrent depuis&nbsp;<a href="/compte/"
+            >votre espace</a
+          >.
         </p>
         <div class="el-subscribe__actions">
-          <a class="btn-subscribe el-subscribe__cta" href={mailtoSubscribe}
-            >Demander un abonnement</a
+          <a
+            class="el-subscribe__secondary"
+            href="/login/?redirect=/compte/"
+            >Déjà abonné&nbsp;? Connexion</a
           >
-          <a class="el-subscribe__secondary" href="/login/">J’ai déjà un compte</a>
         </div>
       </section>
 
@@ -78,8 +195,8 @@ const mailtoQuestion =
           Aussi par ElectronLibre
         </h3>
         <p class="el-subscribe__tools-note">
-          Des outils du groupe, accessibles séparément — non inclus dans
-          l’abonnement média.
+          Découvrez aussi nos autres outils, autour de la veille et de
+          l’information.
         </p>
         <div class="el-subscribe__tools-grid">
           <a
@@ -131,3 +248,111 @@ const mailtoQuestion =
     </article>
   </section>
 </BaseLayout>
+
+<script is:inline>
+  (function () {
+    var form = document.getElementById("el-checkout-form");
+    if (!form) return;
+    var err = document.getElementById("el-checkout-error");
+    var btn = document.getElementById("el-checkout-btn");
+    var params = new URLSearchParams(location.search);
+    if (params.get("checkout") === "cancel") {
+      err.textContent =
+        "Paiement annulé. Vous pouvez réessayer quand vous voulez.";
+      err.hidden = false;
+    }
+
+    fetch("/api/billing/config", { credentials: "same-origin" })
+      .then(function (r) {
+        return r.json();
+      })
+      .then(function (cfg) {
+        if (!btn) return;
+        if (cfg && cfg.enabled) {
+          btn.disabled = false;
+          btn.textContent = "Je m'abonne";
+        } else {
+          btn.disabled = true;
+          btn.textContent = "Bientôt";
+        }
+      })
+      .catch(function () {
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = "Bientôt";
+        }
+      });
+
+    form.addEventListener("submit", async function (e) {
+      e.preventDefault();
+      if (btn && btn.disabled) return;
+      err.hidden = true;
+      var given = String(
+        (form.elements["given-name"] && form.elements["given-name"].value) ||
+          ""
+      ).trim();
+      var family = String(
+        (form.elements["family-name"] && form.elements["family-name"].value) ||
+          ""
+      ).trim();
+      var email = String(form.email.value || "").trim().toLowerCase();
+      var website = String(form.website.value || "").trim();
+      if (!given || given.length < 2) {
+        err.textContent = "Indiquez votre prénom.";
+        err.hidden = false;
+        return;
+      }
+      if (!family || family.length < 2) {
+        err.textContent = "Indiquez votre nom.";
+        err.hidden = false;
+        return;
+      }
+      if (!email || email.indexOf("@") < 1) {
+        err.textContent = "E-mail invalide.";
+        err.hidden = false;
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = "Redirection…";
+      try {
+        var res = await fetch("/api/billing/checkout", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            first_name: given,
+            last_name: family,
+            name: given + " " + family,
+            email: email,
+            website: website,
+            newsletter_opt_in: true,
+          }),
+        });
+        var data = await res.json().catch(function () {
+          return {};
+        });
+        if (!res.ok) {
+          err.textContent =
+            data.error || "Impossible de démarrer le paiement.";
+          err.hidden = false;
+          btn.disabled = false;
+          btn.textContent = "Je m'abonne";
+          return;
+        }
+        if (data.url) {
+          location.href = data.url;
+          return;
+        }
+        err.textContent = "Réponse inattendue.";
+        err.hidden = false;
+        btn.disabled = false;
+        btn.textContent = "Je m'abonne";
+      } catch (ex) {
+        err.textContent = "Erreur réseau. Réessayez.";
+        err.hidden = false;
+        btn.disabled = false;
+        btn.textContent = "Je m'abonne";
+      }
+    });
+  })();
+</script>

@@ -5,6 +5,7 @@
  * - /api/content/* → corps article abonné (session requise) — MySQL el_articles
  * - /api/desk/*    → pupitre rédactionnel (rôles admin/editor/author)
  * - /api/ios/v1/*  → app iOS (Bearer JWT) — unique surface app (/wp-json retiré)
+ * - /api/billing/* → abonnement Stripe (checkout, portail, webhook)
  */
 import http from 'node:http';
 import crypto from 'node:crypto';
@@ -38,6 +39,9 @@ import {
   validateResetToken,
 } from './lib/password-reset.mjs';
 import { auditLog } from './lib/audit.mjs';
+import { loadBillingConfig } from './lib/billing/config.mjs';
+import { ensureBillingSchema } from './lib/billing/schema.mjs';
+import { handleBilling } from './lib/billing/handler.mjs';
 
 const checkPhpass = wordpressHash.CheckPassword || wordpressHash.checkPassword;
 
@@ -171,6 +175,15 @@ const SITE_URL = (
 ).replace(/\/+$/, '');
 const COOKIE_SECURE =
   String(process.env.EL_COOKIE_SECURE || fileEnv.EL_COOKIE_SECURE || '') === '1';
+const BILLING_CFG = loadBillingConfig(fileEnv);
+const BREVO_CTX = {
+  apiKey: BREVO_API_KEY,
+  smtpUser: BREVO_SMTP_USER,
+  smtpPass: BREVO_SMTP_PASS,
+  dryRun: BREVO_DRY_RUN,
+  fromEmail: BREVO_FROM_EMAIL,
+  fromName: BREVO_FROM_NAME,
+};
 const MAX_BODY_BYTES = Math.max(
   64_000,
   Number(process.env.EL_MAX_BODY_BYTES || fileEnv.EL_MAX_BODY_BYTES || 2_000_000)
@@ -857,6 +870,7 @@ const server = http.createServer(async (req, res) => {
         await ensureMediaSchema(pool);
         await ensurePasswordResetSchema(pool);
         await ensureXPostsSchema(pool);
+        await ensureBillingSchema(pool);
       } catch (err) {
         console.error('[api] health db', err.message);
       }
@@ -873,6 +887,7 @@ const server = http.createServer(async (req, res) => {
         xPost: anyXAccountConfigured(X_ENV),
         xPostDryRun: X_DRY_RUN,
         iosApi: Boolean(IOS_JWT_SECRET && IOS_JWT_SECRET.length >= 16),
+        billing: Boolean(BILLING_CFG.enabled),
         cookieSecure: COOKIE_SECURE,
         db: dbOk,
         articles,
@@ -889,6 +904,17 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (parts[1] === 'auth') return handleAuth(req, res, parts);
+    if (parts[1] === 'billing') {
+      return handleBilling(req, res, parts, {
+        pool,
+        sendJson,
+        readBody,
+        readSession,
+        billingCfg: BILLING_CFG,
+        brevo: BREVO_CTX,
+        siteUrl: SITE_URL,
+      });
+    }
     if (parts[1] === 'content') return handleContent(req, res, parts);
     if (parts[1] === 'desk') return handleDesk(req, res, parts, deskCtx);
     if (parts[1] === 'newsletter') {
@@ -923,7 +949,8 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, '127.0.0.1', () => {
   console.log(
     `[api] listening on 127.0.0.1:${PORT} (desk + content MySQL)` +
-      ` onesignalDryRun=${ONESIGNAL_DRY_RUN} brevoDryRun=${BREVO_DRY_RUN} cookieSecure=${COOKIE_SECURE}`
+      ` onesignalDryRun=${ONESIGNAL_DRY_RUN} brevoDryRun=${BREVO_DRY_RUN}` +
+      ` billing=${BILLING_CFG.enabled ? 'on' : 'off'} cookieSecure=${COOKIE_SECURE}`
   );
 });
 

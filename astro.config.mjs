@@ -15,8 +15,9 @@ export default defineConfig({
   output: 'server',
   adapter: node({ mode: 'standalone' }),
   redirects: {
-    '/abonnement-2': '/abonnement/',
+    // Fallback Astro (nginx a déjà les 301 sans/avec slash)
     '/abonnement-2/': '/abonnement/',
+    '/subscribe-page-electronlibre/': '/abonnement/',
   },
   integrations: [sitemap()],
   vite: {

@@ -33,14 +33,10 @@
     if (!box) return;
     if (me.authenticated) {
       box.innerHTML =
-        '<button type="button" id="el-logout-btn" class="icon-btn login-icon" aria-label="Déconnexion">' +
+        '<a href="/compte/" class="icon-btn login-icon" aria-label="Mon compte">' +
         '<div class="ia-header-icon-wrapper">' +
-        '<img src="/icons/sf/logoutEL.svg" alt="" width="20" height="20">' +
-        '<span class="ia-header-label">Déconnexion</span></div></button>';
-      document.getElementById('el-logout-btn')?.addEventListener('click', async () => {
-        await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
-        location.reload();
-      });
+        '<img src="/icons/sf/loginEL.svg" alt="" width="20" height="20">' +
+        '<span class="ia-header-label">Compte</span></div></a>';
     } else {
       const redirect = encodeURIComponent(location.pathname + location.search);
       box.innerHTML =

@@ -4,6 +4,7 @@ import {
   ROLES,
   STATUSES,
   canEditAll,
+  isStaffRole,
   normalizeRole,
   publicUser,
   effectiveStatus,
@@ -232,7 +233,9 @@ export async function handleDeskUsers(req, res, parts, ctx) {
     }
 
     const id = await nextUserId(pool);
-    const accessUntil = toMysqlDate(payload.access_until);
+    const accessUntil = isStaffRole(role)
+      ? null
+      : toMysqlDate(payload.access_until);
     const newsletterOptIn =
       payload.newsletter_opt_in === undefined || payload.newsletter_opt_in === null
         ? 1
@@ -412,10 +415,11 @@ export async function handleDeskUsers(req, res, parts, ctx) {
       payload.status != null
         ? sanitizeStatus(payload.status)
         : sanitizeStatus(existing.status);
-    const accessUntil =
+    let accessUntil =
       payload.access_until !== undefined
         ? toMysqlDate(payload.access_until)
         : existing.access_until;
+    if (isStaffRole(role)) accessUntil = null;
     const notes =
       payload.notes !== undefined
         ? payload.notes == null

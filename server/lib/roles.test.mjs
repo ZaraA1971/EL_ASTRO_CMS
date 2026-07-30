@@ -84,6 +84,25 @@ describe('canAccessPremium', () => {
     assert.equal(canAccessPremium({ role: 'admin', status: 'active' }), true);
     assert.equal(canAccessPremium({ role: 'author', status: 'active' }), true);
   });
+
+  it('staff ignores access_until and stripe expired', () => {
+    assert.equal(
+      canAccessPremium({
+        role: 'admin',
+        status: 'active',
+        access_until: '2020-01-01T00:00:00Z',
+      }),
+      true
+    );
+    assert.equal(
+      canAccessPremium({
+        role: 'editor',
+        status: 'expired',
+        access_until: '2020-01-01T00:00:00Z',
+      }),
+      true
+    );
+  });
 });
 
 describe('publicUser / effectiveStatus', () => {

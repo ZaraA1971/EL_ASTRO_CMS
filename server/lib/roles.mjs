@@ -76,6 +76,8 @@ export function canPublish(role) {
 /**
  * Accès contenu premium + Compagnon.
  * Staff actif : oui. Abonné actif non expiré : oui. Sinon : non.
+ * access_until = fin de période payée (pas « fin d’abo » : le renouvellement
+ * tacite Stripe la prolonge via les webhooks).
  */
 export function canAccessPremium(user) {
   if (!user) return false;
@@ -85,6 +87,11 @@ export function canAccessPremium(user) {
   const role = normalizeRole(user.role);
   if (role === ROLES.OTHER) return false;
 
+  // Staff : accès permanent (pas de date de fin / pas d’« expired » Stripe).
+  if (isStaffRole(role)) {
+    return status === STATUSES.ACTIVE || status === STATUSES.EXPIRED;
+  }
+
   const until = user.access_until ? new Date(user.access_until) : null;
   if (until && !Number.isNaN(until.getTime()) && until.getTime() < Date.now()) {
     return false;
@@ -92,18 +99,16 @@ export function canAccessPremium(user) {
 
   if (status === STATUSES.EXPIRED) return false;
 
-  return (
-    role === ROLES.ADMIN ||
-    role === ROLES.EDITOR ||
-    role === ROLES.AUTHOR ||
-    role === ROLES.SUBSCRIBER
-  );
+  return role === ROLES.SUBSCRIBER;
 }
 
 export function effectiveStatus(user) {
   if (!user) return STATUSES.DISABLED;
   const status = String(user.status || STATUSES.ACTIVE).toLowerCase();
   if (status === STATUSES.DISABLED) return STATUSES.DISABLED;
+  if (isStaffRole(user.role)) {
+    return status === STATUSES.EXPIRED ? STATUSES.ACTIVE : status;
+  }
   const until = user.access_until ? new Date(user.access_until) : null;
   if (until && !Number.isNaN(until.getTime()) && until.getTime() < Date.now()) {
     return STATUSES.EXPIRED;
@@ -124,7 +129,8 @@ export function publicUser(user) {
     email: user.email || undefined,
     role,
     status,
-    access_until: user.access_until || null,
+    // Staff : jamais exposer de fin de période
+    access_until: isStaffRole(role) ? null : user.access_until || null,
     entitled,
     desk: canAccessDesk(role),
     tier: tierLabel(role, entitled),

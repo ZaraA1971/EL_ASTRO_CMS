@@ -1,0 +1,297 @@
+---
+export const prerender = true;
+import AuthLayout from "../layouts/AuthLayout.astro";
+---
+
+<AuthLayout
+  title="Mon compte | ElectronLibre"
+  description="Gérez votre abonnement ElectronLibre."
+>
+  <section class="el-archive-shell el-auth el-compte">
+    <article class="el-auth__card el-compte__card">
+      <h1 class="el-auth__title">Mon compte</h1>
+      <p id="el-compte-sub" class="el-auth__sub">Chargement…</p>
+
+      <div id="el-compte-guest" class="el-compte__block" hidden>
+        <p>Connectez-vous pour gérer votre abonnement et votre mot de passe.</p>
+        <p class="el-auth__links">
+          <a class="btn-subscribe el-auth__submit" href="/login/?redirect=/compte/"
+            >Connexion</a
+          >
+        </p>
+        <p class="el-auth__foot">
+          <a href="/abonnement/">S’abonner</a>
+          <span aria-hidden="true">·</span>
+          <a href="/">Accueil</a>
+        </p>
+      </div>
+
+      <div id="el-compte-app" hidden>
+        <p
+          id="el-compte-banner"
+          class="el-compte__banner"
+          hidden
+        ></p>
+
+        <section class="el-compte__section" aria-labelledby="el-compte-status">
+          <h2 id="el-compte-status" class="el-compte__h2">Abonnement</h2>
+          <dl class="el-compte__dl">
+            <div>
+              <dt>Statut</dt>
+              <dd id="el-compte-status-val">—</dd>
+            </div>
+            <div>
+              <dt>Formule</dt>
+              <dd id="el-compte-plan-val">—</dd>
+            </div>
+            <div id="el-compte-until-row">
+              <dt>Période en cours jusqu’au</dt>
+              <dd id="el-compte-until-val">—</dd>
+            </div>
+            <div>
+              <dt>Identifiant</dt>
+              <dd id="el-compte-login-val">—</dd>
+            </div>
+            <div>
+              <dt>E-mail</dt>
+              <dd id="el-compte-email-val">—</dd>
+            </div>
+          </dl>
+          <div class="el-compte__actions">
+            <button type="button" class="btn-subscribe" id="el-compte-portal" hidden>
+              Gérer paiement &amp; factures
+            </button>
+            <a class="el-auth__textbtn" href="/abonnement/" id="el-compte-renew"
+              >Voir les formules</a
+            >
+          </div>
+          <p id="el-compte-portal-msg" class="el-auth__error" hidden></p>
+        </section>
+
+        <section class="el-compte__section" aria-labelledby="el-compte-nl">
+          <h2 id="el-compte-nl" class="el-compte__h2">Newsletter</h2>
+          <label class="el-compte__check">
+            <input type="checkbox" id="el-compte-nl-check" />
+            Recevoir la newsletter quotidienne
+          </label>
+          <p id="el-compte-nl-msg" class="el-compte__ok" hidden></p>
+        </section>
+
+        <section class="el-compte__section" aria-labelledby="el-compte-pwd">
+          <h2 id="el-compte-pwd" class="el-compte__h2">Mot de passe</h2>
+          <form id="el-compte-pwd-form" class="el-auth__form">
+            <label for="el-compte-pwd-input">Nouveau mot de passe</label>
+            <input
+              id="el-compte-pwd-input"
+              type="password"
+              autocomplete="new-password"
+              minlength="8"
+              required
+              placeholder="8 caractères minimum"
+            />
+            <p id="el-compte-pwd-msg" class="el-auth__error" hidden></p>
+            <p id="el-compte-pwd-ok" class="el-compte__ok" hidden></p>
+            <button type="submit" class="btn-subscribe el-auth__submit">
+              Mettre à jour
+            </button>
+          </form>
+        </section>
+
+        <p class="el-auth__foot">
+          <button type="button" class="el-auth__textbtn" id="el-compte-logout">
+            Déconnexion
+          </button>
+          <span aria-hidden="true">·</span>
+          <a href="/">Accueil</a>
+        </p>
+      </div>
+    </article>
+  </section>
+</AuthLayout>
+
+<script is:inline>
+  (function () {
+    var guest = document.getElementById("el-compte-guest");
+    var app = document.getElementById("el-compte-app");
+    var sub = document.getElementById("el-compte-sub");
+    var banner = document.getElementById("el-compte-banner");
+    var params = new URLSearchParams(location.search);
+    if (params.get("checkout") === "success") {
+      banner.textContent =
+        "Paiement reçu. Si c’est votre première souscription, vérifiez votre e-mail pour choisir un mot de passe.";
+      banner.hidden = false;
+    }
+
+    function formatDate(iso) {
+      if (!iso) return "Sans limite";
+      try {
+        return new Date(iso).toLocaleDateString("fr-FR", {
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+        });
+      } catch (e) {
+        return String(iso);
+      }
+    }
+
+    function planLabel(plan, stripe) {
+      if (plan === "monthly" || stripe) return "Mensuel en ligne (100 €)";
+      if (plan === "annual_manual") return "Annuel (900 €)";
+      return plan || "—";
+    }
+
+    function statusLabel(account) {
+      if (!account) return "—";
+      if (account.entitled) return "Actif";
+      if (account.status === "expired") return "Expiré";
+      if (account.status === "disabled") return "Désactivé";
+      return account.status || "—";
+    }
+
+    async function load() {
+      try {
+        var meRes = await fetch("/api/auth/me", { credentials: "same-origin" });
+        var me = await meRes.json();
+        if (!me.authenticated) {
+          sub.textContent = "Espace abonné";
+          guest.hidden = false;
+          app.hidden = true;
+          return;
+        }
+        var billRes = await fetch("/api/billing/me", {
+          credentials: "same-origin",
+        });
+        var bill = await billRes.json().catch(function () {
+          return {};
+        });
+        if (!billRes.ok) {
+          sub.textContent = "Espace abonné";
+          guest.hidden = false;
+          app.hidden = true;
+          return;
+        }
+        var a = bill.account || me.user || {};
+        sub.textContent = a.name || a.login || "Espace abonné";
+        guest.hidden = true;
+        app.hidden = false;
+        document.getElementById("el-compte-status-val").textContent =
+          statusLabel(a);
+        document.getElementById("el-compte-plan-val").textContent = planLabel(
+          a.plan,
+          a.stripe
+        );
+        var untilRow = document.getElementById("el-compte-until-row");
+        var isStaff =
+          a.role === "admin" || a.role === "editor" || a.role === "author";
+        if (untilRow) untilRow.hidden = isStaff;
+        document.getElementById("el-compte-until-val").textContent = isStaff
+          ? "—"
+          : formatDate(a.access_until);
+        document.getElementById("el-compte-login-val").textContent =
+          a.login || "—";
+        document.getElementById("el-compte-email-val").textContent =
+          a.billing_email || a.email || "—";
+        var portalBtn = document.getElementById("el-compte-portal");
+        if (a.canManageBilling) {
+          portalBtn.hidden = false;
+        }
+        var nl = document.getElementById("el-compte-nl-check");
+        nl.checked = !!a.newsletter_opt_in;
+      } catch (e) {
+        sub.textContent = "Erreur de chargement";
+        guest.hidden = false;
+      }
+    }
+
+    document
+      .getElementById("el-compte-portal")
+      ?.addEventListener("click", async function () {
+        var msg = document.getElementById("el-compte-portal-msg");
+        msg.hidden = true;
+        try {
+          var res = await fetch("/api/billing/portal", {
+            method: "POST",
+            credentials: "same-origin",
+          });
+          var data = await res.json().catch(function () {
+            return {};
+          });
+          if (!res.ok || !data.url) {
+            msg.textContent =
+              data.error || "Portail indisponible pour le moment.";
+            msg.hidden = false;
+            return;
+          }
+          location.href = data.url;
+        } catch (e) {
+          msg.textContent = "Erreur réseau.";
+          msg.hidden = false;
+        }
+      });
+
+    document
+      .getElementById("el-compte-nl-check")
+      ?.addEventListener("change", async function (e) {
+        var ok = document.getElementById("el-compte-nl-msg");
+        ok.hidden = true;
+        try {
+          var res = await fetch("/api/billing/me", {
+            method: "PATCH",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ newsletter_opt_in: !!e.target.checked }),
+          });
+          if (res.ok) {
+            ok.textContent = "Préférence enregistrée.";
+            ok.hidden = false;
+          }
+        } catch (ex) {}
+      });
+
+    document
+      .getElementById("el-compte-pwd-form")
+      ?.addEventListener("submit", async function (e) {
+        e.preventDefault();
+        var err = document.getElementById("el-compte-pwd-msg");
+        var ok = document.getElementById("el-compte-pwd-ok");
+        err.hidden = true;
+        ok.hidden = true;
+        var password = document.getElementById("el-compte-pwd-input").value;
+        try {
+          var res = await fetch("/api/billing/password", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ password: password }),
+          });
+          var data = await res.json().catch(function () {
+            return {};
+          });
+          if (!res.ok) {
+            err.textContent = data.error || "Échec";
+            err.hidden = false;
+            return;
+          }
+          ok.textContent = data.message || "Mot de passe mis à jour.";
+          ok.hidden = false;
+          e.target.reset();
+        } catch (ex) {
+          err.textContent = "Erreur réseau.";
+          err.hidden = false;
+        }
+      });
+
+    document
+      .getElementById("el-compte-logout")
+      ?.addEventListener("click", async function () {
+        await fetch("/api/auth/logout", {
+          method: "POST",
+          credentials: "same-origin",
+        });
+        location.href = "/";
+      });
+
+    load();
+  })();
+</script>

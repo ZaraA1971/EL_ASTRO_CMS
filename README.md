@@ -42,14 +42,15 @@ Env : `/etc/electronlibre/el-astro-api.env` (**jamais** dans git).
 
 ## Documents (médiathèque Pupitre)
 
-Stock de **pièces jointes / documents** (scans, rendus image, etc.) — **pas** une banque d’illustrations pour le front (pas de cards, `og:image`, hero, une).
+Stock de **pièces jointes / documents** (images, PDF, Office, zip…) — **pas** une banque d’illustrations pour le front (pas de cards, `og:image`, hero, une).
 
 - Table MySQL `el_media` · SQL [`scripts/sql/el_media.sql`](scripts/sql/el_media.sql)
 - Disque `/var/www/el-media/uploads` · URL `/media/` · 301 depuis `/wp-content/uploads/`
 - API Pupitre : `GET/POST /api/desk/media`, `PATCH/DELETE /api/desk/media/:id`
-- UI : bouton **Document** — upload, recherche, insertion d’un **lien fichier** (`<a class="el-doc">`), pas d’`<img>` décoratif
-- Aperçus pupitre : `.thumb.webp` (~320px) via `sharp` (catalogue éditorial uniquement)
-- Index stock historique :
+- Types : jpeg/png/webp/gif, PDF, txt/csv, doc(x)/xls(x)/ppt(x)/odt/ods/odp, zip — max **25 Mo**
+- UI : onglet **Documents** (`/desk/?view=media`) + bouton **Document** dans l’éditeur — upload, recherche, libellé, suppression ; insertion = **lien fichier** (`<a class="el-doc">`), pas d’`<img>` décoratif
+- Aperçus pupitre : `.thumb.webp` (~320px) via `sharp` pour les images uniquement ; pastille de type pour les autres
+- Index stock historique (images) :
 
 ```bash
 cd /var/www/el-astro
@@ -79,11 +80,34 @@ chapo(bodyHtml, 'store')
 
 ## Comptes
 
-Gérés au pupitre uniquement. Sync WP **off** (`EL_SYNC_USERS_FORCE=1` pour un import one-shot historique).
+Création manuelle au pupitre **ou** après paiement Stripe (abonnement mensuel). Sync WP **off** (`EL_SYNC_USERS_FORCE=1` pour un import one-shot historique).
+
+## Abonnement en ligne (Stripe)
+
+- **Mensuel** : 10 jours d’essai, puis 100 € / mois sans engagement — Checkout Stripe (CB + PayPal) sur `/abonnement/`
+- **Annuel** : 900 € / an — demande par e-mail (`info@electronlibre.info`)
+- Après checkout : compte `el_users` (`source=stripe`, `plan=monthly`, `access_until`) + e-mail Brevo pour choisir le mot de passe ; statut Stripe `trialing` pendant l’essai
+- Espace abonné : `/compte/` (statut, portail facturation Stripe, MDP, newsletter)
+- SQL colonnes : [`scripts/sql/el_users_billing.sql`](scripts/sql/el_users_billing.sql) (aussi via `ensureBillingSchema`)
+
+Env (`/etc/electronlibre/el-astro-api.env`) — à renseigner quand Stripe est prêt :
+
+```bash
+STRIPE_SECRET_KEY=sk_live_…
+STRIPE_WEBHOOK_SECRET=whsec_…
+STRIPE_PRICE_MONTHLY=price_…   # Price 100 € / mois
+# STRIPE_TRIAL_DAYS=10         # optionnel (défaut 10 ; 0 = pas d’essai)
+```
+
+Webhook Stripe → `POST https://electronlibre.info/api/billing/webhook`  
+Événements : `checkout.session.completed`, `customer.subscription.updated|deleted`, `invoice.paid`.
+
+Sans ces clés, le checkout affiche un message « bientôt » et renvoie `BILLING_DISABLED` ; l’annuel par e-mail reste disponible.
 
 ## Auth / API
 
 - Auth : `/api/auth/*` (login, logout, me, forgot, reset)
+- Billing : `/api/billing/*` (config, checkout, me, portal, password, webhook)
 - Contenu abonné : `/api/content/:wpId`
 - Desk : `/api/desk/*` (articles, users, newsletter, audience, **media**)
 - Compagnon : `/api/rag/askWeb` (entitled)
