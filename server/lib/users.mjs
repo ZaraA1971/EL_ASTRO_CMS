@@ -10,6 +10,7 @@ import {
   effectiveStatus,
 } from './roles.mjs';
 import { auditLog } from './audit.mjs';
+import { sendAccountCreatedEmail } from './account-email.mjs';
 
 const hashPassword =
   wordpressHash.HashPassword || wordpressHash.hashPassword;
@@ -124,7 +125,7 @@ function sanitizeStatus(status) {
  * Routes /api/desk/users[/:id]
  */
 export async function handleDeskUsers(req, res, parts, ctx) {
-  const { pool, sendJson, readBody, session, actor, ip } = ctx;
+  const { pool, sendJson, readBody, session, actor, ip, brevo, siteUrl } = ctx;
 
   if (!canManageUsers(session.role)) {
     return sendJson(res, 403, { error: 'Gestion des comptes réservée éditeur/admin' });
@@ -266,15 +267,31 @@ export async function handleDeskUsers(req, res, parts, ctx) {
       `SELECT ${USER_SELECT} FROM el_users WHERE id = ?`,
       [id]
     );
+    const created = rows[0];
+    let emailSent = false;
+    try {
+      const out = await sendAccountCreatedEmail({
+        user: created,
+        brevo,
+        siteUrl,
+        source: 'desk',
+      });
+      emailSent = Boolean(out?.ok);
+    } catch (err) {
+      console.error('[users] account-created email', err.message);
+    }
     await auditLog(pool, {
       actor: actor || { uid: session.uid, login: session.login },
       action: 'user.create',
       targetType: 'user',
       targetId: id,
-      meta: { role, status },
+      meta: { role, status, emailSent },
       ip,
     });
-    return sendJson(res, 201, { user: rowToDeskUser(rows[0]) });
+    return sendJson(res, 201, {
+      user: rowToDeskUser(created),
+      emailSent,
+    });
   }
 
   const userId = Number(parts[3]);

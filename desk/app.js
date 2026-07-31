@@ -2090,7 +2090,9 @@ async function saveUser(ev) {
         body: JSON.stringify(payload),
       });
       state.editUser = data.user;
-      state.status = "Compte créé";
+      state.status = data.emailSent
+        ? "Compte créé — e-mail de confirmation envoyé"
+        : "Compte créé (e-mail de confirmation non envoyé)";
     } else {
       const data = await api(`/api/desk/users/${state.editUser.id}`, {
         method: "PUT",
