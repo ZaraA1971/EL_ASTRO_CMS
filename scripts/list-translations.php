@@ -11,7 +11,7 @@ http_response_code(410);
 exit('deprecated');
 
 /**
- * Map wp_id → { fr, en } (IDs publiés uniquement).
+ * Map WordPress post ID → { fr, en } (IDs publiés uniquement).
  * Usage: php list-translations.php
  */
 declare(strict_types=1);

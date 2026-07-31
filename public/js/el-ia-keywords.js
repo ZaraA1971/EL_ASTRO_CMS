@@ -47,9 +47,9 @@
     return box;
   }
 
-  async function loadArticleHtml(wpId) {
-    if (cache.has(wpId)) return cache.get(wpId);
-    const res = await fetch('/api/content/' + wpId, { credentials: 'same-origin' });
+  async function loadArticleHtml(articleId) {
+    if (cache.has(articleId)) return cache.get(articleId);
+    const res = await fetch('/api/content/' + articleId, { credentials: 'same-origin' });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       const err = new Error(data.error || 'Accès article refusé');
@@ -57,7 +57,7 @@
       throw err;
     }
     const html = String(data.html || '');
-    cache.set(wpId, html);
+    cache.set(articleId, html);
     return html;
   }
 
@@ -99,9 +99,9 @@
 
   async function onKeywordClick(btn, listEl) {
     const keyword = btn.getAttribute('data-keyword') || btn.textContent?.trim();
-    const wpId = listEl.getAttribute('data-wp-id');
+    const articleId = listEl.getAttribute('data-article-id');
     const defBox = ensureDefBox(listEl);
-    if (!keyword || !wpId) return;
+    if (!keyword || !articleId) return;
 
     if (window.elAuthReady && typeof window.elAuthReady.then === 'function') {
       await window.elAuthReady;
@@ -112,10 +112,10 @@
 
     defBox.innerHTML = '<p><em>Chargement…</em></p>';
     try {
-      const bodyHtml = await loadArticleHtml(wpId);
+      const bodyHtml = await loadArticleHtml(articleId);
       const articleHtml = pageContextPrefix(listEl) + bodyHtml;
       // v2 = définitions contextualisées (invalide l’ancien cache générique)
-      const sessionKey = 'definition_v2_' + wpId + '_' + keyword;
+      const sessionKey = 'definition_v2_' + articleId + '_' + keyword;
       const cached = sessionStorage.getItem(sessionKey);
       if (cached) {
         defBox.innerHTML = cleanAIHTML(cached);
@@ -139,7 +139,7 @@
   }
 
   document.addEventListener('DOMContentLoaded', () => {
-    const list = document.querySelector('.el-ia-keywords[data-wp-id]');
+    const list = document.querySelector('.el-ia-keywords[data-article-id]');
     if (!list || list.dataset.bound) return;
     list.dataset.bound = '1';
     list.addEventListener('click', (ev) => {

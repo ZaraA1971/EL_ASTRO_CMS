@@ -46,7 +46,7 @@ describe('ios article dto', () => {
   it('hides paywalled body when not entitled', () => {
     const dto = toIosArticleDto(
       {
-        wp_id: 9,
+        article_id: 9,
         title: 'T',
         excerpt: 'E',
         body: '<p>secret</p>',
@@ -65,7 +65,7 @@ describe('ios article dto', () => {
   it('does not derive excerpt from paywalled body when not entitled', () => {
     const dto = toIosArticleDto(
       {
-        wp_id: 10,
+        article_id: 10,
         title: 'T',
         excerpt: '',
         body: '<p>secret paywall body words that must not leak to anonymous clients at all ever</p>',
@@ -81,7 +81,7 @@ describe('ios article dto', () => {
   it('may derive excerpt from body when public or entitled', () => {
     const dto = toIosArticleDto(
       {
-        wp_id: 11,
+        article_id: 11,
         title: 'T',
         excerpt: '',
         body: '<p>Hello public world from body</p>',
@@ -99,7 +99,7 @@ describe('ios article dto', () => {
     assert.match(html, /ok/);
     const pub = toIosArticleDto(
       {
-        wp_id: 1,
+        article_id: 1,
         title: 'T',
         body: '<p>ok</p>',
         access: 'granted',

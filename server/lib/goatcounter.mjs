@@ -251,11 +251,11 @@ export function normalizeReferrers(refs, totalViews) {
 
 /**
  * Chemins GoatCounter : "electronlibre.info/articles/123-slug/" ou "/slug/".
- * Retourne des clés de jointure possibles (wp_id, slug, path).
+ * Retourne des clés de jointure possibles (article_id, slug, path).
  */
 export function parseGoatPath(rawPath) {
   let p = String(rawPath || '').trim();
-  if (!p) return { path: '', wpId: null, slug: null, pathname: '' };
+  if (!p) return { path: '', articleId: null, slug: null, pathname: '' };
 
   // Host + path (nouveau compteur multi-sous-domaines)
   if (!p.startsWith('/') && p.includes('/')) {
@@ -267,19 +267,19 @@ export function parseGoatPath(rawPath) {
   const pathname = p.replace(/\/+/g, '/');
   const clean = pathname.replace(/\/+$/, '') || '/';
 
-  let wpId = null;
+  let articleId = null;
   let slug = null;
 
   const mArticle = clean.match(/^\/articles\/(\d+)-([^/]+)$/i);
   if (mArticle) {
-    wpId = Number(mArticle[1]);
+    articleId = Number(mArticle[1]);
     slug = mArticle[2];
   } else {
     // Anciens permaliens WP : /titre-slug,123
     const mWp = clean.match(/^\/([^/]+),(\d+)$/);
     if (mWp) {
       slug = mWp[1];
-      wpId = Number(mWp[2]);
+      articleId = Number(mWp[2]);
     } else {
       const mLegacy = clean.match(/^\/([^/]+)$/);
       if (
@@ -291,5 +291,5 @@ export function parseGoatPath(rawPath) {
     }
   }
 
-  return { path: String(rawPath || ''), pathname: clean + '/', wpId, slug };
+  return { path: String(rawPath || ''), pathname: clean + '/', articleId, slug };
 }

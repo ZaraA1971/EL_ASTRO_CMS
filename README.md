@@ -11,7 +11,7 @@ WordPress **retiré** (runtime hors live) ; site + app iOS 100 % Astro/Node.
 | App iOS | `/api/ios/v1/*` → Node · Bearer JWT |
 | Chemins WP | **410** (`/wp-json`, `/wp-admin`, `/wp-login.php`, …) |
 | `/wp-content/uploads/*` | **301** → `/media/…` |
-| RAG | indexe `el_articles` (FAISS IDs = `wp_id`) |
+| RAG | indexe `el_articles` (FAISS IDs = `article_id`) |
 | Backup BDD | `/var/backups/electronlibre-db/` (glissant 7j, cron 22:00) |
 | Code WP | `/var/backups/electronlibre-astro/wordpress-runtime-retired-*` (+ freeze 2026-07-25) |
 
@@ -110,7 +110,7 @@ Sans ces clés, le checkout affiche un message « bientôt » et renvoie `BILLIN
 
 - Auth : `/api/auth/*` (login, logout, me, forgot, reset)
 - Billing : `/api/billing/*` (config, checkout, me, portal, password, webhook)
-- Contenu abonné : `/api/content/:wpId`
+- Contenu abonné : `/api/content/:articleId`
 - Desk : `/api/desk/*` (articles, users, newsletter, audience, **media**)
 - Compagnon : `/api/rag/askWeb` (entitled)
 - App iOS : `/api/ios/v1/*` (Bearer) — `/wp-json` coupé (410)

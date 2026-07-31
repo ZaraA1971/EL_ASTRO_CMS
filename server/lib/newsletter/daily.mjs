@@ -192,12 +192,12 @@ export function buildDynamicSubtitle(articles) {
 
 function articlePath(siteUrl, article) {
   const base = String(siteUrl || 'https://electronlibre.info').replace(/\/+$/, '');
-  return `${base}/articles/${article.wp_id}-${article.slug}/`;
+  return `${base}/articles/${article.article_id}-${article.slug}/`;
 }
 
 function rowToNlArticle(row) {
   return {
-    wp_id: Number(row.wp_id),
+    article_id: Number(row.article_id),
     slug: String(row.slug),
     title: String(row.title),
     excerpt: String(row.excerpt || ''),
@@ -212,7 +212,7 @@ function rowToNlArticle(row) {
 
 async function fetchArticlesForDay(pool, ymd, { paywalledOnly = false } = {}) {
   const { start, end } = dayBoundsParis(ymd);
-  let sql = `SELECT wp_id, slug, title, excerpt, body, date, tags, categories, category_names, access
+  let sql = `SELECT article_id, slug, title, excerpt, body, date, tags, categories, category_names, access
     FROM el_articles
     WHERE draft = 0 AND lang = 'fr'
       AND date >= ? AND date <= ?`;
@@ -427,8 +427,8 @@ export async function composeDailyNewsletter(pool, opts = {}) {
     subject,
     html,
     subtitle,
-    articleIds: dayArticles.map((a) => a.wp_id),
-    missedIds: missed.map((a) => a.wp_id),
+    articleIds: dayArticles.map((a) => a.article_id),
+    missedIds: missed.map((a) => a.article_id),
     counts: {
       today: dayArticles.length,
       editorial: dayArticles.filter(isEditorialArticle).length,

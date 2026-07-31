@@ -16,9 +16,9 @@ function stripHtml(html) {
 
 function articleUrl(siteUrl, row) {
   const base = String(siteUrl || '').replace(/\/+$/, '');
-  const wpId = Number(row.wp_id);
+  const articleId = Number(row.article_id);
   const slug = String(row.slug || 'article');
-  return `${base}/articles/${wpId}-${slug}/`;
+  return `${base}/articles/${articleId}-${slug}/`;
 }
 
 function trimHook(hook, url, max = X_MAX_LENGTH) {

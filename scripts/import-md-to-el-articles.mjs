@@ -91,9 +91,9 @@ for (const file of files) {
   try {
     const raw = fs.readFileSync(path.join(ARTICLES_DIR, file), 'utf8');
     const { data, content } = matter(raw);
-    const wpId = Number(data.wp_id);
-    if (!wpId) {
-      console.warn('skip no wp_id', file);
+    const articleId = Number(data.article_id);
+    if (!articleId) {
+      console.warn('skip no article_id', file);
       errors++;
       continue;
     }
@@ -106,7 +106,7 @@ for (const file of files) {
 
     await pool.query(
       `INSERT INTO el_articles (
-        wp_id, slug, title, excerpt, body, date, modified,
+        article_id, slug, title, excerpt, body, date, modified,
         author, author_slug, author_user_id,
         categories, category_names, tags, ia_keywords,
         access, lang, draft, translation_fr, translation_en, source_url
@@ -122,7 +122,7 @@ for (const file of files) {
         translation_fr=VALUES(translation_fr), translation_en=VALUES(translation_en),
         source_url=VALUES(source_url)`,
       [
-        wpId,
+        articleId,
         String(data.slug || file.replace(/\.md$/, '')),
         String(data.title || 'Sans titre'),
         rewriteMediaUrls(String(data.excerpt || '')),

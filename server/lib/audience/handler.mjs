@@ -29,9 +29,9 @@ async function enrichHitsWithArticles(pool, hits) {
     title: String(row?.title || '').trim(),
   }));
 
-  const wpIds = [...new Set(parsed.map((p) => p.wpId).filter(Boolean))];
+  const articleIds = [...new Set(parsed.map((p) => p.articleId).filter(Boolean))];
   const slugs = [
-    ...new Set(parsed.filter((p) => !p.wpId && p.slug).map((p) => p.slug)),
+    ...new Set(parsed.filter((p) => !p.articleId && p.slug).map((p) => p.slug)),
   ];
 
   /** @type {Map<number, any>} */
@@ -39,18 +39,18 @@ async function enrichHitsWithArticles(pool, hits) {
   /** @type {Map<string, any>} */
   const bySlug = new Map();
 
-  if (wpIds.length) {
+  if (articleIds.length) {
     const [rows] = await pool.query(
-      `SELECT wp_id, slug, title, draft, access
-       FROM el_articles WHERE wp_id IN (?)`,
-      [wpIds]
+      `SELECT article_id, slug, title, draft, access
+       FROM el_articles WHERE article_id IN (?)`,
+      [articleIds]
     );
-    for (const r of rows) byId.set(Number(r.wp_id), r);
+    for (const r of rows) byId.set(Number(r.article_id), r);
   }
 
   if (slugs.length) {
     const [rows] = await pool.query(
-      `SELECT wp_id, slug, title, draft, access
+      `SELECT article_id, slug, title, draft, access
        FROM el_articles WHERE slug IN (?)`,
       [slugs]
     );
@@ -62,21 +62,21 @@ async function enrichHitsWithArticles(pool, hits) {
 
   return parsed.map((p) => {
     const art =
-      (p.wpId && byId.get(p.wpId)) ||
+      (p.articleId && byId.get(p.articleId)) ||
       (p.slug && bySlug.get(p.slug)) ||
       null;
-    const wpId = art ? Number(art.wp_id) : p.wpId;
+    const articleId = art ? Number(art.article_id) : p.articleId;
     const slug = art ? String(art.slug) : p.slug;
     const href =
-      wpId && slug
-        ? `/articles/${wpId}-${slug}/`
+      articleId && slug
+        ? `/articles/${articleId}-${slug}/`
         : p.pathname || null;
     return {
       path: p.path,
       pathname: p.pathname || null,
       title: (art && art.title) || p.title || '(sans titre)',
       views: p.views,
-      wpId: wpId || null,
+      articleId: articleId || null,
       slug: slug || null,
       href,
       draft: art ? Number(art.draft) === 1 : null,

@@ -21,8 +21,8 @@ export function isoDate(d: Date | string | null | undefined): string {
   return dt.toISOString();
 }
 
-export function articleLoc(wpId: number, slug: string): string {
-  return `${SITE}/articles/${wpId}-${slug}/`;
+export function articleLoc(articleId: number, slug: string): string {
+  return `${SITE}/articles/${articleId}-${slug}/`;
 }
 
 export function xmlResponse(body: string, { maxAge = 300 } = {}): Response {
@@ -46,20 +46,20 @@ export async function countPublishedArticles(): Promise<number> {
 
 export async function listPublishedArticlesPage(
   page: number
-): Promise<{ wp_id: number; slug: string; date: Date; modified: Date | null }[]> {
+): Promise<{ article_id: number; slug: string; date: Date; modified: Date | null }[]> {
   const pool = getPool();
   const p = Math.max(1, Math.floor(page));
   const offset = (p - 1) * SITEMAP_PAGE_SIZE;
   const [rows] = await pool.query(
-    `SELECT wp_id, slug, date, modified
+    `SELECT article_id, slug, date, modified
      FROM el_articles
      WHERE draft = 0
-     ORDER BY date DESC, wp_id DESC
+     ORDER BY date DESC, article_id DESC
      LIMIT ? OFFSET ?`,
     [SITEMAP_PAGE_SIZE, offset]
   );
   return rows as {
-    wp_id: number;
+    article_id: number;
     slug: string;
     date: Date;
     modified: Date | null;
@@ -67,11 +67,11 @@ export async function listPublishedArticlesPage(
 }
 
 export async function listNewsArticles(): Promise<
-  { wp_id: number; slug: string; title: string; date: Date; lang: string }[]
+  { article_id: number; slug: string; title: string; date: Date; lang: string }[]
 > {
   const pool = getPool();
   const [rows] = await pool.query(
-    `SELECT wp_id, slug, title, date, lang
+    `SELECT article_id, slug, title, date, lang
      FROM el_articles
      WHERE draft = 0
        AND date >= (UTC_TIMESTAMP() - INTERVAL ? DAY)
@@ -80,7 +80,7 @@ export async function listNewsArticles(): Promise<
     [NEWS_SITEMAP_DAYS]
   );
   return rows as {
-    wp_id: number;
+    article_id: number;
     slug: string;
     title: string;
     date: Date;
@@ -136,7 +136,7 @@ export function buildUrlset(
 }
 
 export function buildNewsSitemap(
-  rows: { wp_id: number; slug: string; title: string; date: Date; lang: string }[]
+  rows: { article_id: number; slug: string; title: string; date: Date; lang: string }[]
 ): string {
   let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
   xml +=
@@ -144,7 +144,7 @@ export function buildNewsSitemap(
   for (const row of rows) {
     const lang = (row.lang || 'fr').toLowerCase().startsWith('en') ? 'en' : 'fr';
     xml += '  <url>\n';
-    xml += `    <loc>${xmlEscape(articleLoc(row.wp_id, row.slug))}</loc>\n`;
+    xml += `    <loc>${xmlEscape(articleLoc(row.article_id, row.slug))}</loc>\n`;
     xml += '    <news:news>\n';
     xml += '      <news:publication>\n';
     xml += '        <news:name>ElectronLibre</news:name>\n';

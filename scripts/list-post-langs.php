@@ -11,7 +11,7 @@ http_response_code(410);
 exit('deprecated');
 
 /**
- * Map wp_id → lang (fr|en) via meta original_post_id.
+ * Map WordPress post ID → lang (fr|en) via meta original_post_id.
  * Usage: php list-post-langs.php
  */
 declare(strict_types=1);

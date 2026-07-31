@@ -74,8 +74,8 @@
   async function hydratePaywall(entitled) {
     const root = document.getElementById('el-paywall-root');
     if (!root) return;
-    const wpId = root.getAttribute('data-wp-id');
-    if (!wpId) return;
+    const articleId = root.getAttribute('data-article-id');
+    if (!articleId) return;
 
     if (!entitled) {
       return;
@@ -83,7 +83,7 @@
 
     root.innerHTML = '<p class="el-home__sub">Chargement de l’article…</p>';
     try {
-      const res = await fetch('/api/content/' + wpId, { credentials: 'same-origin' });
+      const res = await fetch('/api/content/' + articleId, { credentials: 'same-origin' });
       const data = await res.json();
       if (!res.ok) {
         root.innerHTML =

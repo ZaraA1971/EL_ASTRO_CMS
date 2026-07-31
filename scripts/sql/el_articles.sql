@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS el_articles (
-  wp_id BIGINT UNSIGNED NOT NULL,
+  article_id BIGINT UNSIGNED NOT NULL,
   slug VARCHAR(255) NOT NULL,
   title VARCHAR(500) NOT NULL,
   excerpt TEXT NULL,
@@ -21,10 +21,10 @@ CREATE TABLE IF NOT EXISTS el_articles (
   source_url VARCHAR(500) NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (wp_id),
+  PRIMARY KEY (article_id),
   KEY idx_draft_lang_date (draft, lang, date),
   KEY idx_author_user (author_user_id),
   KEY idx_slug (slug(191)),
-  KEY idx_list_modified (modified, wp_id),
-  KEY idx_list_draft_modified (draft, modified, wp_id)
+  KEY idx_list_modified (modified, article_id),
+  KEY idx_list_draft_modified (draft, modified, article_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

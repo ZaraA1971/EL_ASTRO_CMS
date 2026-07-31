@@ -76,9 +76,9 @@ async function main() {
   }
 
   let sql = `
-    SELECT wp_id, tags FROM el_articles
+    SELECT article_id, tags FROM el_articles
     WHERE tags IS NOT NULL AND JSON_LENGTH(tags) > 0
-    ORDER BY wp_id
+    ORDER BY article_id
   `;
   if (LIMIT) sql += ` LIMIT ${LIMIT}`;
 
@@ -95,14 +95,14 @@ async function main() {
     }
     if (DRY) {
       if (updated < 5) {
-        console.log('[dry]', row.wp_id, tags.slice(0, 4), '→', ia.slice(0, 4));
+        console.log('[dry]', row.article_id, tags.slice(0, 4), '→', ia.slice(0, 4));
       }
       updated++;
       continue;
     }
     await pool.query(
-      'UPDATE el_articles SET ia_keywords = ? WHERE wp_id = ?',
-      [JSON.stringify(ia), row.wp_id]
+      'UPDATE el_articles SET ia_keywords = ? WHERE article_id = ?',
+      [JSON.stringify(ia), row.article_id]
     );
     updated++;
     if (updated % 1000 === 0) {

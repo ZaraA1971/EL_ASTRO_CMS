@@ -2,5 +2,5 @@
 UPDATE el_articles SET modified = date WHERE modified IS NULL;
 
 ALTER TABLE el_articles
-  ADD KEY idx_list_modified (modified, wp_id),
-  ADD KEY idx_list_draft_modified (draft, modified, wp_id);
+  ADD KEY idx_list_modified (modified, article_id),
+  ADD KEY idx_list_draft_modified (draft, modified, article_id);

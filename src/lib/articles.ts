@@ -1,7 +1,7 @@
 import { getPool, parseJsonArray } from './db';
 
 export type ArticleData = {
-  wp_id: number;
+  article_id: number;
   title: string;
   slug: string;
   /** Null tant que l’article est brouillon (fixée à la publication). */
@@ -30,7 +30,7 @@ export type Article = {
 
 /** Colonnes liste / cartes — jamais le LONGTEXT body */
 export const ARTICLE_LIST_COLUMNS = `
-  wp_id, slug, title, excerpt, date, modified, author, author_slug,
+  article_id, slug, title, excerpt, date, modified, author, author_slug,
   categories, category_names, tags, ia_keywords,
   translation_fr, translation_en, access, lang, source_url, draft
 `.replace(/\s+/g, ' ').trim();
@@ -48,9 +48,9 @@ function rowToArticle(
   const date = parseArticleDate(row.date);
   const modified = parseArticleDate(row.modified) || undefined;
   return {
-    id: `db-${row.wp_id}`,
+    id: `db-${row.article_id}`,
     data: {
-      wp_id: Number(row.wp_id),
+      article_id: Number(row.article_id),
       title: String(row.title),
       slug: String(row.slug),
       date,
@@ -75,14 +75,14 @@ function rowToArticle(
   };
 }
 
-/** id URL segment: `{wp_id}-{slug}` */
+/** id URL segment: `{article_id}-{slug}` */
 export function articlePath(article: Article): string {
-  const { wp_id, slug } = article.data;
-  return `/articles/${wp_id}-${slug}/`;
+  const { article_id, slug } = article.data;
+  return `/articles/${article_id}-${slug}/`;
 }
 
 export function articleIdSlug(article: Article): string {
-  return `${article.data.wp_id}-${article.data.slug}`;
+  return `${article.data.article_id}-${article.data.slug}`;
 }
 
 export type LangCode = 'fr' | 'en';
@@ -140,11 +140,11 @@ export async function countPublishedArticles(
 export async function getArticleByIdSlug(idSlug: string): Promise<Article | null> {
   const m = /^(\d+)-(.+)$/.exec(String(idSlug || ''));
   if (!m) return null;
-  const wpId = Number(m[1]);
+  const articleId = Number(m[1]);
   const pool = getPool();
   const [rows] = await pool.query(
-    `SELECT * FROM el_articles WHERE wp_id = ? AND draft = 0 LIMIT 1`,
-    [wpId]
+    `SELECT * FROM el_articles WHERE article_id = ? AND draft = 0 LIMIT 1`,
+    [articleId]
   );
   const row = (rows as Record<string, unknown>[])[0];
   if (!row) return null;
@@ -158,7 +158,7 @@ export async function getArticlesByIds(ids: number[]): Promise<Article[]> {
   const placeholders = uniq.map(() => '?').join(',');
   const [rows] = await pool.query(
     `SELECT ${ARTICLE_LIST_COLUMNS} FROM el_articles
-     WHERE draft = 0 AND wp_id IN (${placeholders})`,
+     WHERE draft = 0 AND article_id IN (${placeholders})`,
     uniq
   );
   return (rows as Record<string, unknown>[]).map((r) =>
@@ -264,12 +264,12 @@ export async function hydrateFeaturedBody(
   articles: Article[]
 ): Promise<Article[]> {
   if (!articles.length) return articles;
-  const wpId = Number(articles[0]?.data?.wp_id) || 0;
-  if (!wpId) return articles;
+  const articleId = Number(articles[0]?.data?.article_id) || 0;
+  if (!articleId) return articles;
   const pool = getPool();
   const [rows] = await pool.query(
-    `SELECT body FROM el_articles WHERE wp_id = ? AND draft = 0 LIMIT 1`,
-    [wpId]
+    `SELECT body FROM el_articles WHERE article_id = ? AND draft = 0 LIMIT 1`,
+    [articleId]
   );
   const body = String((rows as { body?: string }[])[0]?.body || '');
   if (!body) return articles;
@@ -291,7 +291,7 @@ export async function getTranslationUrls(
   ].filter((n): n is number => n != null && n > 0);
   if (!ids.length) return {};
   const found = await getArticlesByIds(ids);
-  const byId = new Map(found.map((a) => [a.data.wp_id, a]));
+  const byId = new Map(found.map((a) => [a.data.article_id, a]));
   const urls: Partial<Record<'FR' | 'EN', string>> = {};
   const frId = article.data.translation_fr;
   const enId = article.data.translation_en;
@@ -310,14 +310,14 @@ export async function getRelatedArticles(
   const pool = getPool();
   const lang = (article.data.lang || 'fr').toLowerCase();
   const cats = article.data.categories || [];
-  const wpId = article.data.wp_id;
+  const articleId = article.data.article_id;
 
   if (!cats.length) {
     const [rows] = await pool.query(
       `SELECT ${ARTICLE_LIST_COLUMNS} FROM el_articles
-       WHERE draft = 0 AND lang = ? AND wp_id != ?
+       WHERE draft = 0 AND lang = ? AND article_id != ?
        ORDER BY date DESC LIMIT ?`,
-      [lang, wpId, limit]
+      [lang, articleId, limit]
     );
     return (rows as Record<string, unknown>[]).map((r) =>
       rowToArticle(r, { includeBody: false })
@@ -328,10 +328,10 @@ export async function getRelatedArticles(
   const overlap = cats
     .map(() => 'JSON_CONTAINS(categories, JSON_QUOTE(?))')
     .join(' OR ');
-  const params: unknown[] = [lang, wpId, ...cats, limit];
+  const params: unknown[] = [lang, articleId, ...cats, limit];
   const [rows] = await pool.query(
     `SELECT ${ARTICLE_LIST_COLUMNS} FROM el_articles
-     WHERE draft = 0 AND lang = ? AND wp_id != ?
+     WHERE draft = 0 AND lang = ? AND article_id != ?
        AND (${overlap})
      ORDER BY date DESC
      LIMIT ?`,

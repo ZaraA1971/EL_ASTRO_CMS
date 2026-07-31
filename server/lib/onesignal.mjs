@@ -34,19 +34,19 @@ export async function sendArticlePush(articleRow, opts) {
   const siteUrl = String(opts.siteUrl || '').replace(/\/+$/, '');
   const dryRun = Boolean(opts.dryRun);
 
-  const wpId = Number(articleRow.wp_id);
+  const articleId = Number(articleRow.article_id);
   const slug = String(articleRow.slug || 'article');
   const articleTitle = String(articleRow.title || 'Nouvel article').trim();
   const heading = String(opts.title || 'ElectronLibre').trim() || 'ElectronLibre';
   const content =
     stripHtml(articleRow.excerpt).slice(0, 220) || articleTitle.slice(0, 220);
   const url = siteUrl
-    ? `${siteUrl}/articles/${wpId}-${slug}/`
-    : `/articles/${wpId}-${slug}/`;
+    ? `${siteUrl}/articles/${articleId}-${slug}/`
+    : `/articles/${articleId}-${slug}/`;
   const segment = String(opts.segment || 'All');
 
   if (dryRun) {
-    console.info('[onesignal] DRY_RUN push skipped', { wpId, url, segment, heading });
+    console.info('[onesignal] DRY_RUN push skipped', { articleId, url, segment, heading });
     return { id: 'dry-run', recipients: 0, url, dryRun: true };
   }
 
@@ -66,7 +66,7 @@ export async function sendArticlePush(articleRow, opts) {
     headings: { en: heading, fr: heading },
     contents: { en: content, fr: content },
     included_segments: [segment],
-    web_push_topic: `post-${wpId}`,
+    web_push_topic: `post-${articleId}`,
     isAnyWeb: true,
     url,
   };

@@ -57,9 +57,9 @@ export function rowToArticle(row, { includeBody = true } = {}) {
   const date = parseRowDate(row.date);
   const modified = parseRowDate(row.modified);
   return {
-    id: `db-${row.wp_id}`,
+    id: `db-${row.article_id}`,
     data: {
-      wp_id: Number(row.wp_id),
+      article_id: Number(row.article_id),
       title: row.title,
       slug: row.slug,
       date,

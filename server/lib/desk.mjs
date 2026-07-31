@@ -1,33 +1,41 @@
 import crypto from 'node:crypto';
 import { parseJsonArray, rowToArticle } from './db.mjs';
-import { translateArticleFrToUk } from './deepl.mjs';
 import { sendArticlePush } from './onesignal.mjs';
 import { canAccessDesk, canEditAll, canPublish } from './roles.mjs';
 import { canManageUsers, handleDeskUsers } from './users.mjs';
 import { auditLog } from './audit.mjs';
-import { handleDeskNewsletter } from './newsletter/handler.mjs';
-import { handleDeskAudience } from './audience/handler.mjs';
-import {
-  buildKeywordSource,
-  extractKeywordsViaRag,
-  normalizeKeywords,
-} from './keywords.mjs';
 import { purgeFrontCache } from './front-cache.mjs';
-import { callEditorialAssist } from './editorial-assist.mjs';
 import { chapo } from './excerpt.mjs';
 import { cleanHtml } from './html-clean.mjs';
 import { handleDeskMedia } from './media/handler.mjs';
-import { handleDeskArticleX } from './x-desk.mjs';
-import {
-  anyXAccountConfigured,
-  listXAccountsPublic,
-} from './x-accounts.mjs';
 import {
   listCategories,
   createCategory,
 } from './categories.mjs';
+import { createElDeskRegistry } from './desk/el-plugins.mjs';
+import {
+  asJson,
+  canEditArticle,
+  ensureArticleDateNullable,
+  ensureSubscriberKeywords,
+  loadEditableTwin,
+  nextArticleId,
+  normalizeKeywords,
+  nowMysql,
+  resolveArticleSlug,
+  slugify,
+  syncKeywordsToTwin,
+  toMysqlDate,
+  uniqueSlug,
+} from './desk/article-helpers.mjs';
+import { bumpContentGen, getContentGen } from './desk/content-gen.mjs';
 
 export { canAccessDesk, canEditAll, canPublish };
+export { canEditArticle } from './desk/article-helpers.mjs';
+export { bumpContentGen, getContentGen } from './desk/content-gen.mjs';
+
+/** Plugins EL (newsletter, audience, x, push, keywords, translate, assist, content-gen). */
+const defaultDeskPlugins = createElDeskRegistry();
 
 /** Qualif / services machine — création brouillon uniquement. */
 const DESK_INGEST_SESSION = Object.freeze({
@@ -74,397 +82,6 @@ function resolveDeskIngestSession(req, parts, apiKey) {
   return DESK_INGEST_SESSION;
 }
 
-/**
- * Valide un lien de traduction : la cible doit exister et être éditable
- * par la session (évite IDOR via translation_en / translation_fr).
- * @returns {Promise<object|null>} row twin ou null si twinId falsy
- */
-async function loadEditableTwin(pool, session, twinId) {
-  const id = Number(twinId) || 0;
-  if (!id) return null;
-  const [rows] = await pool.query(
-    'SELECT * FROM el_articles WHERE wp_id = ? LIMIT 1',
-    [id]
-  );
-  const twin = rows[0] || null;
-  if (!twin) {
-    const err = new Error('Article de traduction lié introuvable');
-    err.status = 400;
-    throw err;
-  }
-  if (!canEditArticle(session, twin)) {
-    const err = new Error('Lien de traduction non autorisé sur cet article');
-    err.status = 403;
-    throw err;
-  }
-  return twin;
-}
-
-/** Propage les mots-clés IA vers la version FR/EN liée (entités souvent bilingues). */
-async function syncKeywordsToTwin(pool, session, row, keywords) {
-  const twinId =
-    Number(row.translation_en) || Number(row.translation_fr) || 0;
-  if (!twinId || !Array.isArray(keywords)) return null;
-  let twin;
-  try {
-    twin = await loadEditableTwin(pool, session, twinId);
-  } catch {
-    // Lien cassé / non autorisé : ne pas bloquer la sauvegarde source
-    return null;
-  }
-  // Mots-clés IA = articles abonnés uniquement
-  if (!twin || twin.access === 'granted') return null;
-  await pool.query('UPDATE el_articles SET ia_keywords = ? WHERE wp_id = ?', [
-    asJson(keywords),
-    twinId,
-  ]);
-  return twinId;
-}
-
-/**
- * Génère des mots-clés IA pour un article abonnés s’il n’en a pas encore.
- * Ne lève pas : en cas d’échec RAG, renvoie la liste courante (souvent []).
- */
-async function ensureSubscriberKeywords(ctx, {
-  access,
-  title,
-  excerpt,
-  body,
-  lang,
-  existingKeywords = [],
-}) {
-  if (access === 'granted') return [];
-  const current = normalizeKeywords(existingKeywords);
-  if (current.length) return current;
-  const { content, language } = buildKeywordSource({
-    title,
-    excerpt,
-    body,
-    lang,
-  });
-  if (content.length < 40) return [];
-  try {
-    return await extractKeywordsViaRag({
-      upstream: ctx.ragUpstream,
-      apiKey: ctx.ragApiKey,
-      content,
-      language,
-    });
-  } catch (err) {
-    console.error('[desk] auto-keywords', err.message);
-    return [];
-  }
-}
-
-export function canEditArticle(session, row) {
-  if (!session || !canAccessDesk(session.role)) return false;
-  if (canEditAll(session.role)) return true;
-  return Number(row.author_user_id) === Number(session.uid);
-}
-
-function slugify(title) {
-  return String(title || 'article')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 80) || 'article';
-}
-
-function toMysqlDate(v) {
-  if (!v) return null;
-  const d = v instanceof Date ? v : new Date(v);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toISOString().slice(0, 19).replace('T', ' ');
-}
-
-function nowMysql() {
-  return toMysqlDate(new Date());
-}
-
-let dateNullableEnsured = false;
-
-/** Brouillons : date de publication NULL jusqu’au premier publish. */
-async function ensureArticleDateNullable(pool) {
-  if (dateNullableEnsured) return;
-  const [cols] = await pool.query(`SHOW COLUMNS FROM el_articles LIKE 'date'`);
-  const col = cols[0];
-  if (col && String(col.Null).toUpperCase() === 'NO') {
-    await pool.query(
-      'ALTER TABLE el_articles MODIFY COLUMN date DATETIME NULL DEFAULT NULL'
-    );
-  }
-  dateNullableEnsured = true;
-}
-
-function asJson(v) {
-  if (!v) return JSON.stringify([]);
-  if (Array.isArray(v)) return JSON.stringify(v.map(String));
-  return JSON.stringify([String(v)]);
-}
-
-async function nextWpId(pool) {
-  const [[maxRow]] = await pool.query(
-    'SELECT COALESCE(MAX(wp_id), 100000) + 1 AS next_id FROM el_articles'
-  );
-  return Number(maxRow.next_id);
-}
-
-async function uniqueSlug(pool, base, excludeWpId = null) {
-  let slug = slugify(base);
-  let n = 0;
-  for (;;) {
-    const candidate = n === 0 ? slug : `${slug}-${n}`;
-    const [rows] = await pool.query(
-      excludeWpId
-        ? 'SELECT wp_id FROM el_articles WHERE slug = ? AND wp_id != ? LIMIT 1'
-        : 'SELECT wp_id FROM el_articles WHERE slug = ? LIMIT 1',
-      excludeWpId ? [candidate, excludeWpId] : [candidate]
-    );
-    if (!rows.length) return candidate;
-    n += 1;
-    if (n > 50) return `${slug}-${Date.now()}`;
-  }
-}
-
-const PLACEHOLDER_SLUGS = new Set([
-  'nouvel-article',
-  'new-article',
-  'untitled',
-  'article',
-]);
-
-/**
- * Slug URL : suit le titre tant que brouillon / placeholder / slug = ancien titre.
- * Sinon conserve le slug publié (URLs stables), sauf override explicite.
- */
-async function resolveArticleSlug(pool, existing, title, payloadSlug) {
-  if (payloadSlug != null && String(payloadSlug).trim()) {
-    return uniqueSlug(pool, String(payloadSlug).trim(), existing.wp_id);
-  }
-  const current = String(existing.slug || '').trim();
-  const fromTitle = slugify(title);
-  const fromOldTitle = slugify(existing.title);
-  const isDraft = Number(existing.draft) === 1;
-  const isPlaceholder = !current || PLACEHOLDER_SLUGS.has(current);
-  const tracksOldTitle = current && current === fromOldTitle;
-  if (isDraft || isPlaceholder || tracksOldTitle) {
-    return uniqueSlug(pool, title || current || 'article', existing.wp_id);
-  }
-  return current;
-}
-
-/**
- * POST /api/desk/articles/:wpId/translate-uk
- * Source FR → brouillon EN-GB (création ou écrasement), liaison bidirectionnelle.
- */
-async function translateUk(req, res, sourceRow, ctx) {
-  const { pool, sendJson, readBody, deeplApiKey, session } = ctx;
-
-  let payload = {};
-  try {
-    const raw = (await readBody(req)).toString('utf8');
-    if (raw.trim()) payload = JSON.parse(raw);
-  } catch {
-    return sendJson(res, 400, { error: 'JSON invalide' });
-  }
-  const overwrite = payload.overwrite !== false;
-
-  // Si on est sur l'EN, remonter au FR
-  let fr = sourceRow;
-  if (String(fr.lang || '').toLowerCase() === 'en') {
-    const frId = Number(fr.translation_fr) || 0;
-    if (!frId) {
-      return sendJson(res, 400, {
-        error: 'Article EN sans lien FR (translation_fr manquant)',
-      });
-    }
-    const [frRows] = await pool.query(
-      'SELECT * FROM el_articles WHERE wp_id = ? LIMIT 1',
-      [frId]
-    );
-    if (!frRows[0]) {
-      return sendJson(res, 404, { error: 'Article FR lié introuvable' });
-    }
-    fr = frRows[0];
-  }
-
-  if (String(fr.lang || 'fr').toLowerCase() !== 'fr') {
-    return sendJson(res, 400, {
-      error: 'La traduction UK part d’un article français',
-    });
-  }
-
-  let enId = Number(fr.translation_en) || null;
-  let enExisting = null;
-  if (enId) {
-    const [enRows] = await pool.query(
-      'SELECT * FROM el_articles WHERE wp_id = ? LIMIT 1',
-      [enId]
-    );
-    enExisting = enRows[0] || null;
-    if (!enExisting) enId = null;
-  }
-
-  if (enExisting && !overwrite) {
-    return sendJson(res, 409, {
-      error: 'Version UK déjà existante',
-      article: rowToArticle(enExisting),
-      created: false,
-    });
-  }
-
-  if (enExisting && session && !canEditArticle(session, enExisting)) {
-    return sendJson(res, 403, {
-      error: 'Version UK liée non modifiable (propriété / droits)',
-    });
-  }
-
-  if (!deeplApiKey) {
-    return sendJson(res, 503, {
-      error: 'DeepL non configuré (DEEPL_API_KEY)',
-    });
-  }
-
-  let translated;
-  try {
-    translated = await translateArticleFrToUk(
-      {
-        title: fr.title || '',
-        excerpt: fr.excerpt || '',
-        body: fr.body || '',
-      },
-      deeplApiKey
-    );
-  } catch (err) {
-    console.error('[desk] deepl', err.message);
-    return sendJson(res, 502, {
-      error: err.message || 'Échec traduction DeepL',
-      code: err.code || 'DEEPL_ERROR',
-    });
-  }
-
-  const title = (translated.title || '').trim() || `${fr.title} (EN)`;
-  const body = cleanHtml(translated.body || '', 'store');
-  // Excerpt = début proportionnel du corps EN (pas le chapô gras)
-  const excerpt = chapo(body, 'store');
-  const now = nowMysql();
-  const cats = parseJsonArray(fr.categories);
-  const catNames = parseJsonArray(fr.category_names);
-  const tags = parseJsonArray(fr.tags);
-  // UK : garder les mots-clés seulement si l’article reste abonnés
-  const accessEn = fr.access === 'granted' ? 'granted' : 'subscribers';
-  const ia = accessEn === 'granted' ? [] : parseJsonArray(fr.ia_keywords);
-
-  await ensureArticleDateNullable(pool);
-  if (enExisting) {
-    // Écrasement : contenu + méta, forcé brouillon pour relecture humaine
-    const slug = await uniqueSlug(pool, title, enExisting.wp_id);
-    await pool.query(
-      `UPDATE el_articles SET
-        slug=?, title=?, excerpt=?, body=?, date=?, modified=?,
-        author=?, author_slug=?, author_user_id=?,
-        categories=?, category_names=?, tags=?, ia_keywords=?,
-        access=?, lang='en', draft=1,
-        translation_fr=?, translation_en=?
-       WHERE wp_id=?`,
-      [
-        slug,
-        title,
-        excerpt,
-        body,
-        null,
-        now,
-        fr.author,
-        fr.author_slug,
-        fr.author_user_id,
-        asJson(cats),
-        asJson(catNames),
-        asJson(tags),
-        asJson(ia),
-        fr.access === 'granted' ? 'granted' : 'subscribers',
-        fr.wp_id,
-        enExisting.wp_id,
-        enExisting.wp_id,
-      ]
-    );
-    enId = Number(enExisting.wp_id);
-  } else {
-    enId = await nextWpId(pool);
-    const slug = await uniqueSlug(pool, title);
-    await pool.query(
-      `INSERT INTO el_articles (
-        wp_id, slug, title, excerpt, body, date, modified,
-        author, author_slug, author_user_id,
-        categories, category_names, tags, ia_keywords,
-        access, lang, draft, translation_fr, translation_en
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [
-        enId,
-        slug,
-        title,
-        excerpt,
-        body,
-        null,
-        now,
-        fr.author,
-        fr.author_slug,
-        fr.author_user_id,
-        asJson(cats),
-        asJson(catNames),
-        asJson(tags),
-        asJson(ia),
-        fr.access === 'granted' ? 'granted' : 'subscribers',
-        'en',
-        1,
-        fr.wp_id,
-        enId,
-      ]
-    );
-  }
-
-  // Liaison bidirectionnelle côté FR
-  await pool.query(
-    'UPDATE el_articles SET translation_en = ?, translation_fr = ?, modified = ? WHERE wp_id = ?',
-    [enId, fr.wp_id, now, fr.wp_id]
-  );
-
-  bumpContentGen();
-  const [rows] = await pool.query('SELECT * FROM el_articles WHERE wp_id = ?', [
-    enId,
-  ]);
-  if (ctx.actor) {
-    await auditLog(pool, {
-      actor: ctx.actor,
-      action: enExisting ? 'article.translate_uk_overwrite' : 'article.translate_uk',
-      targetType: 'article',
-      targetId: enId,
-      meta: { source_fr: Number(fr.wp_id), overwritten: Boolean(enExisting) },
-      ip: ctx.ip,
-    });
-  }
-  return sendJson(res, enExisting ? 200 : 201, {
-    article: rowToArticle(rows[0]),
-    created: !enExisting,
-    overwritten: Boolean(enExisting),
-    source_fr: Number(fr.wp_id),
-    contentGen: getContentGen(),
-  });
-}
-
-/** In-memory generation for short HTTP cache busting */
-let contentGen = Date.now();
-export function bumpContentGen() {
-  contentGen = Date.now();
-  // Home / archives publiques : vider le cache nginx dès qu’un article change
-  purgeFrontCache();
-  return contentGen;
-}
-export function getContentGen() {
-  return contentGen;
-}
-
 export async function handleDesk(req, res, parts, ctx) {
   const { pool, sendJson, readBody, resolveDeskSession, clientIp } = ctx;
   let session = null;
@@ -489,6 +106,8 @@ export async function handleDesk(req, res, parts, ctx) {
   const actor = session.ingest
     ? { uid: null, login: session.login }
     : { uid: session.uid, login: session.login };
+  const plugins = ctx.plugins || defaultDeskPlugins;
+  const deskReqCtx = { ...ctx, session, actor, ip };
 
   // /api/desk/me
   if (parts[2] === 'me' && req.method === 'GET') {
@@ -499,31 +118,26 @@ export async function handleDesk(req, res, parts, ctx) {
         name: session.name,
         role: session.role,
       },
-      capabilities: {
-        editAll: canEditAll(session.role),
-        create: true,
-        publish: canPublish(session.role),
-        manageUsers: canManageUsers(session.role),
-        onesignal: Boolean(
-          canPublish(session.role) &&
-            (ctx.onesignal?.dryRun ||
-              (ctx.onesignal?.apiKey && ctx.onesignal?.appId))
-        ),
-        onesignalDryRun: Boolean(ctx.onesignal?.dryRun),
-        newsletter: Boolean(canPublish(session.role)),
-        newsletterDryRun: Boolean(ctx.brevo?.dryRun),
-        audience: Boolean(canPublish(session.role)),
-        media: true,
-        mediaDelete: canEditAll(session.role),
-        xPost: Boolean(
-          canPublish(session.role) &&
-            (ctx.x?.dryRun || anyXAccountConfigured(ctx.x?.env || {}))
-        ),
-        xPostDryRun: Boolean(ctx.x?.dryRun),
-        xAccounts: listXAccountsPublic(ctx.x?.env || {}),
-      },
+      capabilities: plugins.mergeCaps(
+        {
+          editAll: canEditAll(session.role),
+          create: true,
+          publish: canPublish(session.role),
+          manageUsers: canManageUsers(session.role),
+          media: true,
+          mediaDelete: canEditAll(session.role),
+        },
+        ctx,
+        session
+      ),
       contentGen: getContentGen(),
+      plugins: plugins.ids(),
     });
+  }
+
+  // Plugins top-level (newsletter, audience, …)
+  if (await plugins.tryHandle(req, res, parts, deskReqCtx)) {
+    return;
   }
 
   // /api/desk/media — médiathèque
@@ -571,53 +185,6 @@ export async function handleDesk(req, res, parts, ctx) {
       }
     }
     return sendJson(res, 405, { error: 'Méthode non autorisée' });
-  }
-
-  // /api/desk/content-gen
-  if (parts[2] === 'content-gen' && req.method === 'GET') {
-    return sendJson(res, 200, { contentGen: getContentGen() });
-  }
-
-  // POST /api/desk/assist — corriger | reformuler | chapo via agent_editorial
-  if (parts[2] === 'assist' && !parts[3] && req.method === 'POST') {
-    let body = {};
-    try {
-      const raw = (await readBody(req)).toString('utf8');
-      if (raw.trim()) body = JSON.parse(raw);
-    } catch {
-      return sendJson(res, 400, { error: 'JSON invalide' });
-    }
-    try {
-      const result = await callEditorialAssist({
-        upstream: ctx.agentEditorial?.url,
-        apiKey: ctx.agentEditorial?.apiKey,
-        type: body.type,
-        text: body.text,
-        prompt: body.prompt,
-        profile: 'electronlibre',
-      });
-      await auditLog(pool, {
-        actor,
-        action: `assist.${result.type}`,
-        targetType: 'article',
-        targetId: body.wpId != null ? Number(body.wpId) || null : null,
-        ip,
-        meta: {
-          inputChars: String(body.text || '').length,
-          outputChars: result.text.length,
-        },
-      });
-      return sendJson(res, 200, {
-        text: result.text,
-        type: result.type,
-        model: result.model || null,
-      });
-    } catch (err) {
-      console.error('[desk] assist', err.message);
-      return sendJson(res, err.status || 502, {
-        error: err.message || 'Échec assist IA',
-      });
-    }
   }
 
   // GET /api/desk/authors?q= — autocomplete auteur (articles + comptes rédaction)
@@ -687,26 +254,6 @@ export async function handleDesk(req, res, parts, ctx) {
     return handleDeskUsers(req, res, parts, { ...ctx, session, ip, actor });
   }
 
-  // /api/desk/newsletter/*
-  if (parts[2] === 'newsletter') {
-    return handleDeskNewsletter(req, res, parts, {
-      ...ctx,
-      session,
-      ip,
-      actor,
-    });
-  }
-
-  // /api/desk/audience/*
-  if (parts[2] === 'audience') {
-    return handleDeskAudience(req, res, parts, {
-      ...ctx,
-      session,
-      ip,
-      actor,
-    });
-  }
-
   // /api/desk/articles
   if (parts[2] === 'articles' && !parts[3]) {
     if (req.method === 'GET') {
@@ -748,10 +295,10 @@ export async function handleDesk(req, res, parts, ctx) {
       const offsetClamped = (pageClamped - 1) * limit;
       // Liste légère : pas de body/excerpt/JSON. ORDER BY indexable (évite COALESCE → filesort).
       const [rows] = await pool.query(
-        `SELECT wp_id, slug, title, date, modified, author, author_user_id,
+        `SELECT article_id, slug, title, date, modified, author, author_user_id,
                 access, lang, draft
          FROM el_articles ${whereSql}
-         ORDER BY modified DESC, wp_id DESC
+         ORDER BY modified DESC, article_id DESC
          LIMIT ? OFFSET ?`,
         [...params, limit, offsetClamped]
       );
@@ -776,10 +323,7 @@ export async function handleDesk(req, res, parts, ctx) {
         pool,
         String(payload.slug || '').trim() || title
       );
-      const [[maxRow]] = await pool.query(
-        'SELECT COALESCE(MAX(wp_id), 100000) + 1 AS next_id FROM el_articles'
-      );
-      const wpId = Number(maxRow.next_id);
+      const articleId = await nextArticleId(pool);
       const now = nowMysql();
       await ensureArticleDateNullable(pool);
       // Ingest Qualif / author : toujours brouillon à la création
@@ -804,13 +348,13 @@ export async function handleDesk(req, res, parts, ctx) {
       const pubDate = draft ? null : toMysqlDate(payload.date) || now;
       await pool.query(
         `INSERT INTO el_articles (
-          wp_id, slug, title, excerpt, body, date, modified,
+          article_id, slug, title, excerpt, body, date, modified,
           author, author_slug, author_user_id,
           categories, category_names, tags, ia_keywords,
           access, lang, draft, source_url
         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [
-          wpId,
+          articleId,
           slug,
           title,
           chapo(bodyHtml, 'store'),
@@ -842,13 +386,13 @@ export async function handleDesk(req, res, parts, ctx) {
           actor,
           action: 'article.create_ingest',
           targetType: 'article',
-          targetId: wpId,
+          targetId: articleId,
           meta: { source: 'qualif', source_url: sourceUrl },
           ip,
         });
       }
-      const [rows] = await pool.query('SELECT * FROM el_articles WHERE wp_id = ?', [
-        wpId,
+      const [rows] = await pool.query('SELECT * FROM el_articles WHERE article_id = ?', [
+        articleId,
       ]);
       return sendJson(res, 201, { article: rowToArticle(rows[0]) });
     }
@@ -856,18 +400,23 @@ export async function handleDesk(req, res, parts, ctx) {
     return sendJson(res, 405, { error: 'Method not allowed' });
   }
 
-  // /api/desk/articles/:wpId[/publish]
-  const wpId = Number(parts[3]);
-  if (!wpId) return sendJson(res, 400, { error: 'wp_id invalide' });
+  // /api/desk/articles/:articleId[/publish]
+  const articleId = Number(parts[3]);
+  if (!articleId) return sendJson(res, 400, { error: 'article_id invalide' });
 
   const [existingRows] = await pool.query(
-    'SELECT * FROM el_articles WHERE wp_id = ? LIMIT 1',
-    [wpId]
+    'SELECT * FROM el_articles WHERE article_id = ? LIMIT 1',
+    [articleId]
   );
   const existing = existingRows[0];
   if (!existing) return sendJson(res, 404, { error: 'Article inconnu' });
   if (!canEditArticle(session, existing)) {
     return sendJson(res, 403, { error: 'Pas le droit sur cet article' });
+  }
+
+  // Plugins article (x, push, keywords, translate, …) — avant les routes core.
+  if (await plugins.tryHandleArticle(req, res, parts, deskReqCtx, existing)) {
+    return;
   }
 
   if (parts[4] === 'publish' && req.method === 'POST') {
@@ -897,22 +446,22 @@ export async function handleDesk(req, res, parts, ctx) {
       const pubDate = toMysqlDate(existing.date) || nowMysql();
       const mod = nowMysql();
       await pool.query(
-        'UPDATE el_articles SET draft = 0, date = ?, modified = ?, slug = ? WHERE wp_id = ?',
-        [pubDate, mod, slug, wpId]
+        'UPDATE el_articles SET draft = 0, date = ?, modified = ?, slug = ? WHERE article_id = ?',
+        [pubDate, mod, slug, articleId]
       );
     } else if (slug !== existing.slug) {
       await pool.query(
-        'UPDATE el_articles SET draft = 0, slug = ? WHERE wp_id = ?',
-        [slug, wpId]
+        'UPDATE el_articles SET draft = 0, slug = ? WHERE article_id = ?',
+        [slug, articleId]
       );
     } else {
-      await pool.query('UPDATE el_articles SET draft = 0 WHERE wp_id = ?', [
-        wpId,
+      await pool.query('UPDATE el_articles SET draft = 0 WHERE article_id = ?', [
+        articleId,
       ]);
     }
     bumpContentGen();
-    const [rows] = await pool.query('SELECT * FROM el_articles WHERE wp_id = ?', [
-      wpId,
+    const [rows] = await pool.query('SELECT * FROM el_articles WHERE article_id = ?', [
+      articleId,
     ]);
     const article = rowToArticle(rows[0]);
     let push = null;
@@ -940,7 +489,7 @@ export async function handleDesk(req, res, parts, ctx) {
       actor,
       action: 'article.publish',
       targetType: 'article',
-      targetId: wpId,
+      targetId: articleId,
       meta: { push: Boolean(payload.push), pushOk: push?.ok ?? null, dryRun: push?.dryRun },
       ip,
     });
@@ -969,8 +518,8 @@ export async function handleDesk(req, res, parts, ctx) {
     await ensureArticleDateNullable(pool);
     if (wantDraft) {
       // Retour brouillon : conserve la date de 1ʳᵉ publication (remise en ligne = même date).
-      await pool.query('UPDATE el_articles SET draft = 1 WHERE wp_id = ?', [
-        wpId,
+      await pool.query('UPDATE el_articles SET draft = 1 WHERE article_id = ?', [
+        articleId,
       ]);
     } else {
       // Mise en ligne via /draft : date existante ou maintenant + slug
@@ -983,8 +532,8 @@ export async function handleDesk(req, res, parts, ctx) {
         null
       );
       await pool.query(
-        'UPDATE el_articles SET draft = 0, date = ?, modified = ?, slug = ? WHERE wp_id = ?',
-        [pubDate, mod, slug, wpId]
+        'UPDATE el_articles SET draft = 0, date = ?, modified = ?, slug = ? WHERE article_id = ?',
+        [pubDate, mod, slug, articleId]
       );
     }
     bumpContentGen();
@@ -992,170 +541,18 @@ export async function handleDesk(req, res, parts, ctx) {
       actor,
       action: wantDraft ? 'article.draft' : 'article.undraft',
       targetType: 'article',
-      targetId: wpId,
+      targetId: articleId,
       meta: { draft: wantDraft },
       ip,
     });
     const [rows] = await pool.query(
-      'SELECT * FROM el_articles WHERE wp_id = ?',
-      [wpId]
+      'SELECT * FROM el_articles WHERE article_id = ?',
+      [articleId]
     );
     return sendJson(res, 200, {
       article: rowToArticle(rows[0]),
       contentGen: getContentGen(),
     });
-  }
-
-  if (parts[4] === 'keywords' && req.method === 'POST') {
-    let payload = {};
-    try {
-      const raw = (await readBody(req)).toString('utf8');
-      if (raw.trim()) payload = JSON.parse(raw);
-    } catch {
-      return sendJson(res, 400, { error: 'JSON invalide' });
-    }
-
-    const access =
-      payload.access != null
-        ? String(payload.access)
-        : existing.access || 'subscribers';
-    if (access === 'granted') {
-      return sendJson(res, 400, {
-        error:
-          'Les mots-clés IA sont réservés aux articles abonnés (pas aux articles gratuits).',
-      });
-    }
-
-    const title =
-      payload.title != null ? String(payload.title) : existing.title || '';
-    const excerpt =
-      payload.excerpt != null
-        ? String(payload.excerpt)
-        : existing.excerpt || '';
-    const body =
-      payload.body != null ? cleanHtml(payload.body, 'store') : existing.body || '';
-    const lang =
-      payload.lang != null
-        ? String(payload.lang)
-        : existing.lang || 'fr';
-
-    const { content, language } = buildKeywordSource({
-      title,
-      excerpt,
-      body,
-      lang,
-    });
-    if (content.length < 40) {
-      return sendJson(res, 400, {
-        error: 'Ajoutez un titre et un peu de texte avant de générer les mots-clés.',
-      });
-    }
-
-    try {
-      const keywords = await extractKeywordsViaRag({
-        upstream: ctx.ragUpstream,
-        apiKey: ctx.ragApiKey,
-        content,
-        language,
-      });
-      if (!keywords.length) {
-        return sendJson(res, 502, {
-          error: 'Aucun mot-clé renvoyé par l’IA',
-        });
-      }
-      // Persiste + force accès abonnés (génération = articles paywall).
-      // Pas de date de mise à jour (réservée à Enregistrer le contenu).
-      await pool.query(
-        'UPDATE el_articles SET ia_keywords = ?, access = ? WHERE wp_id = ?',
-        [asJson(keywords), 'subscribers', wpId]
-      );
-      existing.access = 'subscribers';
-      const twinId = await syncKeywordsToTwin(pool, session, existing, keywords);
-      bumpContentGen();
-      await auditLog(pool, {
-        actor,
-        action: 'article.keywords',
-        targetType: 'article',
-        targetId: wpId,
-        meta: { count: keywords.length, language, twinId },
-        ip,
-      });
-      const [rows] = await pool.query(
-        'SELECT * FROM el_articles WHERE wp_id = ?',
-        [wpId]
-      );
-      return sendJson(res, 200, {
-        keywords,
-        article: rowToArticle(rows[0]),
-        twinId,
-        contentGen: getContentGen(),
-      });
-    } catch (err) {
-      console.error('[desk] keywords', err.message);
-      return sendJson(res, 502, {
-        error: err.message || 'Échec extraction mots-clés',
-      });
-    }
-  }
-
-  if (parts[4] === 'x') {
-    return handleDeskArticleX(
-      req,
-      res,
-      parts,
-      { ...ctx, session, actor, ip },
-      existing
-    );
-  }
-
-  if (parts[4] === 'push' && req.method === 'POST') {
-    if (!canPublish(session.role)) {
-      return sendJson(res, 403, {
-        error: 'Push réservé éditeur/admin',
-      });
-    }
-    if (Number(existing.draft)) {
-      return sendJson(res, 400, {
-        error: 'Publiez l’article avant d’envoyer un push',
-      });
-    }
-    let payload = {};
-    try {
-      const raw = (await readBody(req)).toString('utf8');
-      if (raw.trim()) payload = JSON.parse(raw);
-    } catch {
-      return sendJson(res, 400, { error: 'JSON invalide' });
-    }
-    try {
-      const push = await sendArticlePush(existing, {
-        appId: ctx.onesignal?.appId,
-        apiKey: ctx.onesignal?.apiKey,
-        siteUrl: ctx.onesignal?.siteUrl,
-        dryRun: Boolean(ctx.onesignal?.dryRun),
-        title: 'ElectronLibre',
-        segment: payload.segment || 'All',
-        sendToMobile: true,
-      });
-      await auditLog(pool, {
-        actor,
-        action: 'article.push',
-        targetType: 'article',
-        targetId: wpId,
-        meta: { dryRun: push.dryRun, recipients: push.recipients },
-        ip,
-      });
-      return sendJson(res, 200, { ok: true, push });
-    } catch (err) {
-      console.error('[desk] onesignal', err.message);
-      return sendJson(res, 502, {
-        error: err.message || 'Échec OneSignal',
-        code: err.code || 'ONESIGNAL_ERROR',
-      });
-    }
-  }
-
-  if (parts[4] === 'translate-uk' && req.method === 'POST') {
-    return translateUk(req, res, existing, { ...ctx, session, actor, ip });
   }
 
   if (req.method === 'GET' && !parts[4]) {
@@ -1286,7 +683,7 @@ export async function handleDesk(req, res, parts, ctx) {
         categories=?, category_names=?, tags=?, ia_keywords=?,
         access=?, lang=?, draft=?,
         translation_fr=?, translation_en=?
-       WHERE wp_id=?`,
+       WHERE article_id=?`,
       [
         slug,
         title,
@@ -1310,7 +707,7 @@ export async function handleDesk(req, res, parts, ctx) {
         draftVal,
         translationFr,
         translationEn,
-        wpId,
+        articleId,
       ]
     );
     if (
@@ -1329,8 +726,8 @@ export async function handleDesk(req, res, parts, ctx) {
       );
     }
     bumpContentGen();
-    const [rows] = await pool.query('SELECT * FROM el_articles WHERE wp_id = ?', [
-      wpId,
+    const [rows] = await pool.query('SELECT * FROM el_articles WHERE article_id = ?', [
+      articleId,
     ]);
     return sendJson(res, 200, {
       article: rowToArticle(rows[0]),
@@ -1345,19 +742,19 @@ export async function handleDesk(req, res, parts, ctx) {
     // Délier les traductions avant suppression
     await pool.query(
       'UPDATE el_articles SET translation_en = NULL WHERE translation_en = ?',
-      [wpId]
+      [articleId]
     );
     await pool.query(
       'UPDATE el_articles SET translation_fr = NULL WHERE translation_fr = ?',
-      [wpId]
+      [articleId]
     );
-    await pool.query('DELETE FROM el_articles WHERE wp_id = ?', [wpId]);
+    await pool.query('DELETE FROM el_articles WHERE article_id = ?', [articleId]);
     bumpContentGen();
     await auditLog(pool, {
       actor,
       action: 'article.delete',
       targetType: 'article',
-      targetId: wpId,
+      targetId: articleId,
       ip,
     });
     return sendJson(res, 200, { ok: true, contentGen: getContentGen() });

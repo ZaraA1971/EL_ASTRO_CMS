@@ -158,7 +158,7 @@ Astro.response.headers.set(
           }
           <article
             class="news-snippet el-single-article-card"
-            data-wp-id={d.wp_id}
+            data-article-id={d.article_id}
             data-access={d.access}
           >
             <div class="ihead info">
@@ -204,7 +204,7 @@ Astro.response.headers.set(
                   set:html={article.body}
                 />
               ) : (
-                <div id="el-paywall-root" data-wp-id={d.wp_id}>
+                <div id="el-paywall-root" data-article-id={d.article_id}>
                   <div class="el-article__teaser">
                     {d.excerpt && (
                       <p class="el-article-chapo el-article-chapo--teaser">
@@ -279,7 +279,7 @@ Astro.response.headers.set(
                   {/* Corps article chargé via /api/content — jamais en base64 dans le HTML */}
                   <div
                     class="tags el-ia-keywords"
-                    data-wp-id={d.wp_id}
+                    data-article-id={d.article_id}
                     data-title={d.title}
                     data-excerpt={d.excerpt || ""}
                   >

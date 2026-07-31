@@ -131,7 +131,7 @@ export async function handleDeskArticleX(req, res, parts, ctx, existing) {
 
   const { pool, sendJson, readBody, session, actor, ip } = ctx;
   await ensureXPostsSchema(pool);
-  const wpId = Number(existing.wp_id);
+  const articleId = Number(existing.article_id);
   const xEnv = ctx.x?.env || {};
 
   // GET — brouillon + dernier post
@@ -139,8 +139,8 @@ export async function handleDeskArticleX(req, res, parts, ctx, existing) {
     const url = new URL(req.url || '/', `http://${req.headers.host}`);
     const account =
       normalizeXAccount(url.searchParams.get('account')) || DEFAULT_X_ACCOUNT;
-    const draft = await loadLatestDraft(pool, wpId, account);
-    const last = await loadLastPosted(pool, wpId, account);
+    const draft = await loadLatestDraft(pool, articleId, account);
+    const last = await loadLastPosted(pool, articleId, account);
     sendJson(res, 200, {
       account,
       accounts: listXAccountsPublic(xEnv),
@@ -148,9 +148,9 @@ export async function handleDeskArticleX(req, res, parts, ctx, existing) {
       draft: mapRow(draft),
       lastPost: mapRow(last),
       article: {
-        id: wpId,
+        id: articleId,
         title: existing.title,
-        url: `${String(ctx.siteUrl || '').replace(/\/+$/, '')}/articles/${wpId}-${existing.slug}/`,
+        url: `${String(ctx.siteUrl || '').replace(/\/+$/, '')}/articles/${articleId}-${existing.slug}/`,
       },
     });
     return true;
@@ -179,7 +179,7 @@ export async function handleDeskArticleX(req, res, parts, ctx, existing) {
       ? body.variants.map((v) => String(v || '').trim()).filter(Boolean).slice(0, 5)
       : null;
     const row = await upsertDraft(pool, {
-      articleId: wpId,
+      articleId: articleId,
       account,
       text,
       variants,
@@ -189,7 +189,7 @@ export async function handleDeskArticleX(req, res, parts, ctx, existing) {
       actor,
       action: 'article.x_draft',
       targetType: 'article',
-      targetId: wpId,
+      targetId: articleId,
       meta: { account, chars: xWeightedLength(text) },
       ip,
     });
@@ -216,7 +216,7 @@ export async function handleDeskArticleX(req, res, parts, ctx, existing) {
         agentEditorial: ctx.agentEditorial,
       });
       const row = await upsertDraft(pool, {
-        articleId: wpId,
+        articleId: articleId,
         account,
         text: gen.text,
         variants: gen.variants,
@@ -226,7 +226,7 @@ export async function handleDeskArticleX(req, res, parts, ctx, existing) {
         actor,
         action: 'article.x_generate',
         targetType: 'article',
-        targetId: wpId,
+        targetId: articleId,
         meta: { account, source: gen.source, n: gen.variants.length },
         ip,
       });
@@ -276,7 +276,7 @@ export async function handleDeskArticleX(req, res, parts, ctx, existing) {
 
     // Garde le brouillon à jour
     await upsertDraft(pool, {
-      articleId: wpId,
+      articleId: articleId,
       account,
       text,
       variants: null,
@@ -296,7 +296,7 @@ export async function handleDeskArticleX(req, res, parts, ctx, existing) {
           (article_id, account, text, tweet_id, status, actor_id, actor_login, posted_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          wpId,
+          articleId,
           account,
           posted.text,
           posted.tweetId,
@@ -310,7 +310,7 @@ export async function handleDeskArticleX(req, res, parts, ctx, existing) {
         actor,
         action: 'article.x_post',
         targetType: 'article',
-        targetId: wpId,
+        targetId: articleId,
         meta: {
           account,
           dryRun: posted.dryRun,
@@ -339,7 +339,7 @@ export async function handleDeskArticleX(req, res, parts, ctx, existing) {
           (article_id, account, text, status, error, actor_id, actor_login)
          VALUES (?, ?, ?, 'error', ?, ?, ?)`,
         [
-          wpId,
+          articleId,
           account,
           text,
           String(err.message || 'error').slice(0, 500),

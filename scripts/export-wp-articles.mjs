@@ -184,7 +184,7 @@ async function main() {
       const pair = translations[String(id)] || null;
 
       const front = {
-        wp_id: id,
+        article_id: id,
         title: yamlSafe(title),
         slug,
         date: post.date,

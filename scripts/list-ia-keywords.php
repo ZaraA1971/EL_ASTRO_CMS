@@ -11,7 +11,7 @@ http_response_code(410);
 exit('deprecated');
 
 /**
- * Map wp_id → mots-clés IA (_ia_keywords).
+ * Map WordPress post ID → mots-clés IA (_ia_keywords).
  * Usage: php list-ia-keywords.php
  */
 declare(strict_types=1);

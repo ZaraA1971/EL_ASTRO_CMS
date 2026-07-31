@@ -39,8 +39,8 @@ foreach ($files as $file) {
     if (!preg_match('/^(\d+)-/', $base, $m)) {
         continue;
     }
-    $wpId = (int) $m[1];
-    $orig = get_post_meta($wpId, 'original_post_id', true);
+    $postId = (int) $m[1];
+    $orig = get_post_meta($postId, 'original_post_id', true);
     $lang = $orig ? 'en' : 'fr';
     if ($lang === 'en') {
         $en++;

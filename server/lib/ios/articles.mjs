@@ -72,7 +72,7 @@ export function toIosArticleDto(row, { entitled = false, lang = 'FR' } = {}) {
   const canSeeBody = pub || entitled;
   const content = canSeeBody ? sanitizeHtmlForIos(row?.body || '') : '';
   return {
-    id: Number(row.wp_id),
+    id: Number(row.article_id),
     title: String(row.title || ''),
     date: rowDateIso(row),
     excerpt: chapo(row, 'ios', { entitled: canSeeBody }),
@@ -108,19 +108,19 @@ export async function queryIosArticles(pool, args = {}) {
   return rows;
 }
 
-export async function getPublishedRow(pool, wpId) {
-  const id = Number(wpId) || 0;
+export async function getPublishedRow(pool, articleId) {
+  const id = Number(articleId) || 0;
   if (!id) return null;
   const [rows] = await pool.query(
-    'SELECT * FROM el_articles WHERE wp_id = ? AND draft = 0 LIMIT 1',
+    'SELECT * FROM el_articles WHERE article_id = ? AND draft = 0 LIMIT 1',
     [id]
   );
   return rows[0] || null;
 }
 
-export async function resolveArticleForLang(pool, wpId, lang) {
+export async function resolveArticleForLang(pool, articleId, lang) {
   const want = normalizeLang(lang);
-  let row = await getPublishedRow(pool, wpId);
+  let row = await getPublishedRow(pool, articleId);
   if (!row) return null;
 
   const rowLang = String(row.lang || 'fr').toUpperCase();

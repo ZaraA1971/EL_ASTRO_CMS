@@ -38,11 +38,11 @@ async function main() {
 
   await ensureIndex(
     'idx_list_modified',
-    'ALTER TABLE el_articles ADD KEY idx_list_modified (modified, wp_id)'
+    'ALTER TABLE el_articles ADD KEY idx_list_modified (modified, article_id)'
   );
   await ensureIndex(
     'idx_list_draft_modified',
-    'ALTER TABLE el_articles ADD KEY idx_list_draft_modified (draft, modified, wp_id)'
+    'ALTER TABLE el_articles ADD KEY idx_list_draft_modified (draft, modified, article_id)'
   );
   await pool.end();
 }

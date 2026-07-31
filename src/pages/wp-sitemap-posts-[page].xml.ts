@@ -19,7 +19,7 @@ export const GET: APIRoute = async ({ params }) => {
     return new Response('Not found', { status: 404 });
   }
   const urls = rows.map((r) => ({
-    loc: articleLoc(Number(r.wp_id), String(r.slug)),
+    loc: articleLoc(Number(r.article_id), String(r.slug)),
     lastmod: isoDate(r.modified || r.date),
   }));
   return xmlResponse(buildUrlset(urls), { maxAge: 600 });

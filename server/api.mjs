@@ -612,12 +612,12 @@ async function resolveDeskSession(req) {
 
 async function handleContent(req, res, parts) {
   if (req.method !== 'GET') return sendJson(res, 405, { error: 'Method not allowed' });
-  const wpId = Number(parts[2]);
-  if (!wpId) return sendJson(res, 400, { error: 'wp_id invalide' });
+  const articleId = Number(parts[2]);
+  if (!articleId) return sendJson(res, 400, { error: 'article_id invalide' });
 
   const [rows] = await pool.query(
-    'SELECT access, body, draft FROM el_articles WHERE wp_id = ? LIMIT 1',
-    [wpId]
+    'SELECT access, body, draft FROM el_articles WHERE article_id = ? LIMIT 1',
+    [articleId]
   );
   const row = rows[0];
   if (!row || row.draft) return sendJson(res, 404, { error: 'Article inconnu' });
