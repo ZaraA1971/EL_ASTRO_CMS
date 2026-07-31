@@ -60,21 +60,17 @@ Marque : `DESK_BRAND_*` → `GET /api/desk/me` → `state.brand`.
 - [x] Extract → https://github.com/ZaraA1971/pupitre-core (public, MIT)  
 - [x] Hors extract : `.env`, `desk/el`, billing, SPA  
 
-## npm publish
+## npm publish (fait)
 
-Repo public prêt : [pupitre-core](https://github.com/ZaraA1971/pupitre-core) (`publishConfig.access=public`, workflow Release).
-
-À faire côté compte npm (une fois) :
-
-1. Créer un compte sur [npmjs.com](https://www.npmjs.com/)  
-2. Créer l’organisation **`electronlibre`** (scope `@electronlibre`)  
-3. Générer un token Automation, le mettre en secret GitHub `NPM_TOKEN` sur le repo `pupitre-core`  
-4. Publier : Release GitHub **ou** `npm publish --access public` depuis le clone
+- Package : [`@electronlibre/pupitre-core@0.1.0`](https://www.npmjs.com/package/@electronlibre/pupitre-core)  
+- Repo : [github.com/ZaraA1971/pupitre-core](https://github.com/ZaraA1971/pupitre-core)  
+- Install : `npm install @electronlibre/pupitre-core busboy`  
+- Prochaines versions : tag Release `vX.Y.Z` (workflow Actions + secret `NPM_TOKEN`)
 
 ## Suite
 
-1. Finaliser le premier `npm publish` (auth org)  
-2. Plugins UI assist / keywords / translate (optionnel)
+1. Plugins UI assist / keywords / translate (optionnel)  
+2. Sync monorepo → repo public quand le core évolue
 
 ## Ops prod EL
 

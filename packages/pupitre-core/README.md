@@ -10,13 +10,13 @@ Façade dans le monorepo ElectronLibre (`private: true`).
 
 | Oui | Non |
 |-----|-----|
-| Sources sous [`server/lib/desk/core/`](../../server/lib/desk/core/) | Package npm autonome / `npm publish` |
-| Aucun import host (`roles`, `keywords`, `wordpress-hash`, Brevo…) | Hash mots de passe, mails, newsletter |
-| CRUD via `tryHandleCoreCrud` + stores injectés | UI SPA `desk/`, adapters `desk/el/` |
-| Exemple [`examples/pupitre-minimal/`](../../examples/pupitre-minimal/) | Secrets / `.env` / billing Stripe |
+| Sources sous [`server/lib/desk/core/`](../../server/lib/desk/core/) | Hash mots de passe, mails, newsletter |
+| Aucun import host (`roles`, `keywords`, `wordpress-hash`, Brevo…) | UI SPA `desk/`, adapters `desk/el/` |
+| CRUD via `tryHandleCoreCrud` + stores injectés | Secrets / `.env` / billing Stripe |
+| Publié sur npm : [`@electronlibre/pupitre-core`](https://www.npmjs.com/package/@electronlibre/pupitre-core) | |
 
 **Repo public :** [github.com/ZaraA1971/pupitre-core](https://github.com/ZaraA1971/pupitre-core)  
-(extrait `desk/core` + exemple + MIT — pas un miroir du monorepo).
+**Install :** `npm install @electronlibre/pupitre-core busboy`
 
 **Ne jamais publier** `desk/el/`, `server/lib/users.mjs` (hooks Brevo), ni le monorepo entier.
 
