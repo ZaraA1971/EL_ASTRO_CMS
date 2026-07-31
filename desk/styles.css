@@ -766,27 +766,25 @@ details.x-panel[open] {
   color: var(--muted);
 }
 
-.list-item--user h2 {
-  margin-bottom: 10px;
-}
-
+.list-item--user,
 .list-item--article {
   padding: 16px 18px;
 }
 
-.list-item-article {
+/* Corps à gauche · badges coin haut/bas droit (articles + comptes). */
+.list-item-split {
   display: flex;
   align-items: stretch;
   gap: 16px 20px;
 }
 
-.list-item-article__body {
+.list-item-split__body {
   flex: 1 1 auto;
   min-width: 0;
   padding-right: 4px;
 }
 
-.list-item-article__aside {
+.list-item-split__aside {
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
@@ -797,6 +795,7 @@ details.x-panel[open] {
   padding: 2px 0;
 }
 
+.list-item--user h2,
 .list-item--article h2 {
   margin: 0 0 8px;
   padding-right: 8px;
@@ -828,7 +827,7 @@ details.x-panel[open] {
 }
 
 @media (max-width: 520px) {
-  .list-item-article__aside {
+  .list-item-split__aside {
     min-width: 4.5rem;
   }
 }
@@ -1908,15 +1907,13 @@ details.x-panel[open] {
 }
 .media-picker-foot {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: stretch;
   gap: 10px;
 }
-.media-pager {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+
+.media-picker-foot .list-pager-bottom {
+  margin-top: 0;
 }
 .media-card.is-selected {
   border-color: var(--accent);

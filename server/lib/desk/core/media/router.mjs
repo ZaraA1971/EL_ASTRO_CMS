@@ -105,7 +105,12 @@ export async function handleCoreMedia(req, res, parts, ctx) {
     const page = Math.max(1, Number(url.searchParams.get('page')) || 1);
     const perPage = Math.min(
       60,
-      Math.max(1, Number(url.searchParams.get('per_page')) || 24)
+      Math.max(
+        1,
+        Number(url.searchParams.get('limit')) ||
+          Number(url.searchParams.get('per_page')) ||
+          24
+      )
     );
     const q = String(url.searchParams.get('q') || '').trim();
     const { rows, total } = await mediaStore.list(pool, { q, page, perPage });
@@ -113,6 +118,7 @@ export async function handleCoreMedia(req, res, parts, ctx) {
       items: rows.map(mediaFs.toMediaDto),
       page,
       perPage,
+      limit: perPage,
       total,
       pages: Math.max(1, Math.ceil(total / perPage)),
     });

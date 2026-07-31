@@ -10,13 +10,13 @@ import {
   toDatetimeLocalValue,
   fromDatetimeLocalValue,
 } from "../core/format.js";
-import {
-  rangeLabel,
-  pagerHtml,
-  bindPager,
-  patchPagerHosts,
-} from "../core/pager.js";
 import { createAutocomplete } from "../core/autocomplete.js";
+import {
+  createPagedList,
+  listSplitCardHtml,
+  roleBadgeHtml,
+  statusBadgeHtml,
+} from "../core/list-resource.js";
 import { ctx } from "../core/ctx.js";
 import { logout } from "./login.js";
 
@@ -76,7 +76,7 @@ function usersItemsHtml(users) {
   return (users || [])
     .map((u) => {
       const st = u.status || "active";
-      const badgeClass =
+      const badgeKind =
         st === "active" ? "live" : st === "disabled" ? "draft" : "warn";
       const isStaff = STAFF_ROLES.has(u.role);
       const accessBits = [];
@@ -96,22 +96,21 @@ function usersItemsHtml(users) {
             : "Non";
       const registered = formatDate(u.registered);
       const updated = formatDateTime(u.updated_at);
-      return `
-        <button class="list-item list-item--user" type="button" data-user="${u.id}">
-          <div class="row" style="justify-content:space-between;gap:8px;flex-wrap:wrap">
-            <span class="badge ${badgeClass}">${escapeHtml(STATUS_LABELS[st] || st)}</span>
-            <span class="badge badge-role">${escapeHtml(ROLE_LABELS[u.role] || u.role)}</span>
-          </div>
-          <h2>${escapeHtml(u.name || u.login)}</h2>
-          <div class="list-item-meta">
-            ${listMetaRow("Identifiant", u.login)}
-            ${listMetaRow("Email", u.email || "—")}
-            ${listMetaRow("Accès", accessBits.join(" · "))}
-            ${nl != null ? listMetaRow("Newsletter", nl) : ""}
-            ${registered ? listMetaRow("Inscrit", registered) : ""}
-            ${updated ? listMetaRow("Mis à jour", updated) : ""}
-          </div>
-        </button>`;
+      return listSplitCardHtml({
+        itemClass: "list-item--user",
+        dataAttrs: { user: u.id },
+        title: u.name || u.login,
+        metaHtml: [
+          listMetaRow("Identifiant", u.login),
+          listMetaRow("Email", u.email || "—"),
+          listMetaRow("Accès", accessBits.join(" · ")),
+          nl != null ? listMetaRow("Newsletter", nl) : "",
+          registered ? listMetaRow("Inscrit", registered) : "",
+          updated ? listMetaRow("Mis à jour", updated) : "",
+        ].join(""),
+        topBadgeHtml: roleBadgeHtml(ROLE_LABELS[u.role] || u.role),
+        statusBadgeHtml: statusBadgeHtml(badgeKind, STATUS_LABELS[st] || st),
+      });
     })
     .join("");
 }
@@ -122,109 +121,42 @@ function bindUsersResultClicks(root = app) {
   });
 }
 
-function usersRangeLabel() {
-  return rangeLabel({
-    total: state.usersTotal,
-    page: state.usersPage,
-    limit: state.usersLimit,
-    singular: "compte",
-  });
-}
-
-function usersPagerHtml() {
-  return pagerHtml({
-    page: state.usersPage,
-    pages: state.usersPages,
-    total: state.usersTotal,
-    limit: state.usersLimit,
-    ariaLabel: "Pagination comptes",
-    dataAttr: "users-page",
-  });
-}
-
-async function goUsersPage(next) {
-  const page = Number(next);
-  if (!Number.isFinite(page) || page < 1 || page === state.usersPage) return;
-  state.usersPage = page;
-  usersAc.close();
-  await loadUsers({ soft: true });
-  document.getElementById("users-results")?.scrollIntoView({ block: "start" });
-}
-
-function bindUsersPager(root = app) {
-  bindPager(root, "users-page", goUsersPage);
-}
-
-function patchUsersResults() {
-  const count = document.getElementById("users-count");
-  if (count) count.textContent = usersRangeLabel();
-  const list = document.getElementById("users-results");
-  if (list) {
-    list.innerHTML = usersItemsHtml(state.users) || `<div class="empty">Aucun compte</div>`;
-    bindUsersResultClicks(list);
-  }
-  patchPagerHosts(
-    ["users-pager-host", "users-pager-host-bottom"],
-    usersPagerHtml(),
-    bindUsersPager
-  );
-  const err = document.getElementById("users-error");
-  if (err) {
-    if (state.error) {
-      err.hidden = false;
-      err.textContent = state.error;
-    } else {
-      err.hidden = true;
-      err.textContent = "";
-    }
-  }
-}
-
-export async function loadUsers({ soft = false, fromAc = false } = {}) {
-  const seq = (state._searchSeq.users += 1);
-  const page = Math.max(1, Number(state.usersPage || 1));
-  const limit = Math.min(50, Math.max(10, Number(state.usersLimit || 25)));
-  const params = new URLSearchParams({
-    limit: String(limit),
-    page: String(page),
-  });
-  const q = String(state.usersQ || "").trim();
-  if (q) params.set("q", q);
-  if (state.usersRole) params.set("role", state.usersRole);
-  if (state.usersStatus) params.set("status", state.usersStatus);
-  try {
-    const data = await api(`/api/desk/users?${params}`);
-    if (seq !== state._searchSeq.users) return; // réponse obsolète
-    state.users = data.users || [];
-    state.usersTotal = data.total || 0;
-    state.usersLimit = data.limit || limit;
-    state.usersPages =
-      data.pages ||
-      Math.max(1, Math.ceil(state.usersTotal / state.usersLimit) || 1);
-    state.usersPage = Math.min(data.page || page, state.usersPages);
+const usersCtl = createPagedList({
+  seqKey: "users",
+  view: "users",
+  resultsId: "users-results",
+  countId: "users-count",
+  pagerHostIds: ["users-pager-host", "users-pager-host-bottom"],
+  pageDataAttr: "users-page",
+  emptyMessage: "Aucun compte",
+  singular: "compte",
+  pagerAriaLabel: "Pagination comptes",
+  endpoint: "/api/desk/users",
+  itemsResponseKey: "users",
+  errorElId: "users-error",
+  fields: {
+    page: "usersPage",
+    limit: "usersLimit",
+    pages: "usersPages",
+    total: "usersTotal",
+    q: "usersQ",
+    items: "users",
+  },
+  extraParams(params) {
+    if (state.usersRole) params.set("role", state.usersRole);
+    if (state.usersStatus) params.set("status", state.usersStatus);
+  },
+  afterApply(data) {
     if (data.meta) state.usersMeta = data.meta;
-    state.error = "";
-    if (soft && state.view === "users" && document.getElementById("users-results")) {
-      patchUsersResults();
-      if (!fromAc) usersAc.syncItems(state.users, state.usersQ);
-    } else if (!fromAc) {
-      renderUsers();
-    } else {
-      patchUsersResults();
-    }
-  } catch (err) {
-    if (seq !== state._searchSeq.users) return;
-    state.error = err.message || "Erreur recherche";
-    if (soft && state.view === "users" && document.getElementById("users-results")) {
-      patchUsersResults();
-      if (!fromAc) usersAc.syncItems([], state.usersQ);
-    } else if (!fromAc) {
-      renderUsers();
-    } else {
-      patchUsersResults();
-    }
-  }
-}
+  },
+  itemsHtml: usersItemsHtml,
+  bindResultClicks: bindUsersResultClicks,
+  getAc: () => usersAc,
+  renderFull: () => renderUsers(),
+  root: app,
+});
+
+export const loadUsers = usersCtl.load;
 
 function emptyUserForm() {
   return {
@@ -576,6 +508,7 @@ export function renderUsers() {
   const activeFilter = state.usersRole || "";
   const items =
     usersItemsHtml(state.users) || `<div class="empty">Aucun compte</div>`;
+  const chrome = usersCtl.chromeHtml();
 
   app.innerHTML = `
     <header class="topbar">
@@ -591,13 +524,10 @@ export function renderUsers() {
         </div>
         ${filterChips("Filtrer les comptes", filterChipsOpts, activeFilter, "ufilter")}
       </div>
-      <div class="list-meta">
-        <p class="count-line" id="users-count">${usersRangeLabel()}</p>
-        <div id="users-pager-host">${usersPagerHtml()}</div>
-      </div>
+      ${chrome.top}
       <p class="err" id="users-error" ${state.error ? "" : "hidden"}>${escapeHtml(state.error || "")}</p>
       <div id="users-results">${items}</div>
-      <div id="users-pager-host-bottom" class="list-pager-bottom">${usersPagerHtml()}</div>
+      ${chrome.bottom}
     </main>
     <button class="fab" type="button" id="btn-new-user" title="Nouveau compte" aria-label="Nouveau compte">+</button>`;
 
@@ -614,7 +544,7 @@ export function renderUsers() {
       await loadUsers({ soft: true });
     };
   });
-  bindUsersPager();
+  usersCtl.bindPager();
   bindUsersResultClicks();
 }
 

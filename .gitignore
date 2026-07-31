@@ -2,6 +2,9 @@
 dist/
 .astro/
 
+# rapports locaux (audit médias, etc.)
+tmp/
+
 # dependencies
 node_modules/
 

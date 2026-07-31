@@ -65,9 +65,17 @@ export function createMediaStore({ tableName = 'media' } = {}) {
       params
     );
     const offset = (page - 1) * perPage;
+    // Plus récents en page 1 : date éditoriale (YYYY/MM du path WP/upload), puis created_at, puis id.
     const [rows] = await pool.query(
       `SELECT * FROM \`${table}\` WHERE ${where}
-       ORDER BY created_at DESC, id DESC
+       ORDER BY
+         CASE
+           WHEN path REGEXP '^[0-9]{4}/[0-9]{2}/'
+           THEN CONCAT(SUBSTRING(path, 1, 7), '-01')
+           ELSE DATE_FORMAT(created_at, '%Y-%m-%d')
+         END DESC,
+         created_at DESC,
+         id DESC
        LIMIT ? OFFSET ?`,
       [...params, perPage, offset]
     );

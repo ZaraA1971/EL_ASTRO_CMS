@@ -69,6 +69,7 @@ export const state = {
     q: "",
     page: 1,
     pages: 1,
+    limit: 24,
     total: 0,
     items: [],
     loading: false,
@@ -79,6 +80,6 @@ export const state = {
     status: "",
   },
   _searchTimers: {},
-  _searchSeq: { users: 0, list: 0, listAc: 0, usersAc: 0, authors: 0 },
+  _searchSeq: { users: 0, list: 0, listAc: 0, usersAc: 0, authors: 0, media: 0 },
   _ac: {}, // états autocomplétion générique (createAutocomplete)
 };

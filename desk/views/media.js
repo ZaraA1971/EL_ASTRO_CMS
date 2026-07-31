@@ -1,6 +1,7 @@
 import { state } from "../core/state.js";
 import { api, apiForm } from "../core/api.js";
 import { escapeHtml, brandBlock } from "../core/format.js";
+import { createPagedList } from "../core/list-resource.js";
 import { ctx } from "../core/ctx.js";
 import { getVisualEditor, exec, getBodyFromDom } from "../core/body-editor.js";
 import { logout } from "./login.js";
@@ -106,20 +107,6 @@ function mediaToolbarHtml(mp, { idPrefix = "media" } = {}) {
     </div>`;
 }
 
-function mediaPagerHtml(mp) {
-  return `
-    <span class="sub">${mp.total} fichier${mp.total > 1 ? "s" : ""}</span>
-    <div class="media-pager">
-      <button type="button" class="btn" data-media-page="${mp.page - 1}" ${
-        mp.page <= 1 || mp.loading ? "disabled" : ""
-      }>Préc.</button>
-      <span class="sub">${mp.page} / ${mp.pages}</span>
-      <button type="button" class="btn" data-media-page="${mp.page + 1}" ${
-        mp.page >= mp.pages || mp.loading ? "disabled" : ""
-      }>Suiv.</button>
-    </div>`;
-}
-
 function refreshMediaUi() {
   if (state.view === "media") {
     renderMedia();
@@ -128,37 +115,55 @@ function refreshMediaUi() {
   if (state.mediaPicker.open) paintMediaPicker();
 }
 
-export async function loadMediaPage(page = 1) {
-  const mp = state.mediaPicker;
-  mp.loading = true;
-  mp.error = "";
-  mp.status = "";
-  mp.page = page;
-  refreshMediaUi();
-  try {
-    const params = new URLSearchParams({
-      page: String(page),
-      per_page: "24",
-    });
-    if (mp.q.trim()) params.set("q", mp.q.trim());
-    const data = await api(`/api/desk/media?${params}`);
-    mp.items = data.items || [];
-    mp.page = data.page || page;
-    mp.pages = data.pages || 1;
-    mp.total = data.total || 0;
+const mediaCtl = createPagedList({
+  seqKey: "media",
+  view: "media",
+  alwaysRenderFull: true,
+  stateBag: () => state.mediaPicker,
+  resultsId: "media-results",
+  countId: "media-count",
+  pagerHostIds: ["media-pager-host", "media-pager-host-bottom"],
+  pageDataAttr: "media-page",
+  emptyMessage: "Aucun document",
+  singular: "fichier",
+  pagerAriaLabel: "Pagination documents",
+  endpoint: "/api/desk/media",
+  itemsResponseKey: "items",
+  limitParam: "per_page",
+  defaultLimit: 24,
+  minLimit: 1,
+  maxLimit: 60,
+  fields: {
+    page: "page",
+    limit: "limit",
+    pages: "pages",
+    total: "total",
+    q: "q",
+    items: "items",
+  },
+  afterApply() {
+    const mp = state.mediaPicker;
     if (
       mp.selectedId != null &&
       !mp.items.some((i) => Number(i.id) === Number(mp.selectedId))
     ) {
       mp.selectedId = null;
     }
-  } catch (err) {
-    mp.error = err.message || "Chargement impossible";
-    mp.items = [];
-  } finally {
-    mp.loading = false;
-    refreshMediaUi();
-  }
+  },
+  onLoading(loading) {
+    state.mediaPicker.loading = loading;
+    if (loading) {
+      state.mediaPicker.status = "";
+      refreshMediaUi();
+    }
+  },
+  renderFull: () => refreshMediaUi(),
+  root: app,
+});
+
+export async function loadMediaPage(page = 1) {
+  state.mediaPicker.page = Math.max(1, Number(page) || 1);
+  await mediaCtl.load();
 }
 
 export async function loadMediaLibrary() {
@@ -296,12 +301,7 @@ function bindMediaControls(root, { idPrefix = "media", mode = "picker" } = {}) {
       uploadMediaFile(file);
     };
   }
-  root.querySelectorAll("[data-media-page]").forEach((btn) => {
-    btn.onclick = () => {
-      const p = Number(btn.dataset.mediaPage) || 1;
-      if (p >= 1 && p <= mp.pages) loadMediaPage(p);
-    };
-  });
+  mediaCtl.bindPager(root);
   root.querySelectorAll("[data-media-id]").forEach((btn) => {
     btn.onclick = async (e) => {
       const id = Number(btn.dataset.mediaId);
@@ -335,6 +335,11 @@ function paintMediaPicker() {
     document.body.appendChild(root);
   }
   const canDelete = Boolean(state.caps.mediaDelete);
+  const chrome = mediaCtl.chromeHtml({
+    countId: "media-picker-count",
+    topHostId: "media-picker-pager-host",
+    bottomHostId: "media-picker-pager-host-bottom",
+  });
   const grid = mp.loading
     ? `<p class="media-empty">Chargement…</p>`
     : mediaGridHtml(mp.items, {
@@ -350,10 +355,11 @@ function paintMediaPicker() {
       </header>
       <p class="uk-help media-picker-help">Pièces jointes (images, PDF, Office…). Pas d’illustrations pour le site — insertion = lien fichier.</p>
       ${mediaToolbarHtml(mp, { idPrefix: "media" })}
+      ${chrome.top}
       ${mp.error ? `<p class="err">${escapeHtml(mp.error)}</p>` : ""}
-      <div class="media-picker-body">${grid}</div>
+      <div class="media-picker-body" id="media-results">${grid}</div>
       <footer class="media-picker-foot">
-        ${mediaPagerHtml(mp)}
+        ${chrome.bottom}
         ${
           canDelete
             ? `<p class="uk-help">Clic = insérer le lien. Shift+clic = supprimer (éditeurs).</p>`
@@ -381,6 +387,7 @@ export function openMediaPicker() {
 export function renderMedia() {
   const mp = state.mediaPicker;
   const canDelete = Boolean(state.caps.mediaDelete);
+  const chrome = mediaCtl.chromeHtml();
   const selected =
     mp.selectedId != null
       ? mp.items.find((i) => Number(i.id) === Number(mp.selectedId))
@@ -429,10 +436,11 @@ export function renderMedia() {
     <main class="main stack">
       <p class="uk-help">Bibliothèque de pièces jointes (images, PDF, Office, zip). Insertion dans un article via le bouton Document de l’éditeur.</p>
       ${mediaToolbarHtml(mp, { idPrefix: "mlib" })}
+      ${chrome.top}
       ${mp.status ? `<p class="status-line">${escapeHtml(mp.status)}</p>` : ""}
       ${mp.error ? `<p class="err">${escapeHtml(mp.error)}</p>` : ""}
       ${state.error ? `<p class="err">${escapeHtml(state.error)}</p>` : ""}
-      <div class="media-lib">
+      <div class="media-lib" id="media-results">
         <div class="media-lib-grid-wrap">
           ${grid}
         </div>
@@ -440,9 +448,7 @@ export function renderMedia() {
           ${detail}
         </aside>
       </div>
-      <footer class="media-picker-foot media-lib-foot">
-        ${mediaPagerHtml(mp)}
-      </footer>
+      ${chrome.bottom}
     </main>`;
 
   document.getElementById("btn-logout").onclick = logout;

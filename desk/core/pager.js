@@ -96,3 +96,17 @@ export function patchPagerHosts(hostIds, html, bindHost) {
     bindHost(host);
   }
 }
+
+/** Barre compteur + pager (haut de liste). */
+export function listMetaBarHtml({ countId, countHtml, pagerHostId, pagerMarkup }) {
+  return `
+    <div class="list-meta">
+      <p class="count-line" id="${countId}">${countHtml}</p>
+      <div id="${pagerHostId}">${pagerMarkup}</div>
+    </div>`;
+}
+
+/** Pager bas de liste. */
+export function listPagerBottomHtml({ hostId, pagerMarkup }) {
+  return `<div id="${hostId}" class="list-pager-bottom">${pagerMarkup}</div>`;
+}

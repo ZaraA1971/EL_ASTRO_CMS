@@ -1,5 +1,4 @@
 import { state } from "../core/state.js";
-import { api } from "../core/api.js";
 import {
   escapeHtml,
   formatDate,
@@ -9,13 +8,13 @@ import {
   listMetaRow,
   updateDateLabel,
 } from "../core/format.js";
-import {
-  rangeLabel,
-  pagerHtml,
-  bindPager,
-  patchPagerHosts,
-} from "../core/pager.js";
 import { createAutocomplete } from "../core/autocomplete.js";
+import {
+  createPagedList,
+  listSplitCardHtml,
+  roleBadgeHtml,
+  statusBadgeHtml,
+} from "../core/list-resource.js";
 import { ctx } from "../core/ctx.js";
 import { logout } from "./login.js";
 import { openArticle, createArticle } from "./edit.js";
@@ -40,7 +39,9 @@ const listAc = createAutocomplete({
   },
   mapItem: (a) => {
     const d = a.data;
-    const maj = updateDateLabel(d) || (d.draft && d.modified ? formatDateTime(d.modified) : "");
+    const maj =
+      updateDateLabel(d) ||
+      (d.draft && d.modified ? formatDateTime(d.modified) : "");
     return {
       title: d.title,
       sub: [
@@ -63,9 +64,6 @@ function articlesItemsHtml(articles) {
   return (articles || [])
     .map((a) => {
       const d = a.data;
-      const badge = d.draft
-        ? `<span class="badge draft">Brouillon</span>`
-        : `<span class="badge live">En ligne</span>`;
       const pubLabel = d.draft
         ? "Brouillon"
         : formatDate(d.date) || "Sans date";
@@ -73,27 +71,21 @@ function articlesItemsHtml(articles) {
       const majLabel =
         updateDateLabel(d) ||
         (d.draft && d.modified ? formatDateTime(d.modified) : "");
-      return `
-        <button class="list-item list-item--article" type="button" data-open="${d.article_id}">
-          <div class="list-item-article">
-            <div class="list-item-article__body">
-              <h2>${escapeHtml(d.title)}</h2>
-              <p class="list-item-byline">${escapeHtml(d.author || "Sans auteur")}</p>
-              <div class="list-item-meta list-item-meta--article${
-                majLabel ? " has-maj" : ""
-              }">
-                ${listMetaRow(d.draft ? "Statut" : "Publication", pubLabel)}
-                ${majLabel ? listMetaRow("Mis à jour", majLabel) : ""}
-              </div>
-            </div>
-            <aside class="list-item-article__aside" aria-label="Métadonnées">
-              <span class="badge badge-role">${escapeHtml(
-                String(d.lang || "fr").toUpperCase()
-              )}</span>
-              ${badge}
-            </aside>
-          </div>
-        </button>`;
+      return listSplitCardHtml({
+        itemClass: "list-item--article",
+        dataAttrs: { open: d.article_id },
+        title: d.title,
+        byline: d.author || "Sans auteur",
+        metaClass: `list-item-meta--article${majLabel ? " has-maj" : ""}`,
+        metaHtml: [
+          listMetaRow(d.draft ? "Statut" : "Publication", pubLabel),
+          majLabel ? listMetaRow("Mis à jour", majLabel) : "",
+        ].join(""),
+        topBadgeHtml: roleBadgeHtml(String(d.lang || "fr").toUpperCase()),
+        statusBadgeHtml: d.draft
+          ? statusBadgeHtml("draft", "Brouillon")
+          : statusBadgeHtml("live", "En ligne"),
+      });
     })
     .join("");
 }
@@ -104,100 +96,42 @@ function bindListResultClicks(root = app) {
   });
 }
 
-function listRangeLabel() {
-  return rangeLabel({
-    total: state.total,
-    page: state.page,
-    limit: state.limit,
-    singular: "article",
-  });
-}
+const listCtl = createPagedList({
+  seqKey: "list",
+  view: "list",
+  resultsId: "list-results",
+  countId: "list-count",
+  pagerHostIds: ["list-pager-host", "list-pager-host-bottom"],
+  pageDataAttr: "page",
+  emptyMessage: "Aucun article",
+  singular: "article",
+  pagerAriaLabel: "Pagination articles",
+  endpoint: "/api/desk/articles",
+  itemsResponseKey: "articles",
+  fields: {
+    page: "page",
+    limit: "limit",
+    pages: "pages",
+    total: "total",
+    q: "q",
+    items: "articles",
+  },
+  extraParams(params) {
+    if (state.filterDraft !== "") params.set("draft", state.filterDraft);
+  },
+  itemsHtml: articlesItemsHtml,
+  bindResultClicks: bindListResultClicks,
+  getAc: () => listAc,
+  renderFull: () => renderList(),
+  root: app,
+});
 
-function listPagerHtml() {
-  return pagerHtml({
-    page: state.page,
-    pages: state.pages,
-    total: state.total,
-    limit: state.limit,
-    ariaLabel: "Pagination articles",
-    dataAttr: "page",
-  });
-}
-
-async function goListPage(next) {
-  const page = Number(next);
-  if (!Number.isFinite(page) || page < 1 || page === state.page) return;
-  state.page = page;
-  listAc.close();
-  await loadList({ soft: true });
-  document.getElementById("list-results")?.scrollIntoView({ block: "start" });
-}
-
-function bindListPager(root = app) {
-  bindPager(root, "page", goListPage);
-}
-
-function patchListResults() {
-  const count = document.getElementById("list-count");
-  if (count) count.textContent = listRangeLabel();
-  const list = document.getElementById("list-results");
-  if (list) {
-    list.innerHTML =
-      articlesItemsHtml(state.articles) || `<div class="empty">Aucun article</div>`;
-    bindListResultClicks(list);
-  }
-  patchPagerHosts(
-    ["list-pager-host", "list-pager-host-bottom"],
-    listPagerHtml(),
-    bindListPager
-  );
-}
-
-export async function loadList({ soft = false, fromAc = false } = {}) {
-  const seq = (state._searchSeq.list += 1);
-  const page = Math.max(1, Number(state.page || 1));
-  const limit = Math.min(50, Math.max(10, Number(state.limit || 25)));
-  const params = new URLSearchParams({
-    limit: String(limit),
-    page: String(page),
-  });
-  const q = String(state.q || "").trim();
-  if (q) params.set("q", q);
-  if (state.filterDraft !== "") params.set("draft", state.filterDraft);
-  try {
-    const data = await api(`/api/desk/articles?${params}`);
-    if (seq !== state._searchSeq.list) return;
-    state.articles = data.articles || [];
-    state.total = data.total || 0;
-    state.limit = data.limit || limit;
-    state.pages = data.pages || Math.max(1, Math.ceil(state.total / state.limit) || 1);
-    state.page = Math.min(data.page || page, state.pages);
-    state.error = "";
-    if (soft && state.view === "list" && document.getElementById("list-results")) {
-      patchListResults();
-      if (!fromAc) listAc.syncItems(state.articles, state.q);
-    } else if (!fromAc) {
-      renderList();
-    } else {
-      patchListResults();
-    }
-  } catch (err) {
-    if (seq !== state._searchSeq.list) return;
-    state.error = err.message || "Erreur recherche";
-    if (soft && state.view === "list" && document.getElementById("list-results")) {
-      patchListResults();
-      if (!fromAc) listAc.syncItems([], state.q);
-    } else if (!fromAc) {
-      renderList();
-    } else {
-      patchListResults();
-    }
-  }
-}
+export const loadList = listCtl.load;
 
 export function renderList() {
   const items =
     articlesItemsHtml(state.articles) || `<div class="empty">Aucun article</div>`;
+  const chrome = listCtl.chromeHtml();
 
   app.innerHTML = `
     <header class="topbar">
@@ -222,13 +156,10 @@ export function renderList() {
           "draft"
         )}
       </div>
-      <div class="list-meta">
-        <p class="count-line" id="list-count">${listRangeLabel()}</p>
-        <div id="list-pager-host">${listPagerHtml()}</div>
-      </div>
+      ${chrome.top}
       ${state.error ? `<p class="err">${escapeHtml(state.error)}</p>` : ""}
       <div id="list-results">${items}</div>
-      <div id="list-pager-host-bottom" class="list-pager-bottom">${listPagerHtml()}</div>
+      ${chrome.bottom}
     </main>
     <button class="fab" type="button" id="btn-new" title="Nouvel article" aria-label="Nouvel article">+</button>`;
 
@@ -244,6 +175,6 @@ export function renderList() {
       await loadList({ soft: true });
     };
   });
-  bindListPager();
+  listCtl.bindPager();
   bindListResultClicks();
 }
