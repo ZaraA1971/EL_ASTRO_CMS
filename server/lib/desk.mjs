@@ -1,3 +1,7 @@
+/**
+ * Host ElectronLibre du Pupitre — auth, /me, media, authors, users,
+ * puis délégation CRUD articles/catégories au core.
+ */
 import crypto from 'node:crypto';
 import { parseJsonArray, rowToArticle } from './db.mjs';
 import { canAccessDesk, canEditAll, canPublish } from './roles.mjs';
@@ -6,22 +10,14 @@ import { auditLog } from './audit.mjs';
 import { chapo } from './excerpt.mjs';
 import { cleanHtml } from './html-clean.mjs';
 import { handleDeskMedia } from './media/handler.mjs';
-import {
-  listCategories,
-  createCategory,
-} from './categories.mjs';
+import { elCategoriesStore } from './categories.mjs';
 import { createElDeskRegistry } from './desk/el/el-plugins.mjs';
 import { normalizeKeywords } from './keywords.mjs';
 import {
-  asJson,
+  ARTICLES_TABLE,
+  articleHelpers,
   canEditArticle,
-  ensureArticleDateNullable,
-  nextArticleId,
-  nowMysql,
-  resolveArticleSlug,
   slugify,
-  toMysqlDate,
-  uniqueSlug,
 } from './desk/el/article-host.mjs';
 import {
   ensureSubscriberKeywords,
@@ -29,8 +25,8 @@ import {
   syncKeywordsToTwin,
 } from './desk/el/article-el.mjs';
 import { pushPublishedArticle } from './desk/el/plugins/push.mjs';
-import { emitDeskLifecycle } from './desk/core/lifecycle.mjs';
 import { getContentGen } from './desk/core/content-gen.mjs';
+import { tryHandleCoreCrud } from './desk/core/crud.mjs';
 
 function deskBrand(ctx) {
   return {
@@ -97,7 +93,7 @@ function resolveDeskIngestSession(req, parts, apiKey) {
 }
 
 export async function handleDesk(req, res, parts, ctx) {
-  const { pool, sendJson, readBody, resolveDeskSession, clientIp } = ctx;
+  const { pool, sendJson, resolveDeskSession, clientIp } = ctx;
   let session = null;
   try {
     session = resolveDeskIngestSession(req, parts, ctx.deskIngestApiKey);
@@ -107,7 +103,6 @@ export async function handleDesk(req, res, parts, ctx) {
     });
   }
   if (!session) {
-    // Toujours recharger le rôle depuis MySQL (cookie seul = stale jusqu’à 14 j)
     const resolved = resolveDeskSession
       ? await resolveDeskSession(req)
       : null;
@@ -121,7 +116,34 @@ export async function handleDesk(req, res, parts, ctx) {
     ? { uid: null, login: session.login }
     : { uid: session.uid, login: session.login };
   const plugins = ctx.plugins || defaultDeskPlugins;
-  const deskReqCtx = { ...ctx, session, actor, ip, plugins };
+
+  const deskReqCtx = {
+    ...ctx,
+    session,
+    actor,
+    ip,
+    plugins,
+    articleHelpers,
+    articlesTable: ARTICLES_TABLE,
+    categories: elCategoriesStore,
+    rowToArticle,
+    parseJsonArray,
+    canEditAll,
+    canPublish,
+    cleanHtml,
+    chapo,
+    auditLog,
+    normalizeKeywords,
+    ensureSubscriberKeywords,
+    loadEditableTwin,
+    syncKeywordsToTwin,
+    beforeArticleRoute: (req2, res2, parts2, c, existing) =>
+      plugins.tryHandleArticle(req2, res2, parts2, c, existing),
+    afterPublish: async ({ row, payload }, c) => {
+      if (!payload?.push) return null;
+      return pushPublishedArticle(row, c, { segment: payload.segment });
+    },
+  };
 
   // /api/desk/me
   if (parts[2] === 'me' && req.method === 'GET') {
@@ -155,7 +177,7 @@ export async function handleDesk(req, res, parts, ctx) {
     return;
   }
 
-  // /api/desk/media — médiathèque
+  // /api/desk/media — médiathèque (EL)
   if (parts[2] === 'media') {
     return handleDeskMedia(req, res, parts, {
       ...ctx,
@@ -165,49 +187,7 @@ export async function handleDesk(req, res, parts, ctx) {
     });
   }
 
-  // /api/desk/categories — liste + création rubrique
-  if (parts[2] === 'categories' && !parts[3]) {
-    if (req.method === 'GET') {
-      const categories = await listCategories(pool);
-      return sendJson(res, 200, { categories });
-    }
-    if (req.method === 'POST') {
-      let body = {};
-      try {
-        body = JSON.parse(await readBody(req));
-      } catch {
-        return sendJson(res, 400, { error: 'JSON invalide' });
-      }
-      try {
-        const category = await createCategory(pool, {
-          name: body.name,
-          slug: body.slug,
-        });
-        await auditLog(pool, {
-          actor,
-          action: 'category.create',
-          targetType: 'category',
-          targetId: category.slug,
-          meta: { name: category.name },
-          ip,
-        });
-        await emitDeskLifecycle(
-          plugins,
-          'onCategoryChange',
-          { category },
-          deskReqCtx
-        );
-        return sendJson(res, 201, { category });
-      } catch (err) {
-        return sendJson(res, err.status || 500, {
-          error: err.message || 'Création rubrique impossible',
-        });
-      }
-    }
-    return sendJson(res, 405, { error: 'Méthode non autorisée' });
-  }
-
-  // GET /api/desk/authors?q= — autocomplete auteur (articles + comptes rédaction)
+  // GET /api/desk/authors?q= — autocomplete (EL)
   if (parts[2] === 'authors' && !parts[3] && req.method === 'GET') {
     const url = new URL(req.url || '/', `http://${req.headers.host}`);
     const q = String(url.searchParams.get('q') || '').trim();
@@ -274,532 +254,9 @@ export async function handleDesk(req, res, parts, ctx) {
     return handleDeskUsers(req, res, parts, { ...ctx, session, ip, actor });
   }
 
-  // /api/desk/articles
-  if (parts[2] === 'articles' && !parts[3]) {
-    if (req.method === 'GET') {
-      const url = new URL(req.url || '/', `http://${req.headers.host}`);
-      const q = String(url.searchParams.get('q') || '').trim();
-      const lang = String(url.searchParams.get('lang') || '').trim();
-      const draftParam = url.searchParams.get('draft');
-      const page = Math.max(1, Number(url.searchParams.get('page') || 1));
-      const limit = Math.min(50, Math.max(1, Number(url.searchParams.get('limit') || 20)));
-      const offset = (page - 1) * limit;
-
-      const where = [];
-      const params = [];
-      if (!canEditAll(session.role)) {
-        where.push('author_user_id = ?');
-        params.push(session.uid);
-      }
-      if (lang) {
-        where.push('lang = ?');
-        params.push(lang);
-      }
-      if (draftParam === '1' || draftParam === '0') {
-        where.push('draft = ?');
-        params.push(Number(draftParam));
-      }
-      if (q) {
-        where.push('(title LIKE ? OR excerpt LIKE ? OR slug LIKE ?)');
-        const like = `%${q}%`;
-        params.push(like, like, like);
-      }
-      const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
-      const [[{ total: totalRaw }]] = await pool.query(
-        `SELECT COUNT(*) AS total FROM el_articles ${whereSql}`,
-        params
-      );
-      const total = Number(totalRaw || 0);
-      const pages = Math.max(1, Math.ceil(total / limit) || 1);
-      const pageClamped = Math.min(page, pages);
-      const offsetClamped = (pageClamped - 1) * limit;
-      // Liste légère : pas de body/excerpt/JSON. ORDER BY indexable (évite COALESCE → filesort).
-      const [rows] = await pool.query(
-        `SELECT article_id, slug, title, date, modified, author, author_user_id,
-                access, lang, draft
-         FROM el_articles ${whereSql}
-         ORDER BY modified DESC, article_id DESC
-         LIMIT ? OFFSET ?`,
-        [...params, limit, offsetClamped]
-      );
-      return sendJson(res, 200, {
-        total,
-        page: pageClamped,
-        limit,
-        pages,
-        articles: rows.map((r) => rowToArticle(r, { includeBody: false })),
-      });
-    }
-
-    if (req.method === 'POST') {
-      let payload;
-      try {
-        payload = JSON.parse((await readBody(req)).toString('utf8') || '{}');
-      } catch {
-        return sendJson(res, 400, { error: 'JSON invalide' });
-      }
-      const title = String(payload.title || 'Sans titre').trim() || 'Sans titre';
-      const slug = await uniqueSlug(
-        pool,
-        String(payload.slug || '').trim() || title
-      );
-      const articleId = await nextArticleId(pool);
-      const now = nowMysql();
-      await ensureArticleDateNullable(pool);
-      // Ingest Qualif / author : toujours brouillon à la création
-      const draft = session.ingest
-        ? 1
-        : canPublish(session.role)
-          ? payload.draft === false
-            ? 0
-            : 1
-          : 1;
-      const bodyHtml = cleanHtml(payload.body || '', 'store');
-      const sourceUrl = payload.source_url
-        ? String(payload.source_url).trim().slice(0, 500) || null
-        : null;
-      // Ingest Qualif peut imposer un auteur rédaction (ex. Emmanuel Torregano)
-      const authorUserId = session.ingest
-        ? payload.author_user_id != null
-          ? Number(payload.author_user_id) || null
-          : null
-        : session.uid || null;
-      // Date de publication : seulement si déjà en ligne à la création
-      const pubDate = draft ? null : toMysqlDate(payload.date) || now;
-      await pool.query(
-        `INSERT INTO el_articles (
-          article_id, slug, title, excerpt, body, date, modified,
-          author, author_slug, author_user_id,
-          categories, category_names, tags, ia_keywords,
-          access, lang, draft, source_url
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        [
-          articleId,
-          slug,
-          title,
-          chapo(bodyHtml, 'store'),
-          bodyHtml,
-          pubDate,
-          now,
-          String(payload.author || session.name || session.login),
-          payload.author_slug
-            ? String(payload.author_slug)
-            : slugify(session.login),
-          authorUserId,
-          asJson(payload.categories),
-          asJson(payload.category_names),
-          asJson(payload.tags),
-          asJson(
-            payload.access === 'granted'
-              ? []
-              : normalizeKeywords(payload.ia_keywords)
-          ),
-          payload.access === 'granted' ? 'granted' : 'subscribers',
-          String(payload.lang || 'fr').toLowerCase(),
-          draft,
-          sourceUrl,
-        ]
-      );
-      const [rows] = await pool.query('SELECT * FROM el_articles WHERE article_id = ?', [
-        articleId,
-      ]);
-      const article = rowToArticle(rows[0]);
-      await emitDeskLifecycle(
-        plugins,
-        'onMutate',
-        { article, action: 'create' },
-        deskReqCtx
-      );
-      if (session.ingest) {
-        await auditLog(pool, {
-          actor,
-          action: 'article.create_ingest',
-          targetType: 'article',
-          targetId: articleId,
-          meta: { source: 'qualif', source_url: sourceUrl },
-          ip,
-        });
-      }
-      return sendJson(res, 201, { article });
-    }
-
-    return sendJson(res, 405, { error: 'Méthode non autorisée' });
-  }
-
-  // /api/desk/articles/:articleId[/publish]
-  const articleId = Number(parts[3]);
-  if (!articleId) return sendJson(res, 400, { error: 'article_id invalide' });
-
-  const [existingRows] = await pool.query(
-    'SELECT * FROM el_articles WHERE article_id = ? LIMIT 1',
-    [articleId]
-  );
-  const existing = existingRows[0];
-  if (!existing) return sendJson(res, 404, { error: 'Article inconnu' });
-  if (!canEditArticle(session, existing)) {
-    return sendJson(res, 403, { error: 'Pas le droit sur cet article' });
-  }
-
-  // Plugins article (x, push, keywords, translate, …) — avant les routes core.
-  if (await plugins.tryHandleArticle(req, res, parts, deskReqCtx, existing)) {
+  // CRUD portable articles + catégories
+  if (await tryHandleCoreCrud(req, res, parts, deskReqCtx)) {
     return;
-  }
-
-  if (parts[4] === 'publish' && req.method === 'POST') {
-    if (!canPublish(session.role)) {
-      return sendJson(res, 403, {
-        error: 'Publication réservée éditeur/admin',
-      });
-    }
-    let payload = {};
-    try {
-      const raw = (await readBody(req)).toString('utf8');
-      if (raw.trim()) payload = JSON.parse(raw);
-    } catch {
-      return sendJson(res, 400, { error: 'JSON invalide' });
-    }
-
-    // Première mise en ligne : date = maintenant. Republish après brouillon : garder la date.
-    await ensureArticleDateNullable(pool);
-    const wasDraft = Number(existing.draft) === 1;
-    const slug = await resolveArticleSlug(
-      pool,
-      existing,
-      existing.title,
-      null
-    );
-    if (wasDraft) {
-      const pubDate = toMysqlDate(existing.date) || nowMysql();
-      const mod = nowMysql();
-      await pool.query(
-        'UPDATE el_articles SET draft = 0, date = ?, modified = ?, slug = ? WHERE article_id = ?',
-        [pubDate, mod, slug, articleId]
-      );
-    } else if (slug !== existing.slug) {
-      await pool.query(
-        'UPDATE el_articles SET draft = 0, slug = ? WHERE article_id = ?',
-        [slug, articleId]
-      );
-    } else {
-      await pool.query('UPDATE el_articles SET draft = 0 WHERE article_id = ?', [
-        articleId,
-      ]);
-    }
-    const [rows] = await pool.query('SELECT * FROM el_articles WHERE article_id = ?', [
-      articleId,
-    ]);
-    const article = rowToArticle(rows[0]);
-    const contentGen = await emitDeskLifecycle(
-      plugins,
-      'onPublish',
-      { article, wasDraft },
-      deskReqCtx
-    );
-    let push = null;
-    if (payload.push) {
-      try {
-        push = await pushPublishedArticle(rows[0], deskReqCtx, {
-          segment: payload.segment,
-        });
-      } catch (err) {
-        console.error('[desk] onesignal', err.message);
-        return sendJson(res, 200, {
-          article,
-          contentGen,
-          push: { ok: false, error: err.message },
-        });
-      }
-    }
-    await auditLog(pool, {
-      actor,
-      action: 'article.publish',
-      targetType: 'article',
-      targetId: articleId,
-      meta: { push: Boolean(payload.push), pushOk: push?.ok ?? null, dryRun: push?.dryRun },
-      ip,
-    });
-    return sendJson(res, 200, {
-      article,
-      contentGen,
-      push: push ? { ok: true, ...push } : null,
-    });
-  }
-
-  // Basculer brouillon immédiatement (sans réécrire titre/corps)
-  if (parts[4] === 'draft' && req.method === 'POST') {
-    let payload = {};
-    try {
-      const raw = (await readBody(req)).toString('utf8');
-      if (raw.trim()) payload = JSON.parse(raw);
-    } catch {
-      return sendJson(res, 400, { error: 'JSON invalide' });
-    }
-    const wantDraft = payload.draft !== false && payload.draft !== 0;
-    if (!wantDraft && !canPublish(session.role)) {
-      return sendJson(res, 403, {
-        error: 'Publication réservée éditeur/admin',
-      });
-    }
-    await ensureArticleDateNullable(pool);
-    if (wantDraft) {
-      // Retour brouillon : conserve la date de 1ʳᵉ publication (remise en ligne = même date).
-      await pool.query('UPDATE el_articles SET draft = 1 WHERE article_id = ?', [
-        articleId,
-      ]);
-    } else {
-      // Mise en ligne via /draft : date existante ou maintenant + slug
-      const pubDate = toMysqlDate(existing.date) || nowMysql();
-      const mod = nowMysql();
-      const slug = await resolveArticleSlug(
-        pool,
-        existing,
-        existing.title,
-        null
-      );
-      await pool.query(
-        'UPDATE el_articles SET draft = 0, date = ?, modified = ?, slug = ? WHERE article_id = ?',
-        [pubDate, mod, slug, articleId]
-      );
-    }
-    const [rows] = await pool.query(
-      'SELECT * FROM el_articles WHERE article_id = ?',
-      [articleId]
-    );
-    const article = rowToArticle(rows[0]);
-    const contentGen = await emitDeskLifecycle(
-      plugins,
-      wantDraft ? 'onDraft' : 'onPublish',
-      { article, draft: wantDraft },
-      deskReqCtx
-    );
-    await auditLog(pool, {
-      actor,
-      action: wantDraft ? 'article.draft' : 'article.undraft',
-      targetType: 'article',
-      targetId: articleId,
-      meta: { draft: wantDraft },
-      ip,
-    });
-    return sendJson(res, 200, {
-      article,
-      contentGen,
-    });
-  }
-
-  if (req.method === 'GET' && !parts[4]) {
-    return sendJson(res, 200, { article: rowToArticle(existing) });
-  }
-
-  if (req.method === 'PUT' && !parts[4]) {
-    let payload;
-    try {
-      payload = JSON.parse((await readBody(req)).toString('utf8') || '{}');
-    } catch {
-      return sendJson(res, 400, { error: 'JSON invalide' });
-    }
-    const title =
-      payload.title != null
-        ? String(payload.title).trim() || existing.title
-        : existing.title;
-    const slug = await resolveArticleSlug(
-      pool,
-      existing,
-      title,
-      payload.slug
-    );
-    const cats =
-      payload.categories != null
-        ? payload.categories
-        : parseJsonArray(existing.categories);
-    const catNames =
-      payload.category_names != null
-        ? payload.category_names
-        : parseJsonArray(existing.category_names);
-
-    // Author peut forcer brouillon, pas publier via PUT (réservé /publish)
-    let draftVal = existing.draft;
-    if (payload.draft === true) draftVal = 1;
-    else if (payload.draft === false && canPublish(session.role)) draftVal = 0;
-
-    const authorName =
-      payload.author != null ? String(payload.author).trim() : existing.author;
-    const authorSlug =
-      payload.author_slug != null
-        ? String(payload.author_slug).trim() || slugify(authorName)
-        : payload.author != null
-          ? slugify(authorName)
-          : existing.author_slug;
-    const authorUserId =
-      payload.author_user_id !== undefined
-        ? payload.author_user_id != null
-          ? Number(payload.author_user_id) || null
-          : null
-        : existing.author_user_id;
-
-    const bodyHtml =
-      payload.body != null ? cleanHtml(payload.body, 'store') : existing.body || '';
-    const excerpt = chapo(bodyHtml, 'store');
-    const accessNext =
-      payload.access === 'granted'
-        ? 'granted'
-        : payload.access === 'subscribers'
-          ? 'subscribers'
-          : existing.access;
-    // Mots-clés IA réservés aux articles abonnés — auto si vide à l’enregistrement
-    let iaKeywordsNext =
-      accessNext === 'granted'
-        ? []
-        : payload.ia_keywords != null
-          ? normalizeKeywords(payload.ia_keywords)
-          : parseJsonArray(existing.ia_keywords);
-    let autoKeywords = false;
-    if (accessNext === 'subscribers' && !iaKeywordsNext.length) {
-      const generated = await ensureSubscriberKeywords(ctx, {
-        access: accessNext,
-        title,
-        excerpt,
-        body: bodyHtml,
-        lang:
-          payload.lang != null
-            ? String(payload.lang).toLowerCase()
-            : existing.lang || 'fr',
-        existingKeywords: [],
-      });
-      if (generated.length) {
-        iaKeywordsNext = generated;
-        autoKeywords = true;
-      }
-    }
-
-    // Liens de traduction : auteurs ne peuvent pas les réassigner (IDOR).
-    // Editors/admins doivent pouvoir éditer la cible si elle existe.
-    let translationFr = existing.translation_fr;
-    let translationEn = existing.translation_en;
-    if (canEditAll(session.role)) {
-      try {
-        if (payload.translation_fr !== undefined) {
-          const wanted =
-            payload.translation_fr != null
-              ? Number(payload.translation_fr) || null
-              : null;
-          if (wanted) await loadEditableTwin(pool, session, wanted);
-          translationFr = wanted;
-        }
-        if (payload.translation_en !== undefined) {
-          const wanted =
-            payload.translation_en != null
-              ? Number(payload.translation_en) || null
-              : null;
-          if (wanted) await loadEditableTwin(pool, session, wanted);
-          translationEn = wanted;
-        }
-      } catch (err) {
-        return sendJson(res, err.status || 400, {
-          error: err.message || 'Lien de traduction invalide',
-        });
-      }
-    }
-
-    await ensureArticleDateNullable(pool);
-    const isDraft = Number(draftVal) === 1;
-    // Brouillon : conserver date si déjà publiée un jour. En ligne : formulaire ou existante.
-    const nextDate = isDraft
-      ? toMysqlDate(existing.date) || toMysqlDate(payload.date) || null
-      : toMysqlDate(payload.date) || toMysqlDate(existing.date) || nowMysql();
-    // modified = dernière édition (tri desk) ; affichage « Mise à jour » seulement si publié
-    await pool.query(
-      `UPDATE el_articles SET
-        slug=?, title=?, excerpt=?, body=?, date=?, modified=?,
-        author=?, author_slug=?, author_user_id=?,
-        categories=?, category_names=?, tags=?, ia_keywords=?,
-        access=?, lang=?, draft=?,
-        translation_fr=?, translation_en=?
-       WHERE article_id=?`,
-      [
-        slug,
-        title,
-        excerpt,
-        bodyHtml,
-        nextDate,
-        nowMysql(),
-        authorName,
-        authorSlug,
-        authorUserId,
-        asJson(cats),
-        asJson(catNames),
-        asJson(
-          payload.tags != null ? payload.tags : parseJsonArray(existing.tags)
-        ),
-        asJson(iaKeywordsNext),
-        accessNext,
-        payload.lang != null
-          ? String(payload.lang).toLowerCase()
-          : existing.lang,
-        draftVal,
-        translationFr,
-        translationEn,
-        articleId,
-      ]
-    );
-    if (
-      accessNext !== 'granted' &&
-      (autoKeywords || payload.ia_keywords != null)
-    ) {
-      await syncKeywordsToTwin(
-        pool,
-        session,
-        {
-          ...existing,
-          translation_fr: translationFr,
-          translation_en: translationEn,
-        },
-        iaKeywordsNext
-      );
-    }
-    const [rows] = await pool.query('SELECT * FROM el_articles WHERE article_id = ?', [
-      articleId,
-    ]);
-    const article = rowToArticle(rows[0]);
-    const contentGen = await emitDeskLifecycle(
-      plugins,
-      'onMutate',
-      { article, action: 'update' },
-      deskReqCtx
-    );
-    return sendJson(res, 200, {
-      article,
-      contentGen,
-    });
-  }
-
-  if (req.method === 'DELETE' && !parts[4]) {
-    if (!canEditAll(session.role)) {
-      return sendJson(res, 403, { error: 'Suppression réservée éditeur/admin' });
-    }
-    // Délier les traductions avant suppression
-    await pool.query(
-      'UPDATE el_articles SET translation_en = NULL WHERE translation_en = ?',
-      [articleId]
-    );
-    await pool.query(
-      'UPDATE el_articles SET translation_fr = NULL WHERE translation_fr = ?',
-      [articleId]
-    );
-    await pool.query('DELETE FROM el_articles WHERE article_id = ?', [articleId]);
-    const contentGen = await emitDeskLifecycle(
-      plugins,
-      'onMutate',
-      { articleId, action: 'delete' },
-      deskReqCtx
-    );
-    await auditLog(pool, {
-      actor,
-      action: 'article.delete',
-      targetType: 'article',
-      targetId: articleId,
-      ip,
-    });
-    return sendJson(res, 200, { ok: true, contentGen });
   }
 
   return sendJson(res, 404, { error: 'Route desk inconnue' });

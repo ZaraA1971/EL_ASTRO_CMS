@@ -9,5 +9,5 @@ node examples/pupitre-minimal/demo.mjs
 
 Sortie attendue : ligne `OK pupitre-minimal …` (exit 0).
 
-Pour un vrai host : auth + CRUD SQL + SPA `desk/` + `createPluginRegistry([...])`.  
-Chez ElectronLibre : `server/api.mjs` → `handleDesk` + `createElDeskRegistry()`.
+Pour un vrai host : auth + `tryHandleCoreCrud` (articles/catégories) + SPA `desk/` + plugins.  
+Chez ElectronLibre : `server/lib/desk.mjs` → auth/media/users puis `tryHandleCoreCrud`.

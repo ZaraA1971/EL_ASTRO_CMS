@@ -5,6 +5,12 @@
 import { canAccessDesk, canEditAll } from '../../roles.mjs';
 import { createArticleHelpers } from '../core/article-helpers.mjs';
 
+export const articleHelpers = createArticleHelpers({
+  tableName: 'el_articles',
+  canAccessDesk,
+  canEditAll,
+});
+
 export const {
   canEditArticle,
   ensureArticleDateNullable,
@@ -16,8 +22,5 @@ export const {
   nowMysql,
   toMysqlDate,
   PLACEHOLDER_SLUGS,
-} = createArticleHelpers({
-  tableName: 'el_articles',
-  canAccessDesk,
-  canEditAll,
-});
+  tableName: ARTICLES_TABLE,
+} = articleHelpers;

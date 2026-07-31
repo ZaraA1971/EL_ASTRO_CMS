@@ -1,6 +1,6 @@
 # Pupitre — architecture & contrats
 
-État au **2026-07-31** — phases **0–4** (slice OSS-ready dans le monorepo).
+État au **2026-07-31** — phases **0–4** + **extract CRUD articles/catégories**.
 
 ## Décisions
 
@@ -26,13 +26,13 @@ examples/pupitre-minimal/   # démo exécutable (registry + hooks)
 
 ## Core vs EL
 
-| Core (`desk/core`) | Adapters EL (`desk/el`) |
-|--------------------|-------------------------|
-| Registry + hooks lifecycle | `article-host` (`el_articles` + rôles EL) |
-| `createArticleHelpers` (table + predicates injectés) | Plugins Brevo / Goat / X / OneSignal / DeepL / RAG |
-| `contentGen` | Assist éditorial, purge nginx (`front-cache`) |
-| Utils purs (`slugify`, …) | Marque (`DESK_BRAND_*`) |
-| | CRUD HTTP reste dans `desk.mjs` (host) |
+| Core (`desk/core`) | Host / adapters EL |
+|--------------------|---------------------|
+| Registry + hooks lifecycle | `desk.mjs` — auth, `/me`, media, authors, users |
+| `createArticleHelpers` | `article-host` (`el_articles` + rôles) |
+| `tryHandleCoreCrud` (articles + catégories) | Plugins Brevo / Goat / X / OneSignal / DeepL / RAG |
+| `createCategoriesStore` | Hooks `afterPublish` (push), twins / auto-keywords |
+| `contentGen` + utils purs | Marque (`DESK_BRAND_*`), assist, front-cache |
 
 ## Registry & hooks
 
@@ -74,10 +74,18 @@ Hors scope Phase 4 :
 - Extract du CRUD `handleDesk` hors monorepo
 - Sortie assist / keywords / translate de `desk/views/edit.js`
 
+## Extract CRUD (pass 1 — faite)
+
+- Articles + catégories dans `server/lib/desk/core/{articles,categories,crud}.mjs`
+- Host EL mince : auth → plugins → media/authors/users → `tryHandleCoreCrud`
+- Hooks injectés : `beforeArticleRoute`, `afterPublish`, keywords/twins
+
+Encore dans le host : media, users, authors autocomplete.
+
 ## Suite éventuelle
 
-1. Repo public ne contenant que `pupitre-core` (+ exemple)
-2. Extraire routes articles/médias/users en module host-agnostic
+1. Extraire media (store + router injectable)
+2. Repo public `pupitre-core` (+ exemple)
 3. Plugins UI desk pour assist / keywords / translate
 4. `npm publish @electronlibre/pupitre-core` (lever `private`)
 

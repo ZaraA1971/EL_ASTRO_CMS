@@ -8,6 +8,8 @@ export {
 } from './article-el.mjs';
 export { pushPublishedArticle } from './plugins/push.mjs';
 export {
+  articleHelpers,
+  ARTICLES_TABLE,
   canEditArticle,
   ensureArticleDateNullable,
   nextArticleId,
