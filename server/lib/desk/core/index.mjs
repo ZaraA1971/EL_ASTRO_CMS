@@ -21,5 +21,8 @@ export { handleCoreCategories } from './categories/router.mjs';
 export { handleCoreArticles } from './articles/router.mjs';
 export { createMediaStore } from './media/store.mjs';
 export { handleCoreMedia } from './media/router.mjs';
+export { handleCoreAuthors } from './authors/router.mjs';
+export { createUsersStore } from './users/store.mjs';
+export { handleCoreUsers } from './users/router.mjs';
 export { tryHandleCoreCrud } from './crud.mjs';
 export { parseJsonBody, assertSafeSqlIdent } from './http.mjs';

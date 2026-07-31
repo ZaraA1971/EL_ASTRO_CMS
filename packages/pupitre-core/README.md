@@ -11,8 +11,8 @@ Façade dans le monorepo ElectronLibre (`private: true`).
 | Oui | Non (encore) |
 |-----|----------------|
 | Code source sous `server/lib/desk/core/` | Package npm publié |
-| Aucun import `roles.mjs` / `keywords.mjs` / tables `el_*` | Users / authors autocomplete |
-| CRUD articles + catégories + médias via `tryHandleCoreCrud` | UI desk (`desk/`) |
+| Aucun import `roles.mjs` / `keywords.mjs` / tables `el_*` | Hash mots de passe / Brevo / newsletter |
+| CRUD articles + catégories + médias + authors + users | UI desk (`desk/`) |
 | Exemple exécutable `examples/pupitre-minimal/` | Plugins EL (Brevo, OneSignal, RAG, …) |
 
 Doc d’architecture : [`docs/pupitre-core.md`](../../docs/pupitre-core.md).
@@ -46,8 +46,12 @@ import { createPluginRegistry } from '@electronlibre/pupitre-core';
 | `bumpContentGen` / `getContentGen` | Génération de cache |
 | `createArticleHelpers({ tableName, canAccessDesk, canEditAll })` | Helpers SQL/droits liés au host |
 | `createCategoriesStore({ tableName, defaults })` | Rubriques |
-| `createMediaStore({ tableName })` / `handleCoreMedia` | Médiathèque (FS via `ctx.mediaFs`) |
-| `tryHandleCoreCrud` | Routes CRUD HTTP (articles, catégories, médias) |
+| `createMediaStore` / `handleCoreMedia` | Médiathèque (`ctx.mediaFs`) |
+| `handleCoreAuthors` | Autocomplete auteurs |
+| `createUsersStore` / `handleCoreUsers` | Comptes (`ctx.userPolicy` + hooks) |
+| `tryHandleCoreCrud` | Toutes les routes CRUD ci-dessus |
+
+**Users — contrat de sécurité :** le host doit fournir `userPolicy.hashPassword` (chez EL : phpass WordPress). Le core refuse de démarrer sans policy complète. Side-effects (mails, newsletter) = `afterUserCreate` / `afterUserDelete` uniquement.
 | `slugify`, `asJson`, `nowMysql`, `toMysqlDate`, `PLACEHOLDER_SLUGS` | Utils purs |
 
 Le host fournit predicates de rôles, tables, `rowToArticle`, et hooks optionnels (`beforeArticleRoute`, `afterPublish`, RAG/twins). Chez ElectronLibre : `server/lib/desk.mjs` + `desk/el/article-host.mjs`.

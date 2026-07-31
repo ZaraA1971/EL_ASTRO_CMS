@@ -1,11 +1,20 @@
 /**
- * Host ElectronLibre du Pupitre — auth, /me, media, authors, users,
- * puis délégation CRUD articles/catégories au core.
+ * Host ElectronLibre du Pupitre — auth, /me, puis CRUD core
+ * (articles, catégories, médias, authors, users) via tryHandleCoreCrud.
+ *
+ * Sensible (users) : hash WP + newsletter + mails restent dans users.mjs
+ * (policy + hooks), jamais dans le core.
  */
 import crypto from 'node:crypto';
 import { parseJsonArray, rowToArticle } from './db.mjs';
 import { canAccessDesk, canEditAll, canPublish, isStaffRole } from './roles.mjs';
-import { canManageUsers, handleDeskUsers } from './users.mjs';
+import {
+  canManageUsers,
+  elUsersStore,
+  elUserPolicy,
+  elAfterUserCreate,
+  elAfterUserDelete,
+} from './users.mjs';
 import { auditLog } from './audit.mjs';
 import { chapo } from './excerpt.mjs';
 import { cleanHtml } from './html-clean.mjs';
@@ -51,6 +60,14 @@ const elMediaFs = {
   detectMediaMime,
   writeMediaFile,
 };
+
+/** Rôles staff pour autocomplete auteurs (inclut legacy administrator). */
+const AUTHOR_STAFF_ROLES = [
+  'admin',
+  'administrator',
+  'editor',
+  'author',
+];
 
 function deskBrand(ctx) {
   return {
@@ -117,7 +134,7 @@ function resolveDeskIngestSession(req, parts, apiKey) {
 }
 
 export async function handleDesk(req, res, parts, ctx) {
-  const { pool, sendJson, resolveDeskSession, clientIp } = ctx;
+  const { sendJson, resolveDeskSession, clientIp } = ctx;
   let session = null;
   try {
     session = resolveDeskIngestSession(req, parts, ctx.deskIngestApiKey);
@@ -149,9 +166,16 @@ export async function handleDesk(req, res, parts, ctx) {
     plugins,
     articleHelpers,
     articlesTable: ARTICLES_TABLE,
+    usersTable: elUsersStore.tableName,
+    staffRoles: AUTHOR_STAFF_ROLES,
+    slugify,
     categories: elCategoriesStore,
     mediaStore: elMediaStore,
     mediaFs: elMediaFs,
+    usersStore: elUsersStore,
+    userPolicy: elUserPolicy,
+    afterUserCreate: elAfterUserCreate,
+    afterUserDelete: elAfterUserDelete,
     rowToArticle,
     parseJsonArray,
     canEditAll,
@@ -204,74 +228,7 @@ export async function handleDesk(req, res, parts, ctx) {
     return;
   }
 
-  // GET /api/desk/authors?q= — autocomplete (EL)
-  if (parts[2] === 'authors' && !parts[3] && req.method === 'GET') {
-    const url = new URL(req.url || '/', `http://${req.headers.host}`);
-    const q = String(url.searchParams.get('q') || '').trim();
-    const like = q ? `%${q}%` : null;
-    const out = [];
-    const seen = new Set();
-
-    const push = (row) => {
-      const name = String(row.name || '').trim();
-      if (!name) return;
-      const key = name.toLocaleLowerCase('fr');
-      if (seen.has(key)) return;
-      seen.add(key);
-      out.push({
-        name,
-        slug: row.slug ? String(row.slug) : slugify(name),
-        userId: row.user_id != null ? Number(row.user_id) : null,
-        source: row.source || 'article',
-      });
-    };
-
-    if (like) {
-      const [fromArticles] = await pool.query(
-        `SELECT author AS name, author_slug AS slug, author_user_id AS user_id,
-                COUNT(*) AS n, 'article' AS source
-         FROM el_articles
-         WHERE author LIKE ?
-         GROUP BY author, author_slug, author_user_id
-         ORDER BY n DESC, author ASC
-         LIMIT 16`,
-        [like]
-      );
-      for (const r of fromArticles) push(r);
-
-      const [fromUsers] = await pool.query(
-        `SELECT display_name AS name, login AS slug, id AS user_id, 'user' AS source
-         FROM el_users
-         WHERE status = 'active'
-           AND role IN ('admin', 'administrator', 'editor', 'author')
-           AND (display_name LIKE ? OR login LIKE ?)
-         ORDER BY display_name ASC
-         LIMIT 16`,
-        [like, like]
-      );
-      for (const r of fromUsers) push(r);
-    } else {
-      const [top] = await pool.query(
-        `SELECT author AS name, author_slug AS slug, author_user_id AS user_id,
-                COUNT(*) AS n, 'article' AS source
-         FROM el_articles
-         WHERE author IS NOT NULL AND TRIM(author) != ''
-         GROUP BY author, author_slug, author_user_id
-         ORDER BY n DESC, author ASC
-         LIMIT 12`
-      );
-      for (const r of top) push(r);
-    }
-
-    return sendJson(res, 200, { authors: out.slice(0, 12) });
-  }
-
-  // /api/desk/users[/:id]
-  if (parts[2] === 'users') {
-    return handleDeskUsers(req, res, parts, { ...ctx, session, ip, actor });
-  }
-
-  // CRUD portable articles + catégories
+  // CRUD portable (articles, catégories, médias, authors, users)
   if (await tryHandleCoreCrud(req, res, parts, deskReqCtx)) {
     return;
   }

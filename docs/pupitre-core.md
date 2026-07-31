@@ -28,12 +28,10 @@ examples/pupitre-minimal/   # démo exécutable (registry + hooks)
 
 | Core (`desk/core`) | Host / adapters EL |
 |--------------------|---------------------|
-| Registry + hooks lifecycle | `desk.mjs` — auth, `/me`, media, authors, users |
-| `createArticleHelpers` | `article-host` (`el_articles` + rôles) |
-| `tryHandleCoreCrud` (articles + catégories + médias) | Plugins Brevo / Goat / X / OneSignal / DeepL / RAG |
-| `createCategoriesStore` / `createMediaStore` | Hooks `afterPublish` (push), twins / auto-keywords |
-| `contentGen` + utils purs | Marque (`DESK_BRAND_*`), assist, front-cache |
-| | FS médias : `media/storage.mjs` + `process.mjs` (injectés) |
+| Registry + hooks lifecycle | `desk.mjs` — auth, `/me` uniquement |
+| `tryHandleCoreCrud` (articles, catégories, médias, authors, users) | Plugins Brevo / Goat / X / OneSignal / DeepL / RAG |
+| Stores injectables (tables) | `users.mjs` — hash WP, policy rôles, hooks mails/newsletter |
+| | `article-host`, FS médias, marque, assist, front-cache |
 
 ## Registry & hooks
 
@@ -77,19 +75,20 @@ Hors scope Phase 4 :
 
 ## Extract CRUD (faite)
 
-- Pass 1 : articles + catégories → `desk/core/{articles,categories,crud}.mjs`
-- Pass 2 : médias → `desk/core/media/` (`createMediaStore` + `handleCoreMedia`)
-- Host EL : auth → plugins → authors/users → `tryHandleCoreCrud`
-- Hooks : `beforeArticleRoute`, `afterPublish`, keywords/twins ; FS via `ctx.mediaFs`
+- Pass 1 : articles + catégories
+- Pass 2 : médias (`createMediaStore` + `handleCoreMedia`)
+- Pass 3 : authors + users — **avec précautions**
+  - Core : SQL/HTTP + `createUsersStore` / `handleCoreUsers` / `handleCoreAuthors`
+  - EL : `hashUserPassword` (phpass `$P$`), `elUserPolicy`, `elAfterUserCreate` / `elAfterUserDelete` (newsletter, tokens reset, mails Brevo)
+  - Le core ne hashe jamais lui-même et n’importe pas `wordpress-hash-node`
 
-Encore dans le host : users, authors autocomplete.
+Host EL : auth → plugins → `tryHandleCoreCrud`.
 
 ## Suite éventuelle
 
 1. Repo public `pupitre-core` (+ exemple)
 2. Plugins UI desk pour assist / keywords / translate
 3. `npm publish @electronlibre/pupitre-core` (lever `private`)
-4. Extraire users (difficile — WP hash, Brevo, …)
 
 ## Ops (prod EL)
 
