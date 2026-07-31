@@ -1,0 +1,13 @@
+{
+  "name": "@electronlibre/pupitre-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Pupitre CMS core — registry, lifecycle, article helpers (source: server/lib/desk/core).",
+  "exports": {
+    ".": "../../server/lib/desk/core/index.mjs"
+  },
+  "files": [
+    "../../server/lib/desk/core/"
+  ]
+}

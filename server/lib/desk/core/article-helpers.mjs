@@ -2,8 +2,8 @@ import {
   buildKeywordSource,
   extractKeywordsViaRag,
   normalizeKeywords,
-} from '../keywords.mjs';
-import { canAccessDesk, canEditAll } from '../roles.mjs';
+} from '../../keywords.mjs';
+import { canAccessDesk, canEditAll } from '../../roles.mjs';
 
 export { normalizeKeywords };
 

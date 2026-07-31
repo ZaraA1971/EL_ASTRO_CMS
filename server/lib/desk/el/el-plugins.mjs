@@ -1,26 +1,28 @@
 /**
  * Plugins ElectronLibre branchés sur le Pupitre (hors core).
  */
-import { canPublish } from '../roles.mjs';
-import { handleDeskNewsletter } from '../newsletter/handler.mjs';
-import { handleDeskAudience } from '../audience/handler.mjs';
-import { handleDeskArticleX } from '../x-desk.mjs';
+import { canPublish } from '../../roles.mjs';
+import { handleDeskNewsletter } from '../../newsletter/handler.mjs';
+import { handleDeskAudience } from '../../audience/handler.mjs';
+import { handleDeskArticleX } from '../../x-desk.mjs';
 import {
   anyXAccountConfigured,
   listXAccountsPublic,
-} from '../x-accounts.mjs';
+} from '../../x-accounts.mjs';
 import {
   createPluginRegistry,
   resolveEnabledPluginIds,
-} from './plugin-registry.mjs';
+} from '../core/plugin-registry.mjs';
 import { handleDeskAssist } from './plugins/assist.mjs';
 import { handleDeskContentGen } from './plugins/content-gen.mjs';
 import { handleDeskArticleKeywords } from './plugins/keywords.mjs';
 import { handleDeskArticlePush } from './plugins/push.mjs';
 import { handleDeskArticleTranslateUk } from './plugins/translate.mjs';
+import { frontCachePlugin } from './plugins/front-cache.mjs';
 
-/** @type {import('./plugin-registry.mjs').DeskPlugin[]} */
+/** @type {import('../core/plugin-registry.mjs').DeskPlugin[]} */
 export const EL_DESK_PLUGINS = [
+  frontCachePlugin,
   {
     id: 'newsletter',
     caps(ctx, session) {

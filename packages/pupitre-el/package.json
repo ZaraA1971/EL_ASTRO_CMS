@@ -1,0 +1,13 @@
+{
+  "name": "@electronlibre/pupitre-el",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "ElectronLibre adapters for Pupitre (plugins newsletter, X, push, front-cache, …).",
+  "exports": {
+    ".": "../../server/lib/desk/el/index.mjs"
+  },
+  "peerDependencies": {
+    "@electronlibre/pupitre-core": "0.1.0"
+  }
+}

@@ -1,6 +1,6 @@
-import { auditLog } from '../../audit.mjs';
-import { sendArticlePush } from '../../onesignal.mjs';
-import { canPublish } from '../../roles.mjs';
+import { auditLog } from '../../../audit.mjs';
+import { sendArticlePush } from '../../../onesignal.mjs';
+import { canPublish } from '../../../roles.mjs';
 
 export async function handleDeskArticlePush(req, res, _parts, ctx, article) {
   const { pool, sendJson, readBody, session, actor, ip } = ctx;

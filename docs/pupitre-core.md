@@ -17,10 +17,24 @@ Document de cadrage. Pas de code d’extraction ici.
 1. ~~Phase 0 — ce document~~  
 2. ~~Migration identité `wp_id` → `article_id` (code + SQL + deploy)~~  
 3. ~~**Phase 1** — modulariser in-place~~ (1a registry API · 1b plugins routes · 1c UI split)  
-4. Phase 2–3 — hooks host, package layout  
+4. ~~**Phase 2–3**~~  
+   - ~~2. Hooks host~~ (`onPublish` / `onDraft` / `onMutate` / `onCategoryChange` · plugin `front-cache`)  
+   - ~~3. Package layout~~ — `server/lib/desk/{core,el}` + façades `packages/pupitre-core` / `packages/pupitre-el`  
 5. Phase 4 — OSS (optionnel)
 
-Env optionnel : `DESK_PLUGINS=newsletter,audience,x,push,keywords,translate,assist,content-gen` (csv). Absent = tous ; vide = aucun plugin (caps plugin absentes).
+### Layout code (Phase 3)
+
+```
+server/lib/desk/
+  core/     # registry, lifecycle, content-gen, article-helpers
+  el/       # el-plugins + plugins/* (front-cache, newsletter, x, …)
+desk/       # SPA (core / views / plugins UI)
+packages/
+  pupitre-core/   # façade npm → server/lib/desk/core
+  pupitre-el/     # façade npm → server/lib/desk/el
+```
+
+Env optionnel : `DESK_PLUGINS=front-cache,newsletter,audience,x,push,keywords,translate,assist,content-gen` (csv). Absent = tous ; vide = aucun plugin (caps/hooks plugin absents).
 
 ## Ops — obligatoire à chaque phase
 

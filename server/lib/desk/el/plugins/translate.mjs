@@ -1,8 +1,8 @@
-import { auditLog } from '../../audit.mjs';
-import { parseJsonArray, rowToArticle } from '../../db.mjs';
-import { translateArticleFrToUk } from '../../deepl.mjs';
-import { chapo } from '../../excerpt.mjs';
-import { cleanHtml } from '../../html-clean.mjs';
+import { auditLog } from '../../../audit.mjs';
+import { parseJsonArray, rowToArticle } from '../../../db.mjs';
+import { translateArticleFrToUk } from '../../../deepl.mjs';
+import { chapo } from '../../../excerpt.mjs';
+import { cleanHtml } from '../../../html-clean.mjs';
 import {
   asJson,
   canEditArticle,
@@ -10,8 +10,9 @@ import {
   nextArticleId,
   nowMysql,
   uniqueSlug,
-} from '../article-helpers.mjs';
-import { bumpContentGen, getContentGen } from '../content-gen.mjs';
+} from '../../core/article-helpers.mjs';
+import { getContentGen } from '../../core/content-gen.mjs';
+import { emitDeskLifecycle } from '../../core/lifecycle.mjs';
 
 /**
  * POST /api/desk/articles/:articleId/translate-uk
@@ -188,10 +189,16 @@ export async function handleDeskArticleTranslateUk(req, res, _parts, ctx, source
     [enId, fr.article_id, now, fr.article_id]
   );
 
-  bumpContentGen();
   const [rows] = await pool.query('SELECT * FROM el_articles WHERE article_id = ?', [
     enId,
   ]);
+  const article = rowToArticle(rows[0]);
+  const contentGen = await emitDeskLifecycle(
+    ctx.plugins,
+    'onMutate',
+    { article, action: 'translate-uk', source_fr: Number(fr.article_id) },
+    ctx
+  );
   if (ctx.actor) {
     await auditLog(pool, {
       actor: ctx.actor,
@@ -203,10 +210,10 @@ export async function handleDeskArticleTranslateUk(req, res, _parts, ctx, source
     });
   }
   return sendJson(res, enExisting ? 200 : 201, {
-    article: rowToArticle(rows[0]),
+    article,
     created: !enExisting,
     overwritten: Boolean(enExisting),
     source_fr: Number(fr.article_id),
-    contentGen: getContentGen(),
+    contentGen: contentGen || getContentGen(),
   });
 }

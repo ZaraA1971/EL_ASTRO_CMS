@@ -4,7 +4,6 @@ import { sendArticlePush } from './onesignal.mjs';
 import { canAccessDesk, canEditAll, canPublish } from './roles.mjs';
 import { canManageUsers, handleDeskUsers } from './users.mjs';
 import { auditLog } from './audit.mjs';
-import { purgeFrontCache } from './front-cache.mjs';
 import { chapo } from './excerpt.mjs';
 import { cleanHtml } from './html-clean.mjs';
 import { handleDeskMedia } from './media/handler.mjs';
@@ -12,7 +11,7 @@ import {
   listCategories,
   createCategory,
 } from './categories.mjs';
-import { createElDeskRegistry } from './desk/el-plugins.mjs';
+import { createElDeskRegistry } from './desk/el/el-plugins.mjs';
 import {
   asJson,
   canEditArticle,
@@ -27,14 +26,15 @@ import {
   syncKeywordsToTwin,
   toMysqlDate,
   uniqueSlug,
-} from './desk/article-helpers.mjs';
-import { bumpContentGen, getContentGen } from './desk/content-gen.mjs';
+} from './desk/core/article-helpers.mjs';
+import { emitDeskLifecycle } from './desk/core/lifecycle.mjs';
+import { getContentGen } from './desk/core/content-gen.mjs';
 
 export { canAccessDesk, canEditAll, canPublish };
-export { canEditArticle } from './desk/article-helpers.mjs';
-export { bumpContentGen, getContentGen } from './desk/content-gen.mjs';
+export { canEditArticle } from './desk/core/article-helpers.mjs';
+export { bumpContentGen, getContentGen } from './desk/core/content-gen.mjs';
 
-/** Plugins EL (newsletter, audience, x, push, keywords, translate, assist, content-gen). */
+/** Plugins EL (+ front-cache hooks). */
 const defaultDeskPlugins = createElDeskRegistry();
 
 /** Qualif / services machine — création brouillon uniquement. */
@@ -107,7 +107,7 @@ export async function handleDesk(req, res, parts, ctx) {
     ? { uid: null, login: session.login }
     : { uid: session.uid, login: session.login };
   const plugins = ctx.plugins || defaultDeskPlugins;
-  const deskReqCtx = { ...ctx, session, actor, ip };
+  const deskReqCtx = { ...ctx, session, actor, ip, plugins };
 
   // /api/desk/me
   if (parts[2] === 'me' && req.method === 'GET') {
@@ -176,7 +176,12 @@ export async function handleDesk(req, res, parts, ctx) {
           meta: { name: category.name },
           ip,
         });
-        purgeFrontCache();
+        await emitDeskLifecycle(
+          plugins,
+          'onCategoryChange',
+          { category },
+          deskReqCtx
+        );
         return sendJson(res, 201, { category });
       } catch (err) {
         return sendJson(res, err.status || 500, {
@@ -380,7 +385,16 @@ export async function handleDesk(req, res, parts, ctx) {
           sourceUrl,
         ]
       );
-      bumpContentGen();
+      const [rows] = await pool.query('SELECT * FROM el_articles WHERE article_id = ?', [
+        articleId,
+      ]);
+      const article = rowToArticle(rows[0]);
+      await emitDeskLifecycle(
+        plugins,
+        'onMutate',
+        { article, action: 'create' },
+        deskReqCtx
+      );
       if (session.ingest) {
         await auditLog(pool, {
           actor,
@@ -391,10 +405,7 @@ export async function handleDesk(req, res, parts, ctx) {
           ip,
         });
       }
-      const [rows] = await pool.query('SELECT * FROM el_articles WHERE article_id = ?', [
-        articleId,
-      ]);
-      return sendJson(res, 201, { article: rowToArticle(rows[0]) });
+      return sendJson(res, 201, { article });
     }
 
     return sendJson(res, 405, { error: 'Method not allowed' });
@@ -459,11 +470,16 @@ export async function handleDesk(req, res, parts, ctx) {
         articleId,
       ]);
     }
-    bumpContentGen();
     const [rows] = await pool.query('SELECT * FROM el_articles WHERE article_id = ?', [
       articleId,
     ]);
     const article = rowToArticle(rows[0]);
+    const contentGen = await emitDeskLifecycle(
+      plugins,
+      'onPublish',
+      { article, wasDraft },
+      deskReqCtx
+    );
     let push = null;
     if (payload.push) {
       try {
@@ -480,7 +496,7 @@ export async function handleDesk(req, res, parts, ctx) {
         console.error('[desk] onesignal', err.message);
         return sendJson(res, 200, {
           article,
-          contentGen: getContentGen(),
+          contentGen,
           push: { ok: false, error: err.message },
         });
       }
@@ -495,7 +511,7 @@ export async function handleDesk(req, res, parts, ctx) {
     });
     return sendJson(res, 200, {
       article,
-      contentGen: getContentGen(),
+      contentGen,
       push: push ? { ok: true, ...push } : null,
     });
   }
@@ -536,7 +552,17 @@ export async function handleDesk(req, res, parts, ctx) {
         [pubDate, mod, slug, articleId]
       );
     }
-    bumpContentGen();
+    const [rows] = await pool.query(
+      'SELECT * FROM el_articles WHERE article_id = ?',
+      [articleId]
+    );
+    const article = rowToArticle(rows[0]);
+    const contentGen = await emitDeskLifecycle(
+      plugins,
+      wantDraft ? 'onDraft' : 'onPublish',
+      { article, draft: wantDraft },
+      deskReqCtx
+    );
     await auditLog(pool, {
       actor,
       action: wantDraft ? 'article.draft' : 'article.undraft',
@@ -545,13 +571,9 @@ export async function handleDesk(req, res, parts, ctx) {
       meta: { draft: wantDraft },
       ip,
     });
-    const [rows] = await pool.query(
-      'SELECT * FROM el_articles WHERE article_id = ?',
-      [articleId]
-    );
     return sendJson(res, 200, {
-      article: rowToArticle(rows[0]),
-      contentGen: getContentGen(),
+      article,
+      contentGen,
     });
   }
 
@@ -725,13 +747,19 @@ export async function handleDesk(req, res, parts, ctx) {
         iaKeywordsNext
       );
     }
-    bumpContentGen();
     const [rows] = await pool.query('SELECT * FROM el_articles WHERE article_id = ?', [
       articleId,
     ]);
+    const article = rowToArticle(rows[0]);
+    const contentGen = await emitDeskLifecycle(
+      plugins,
+      'onMutate',
+      { article, action: 'update' },
+      deskReqCtx
+    );
     return sendJson(res, 200, {
-      article: rowToArticle(rows[0]),
-      contentGen: getContentGen(),
+      article,
+      contentGen,
     });
   }
 
@@ -749,7 +777,12 @@ export async function handleDesk(req, res, parts, ctx) {
       [articleId]
     );
     await pool.query('DELETE FROM el_articles WHERE article_id = ?', [articleId]);
-    bumpContentGen();
+    const contentGen = await emitDeskLifecycle(
+      plugins,
+      'onMutate',
+      { articleId, action: 'delete' },
+      deskReqCtx
+    );
     await auditLog(pool, {
       actor,
       action: 'article.delete',
@@ -757,7 +790,7 @@ export async function handleDesk(req, res, parts, ctx) {
       targetId: articleId,
       ip,
     });
-    return sendJson(res, 200, { ok: true, contentGen: getContentGen() });
+    return sendJson(res, 200, { ok: true, contentGen });
   }
 
   return sendJson(res, 404, { error: 'Unknown desk route' });

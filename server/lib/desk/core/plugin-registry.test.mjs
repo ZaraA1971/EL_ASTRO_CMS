@@ -4,7 +4,7 @@ import {
   createPluginRegistry,
   resolveEnabledPluginIds,
 } from './plugin-registry.mjs';
-import { createElDeskRegistry, EL_DESK_PLUGINS } from './el-plugins.mjs';
+import { createElDeskRegistry, EL_DESK_PLUGINS } from '../el/el-plugins.mjs';
 
 describe('plugin-registry', () => {
   it('merges plugin caps onto core caps', () => {
@@ -71,6 +71,32 @@ describe('plugin-registry', () => {
     );
     assert.equal(ok, true);
     assert.equal(articleId, 42);
+  });
+
+  it('runs lifecycle hooks and isolates plugin errors', async () => {
+    const hits = [];
+    const reg = createPluginRegistry([
+      {
+        id: 'a',
+        onPublish() {
+          hits.push('a');
+        },
+      },
+      {
+        id: 'b',
+        onPublish() {
+          throw new Error('boom');
+        },
+      },
+      {
+        id: 'c',
+        onPublish() {
+          hits.push('c');
+        },
+      },
+    ]);
+    await reg.runHooks('onPublish', { ok: true }, {});
+    assert.deepEqual(hits, ['a', 'c']);
   });
 });
 

@@ -1,5 +1,5 @@
-import { auditLog } from '../../audit.mjs';
-import { callEditorialAssist } from '../../editorial-assist.mjs';
+import { auditLog } from '../../../audit.mjs';
+import { callEditorialAssist } from '../../../editorial-assist.mjs';
 
 export function handleDeskAssist(req, res, _parts, ctx) {
   return handle(req, res, ctx);

@@ -1,12 +1,13 @@
-import { auditLog } from '../../audit.mjs';
-import { rowToArticle } from '../../db.mjs';
+import { auditLog } from '../../../audit.mjs';
+import { rowToArticle } from '../../../db.mjs';
 import {
   buildKeywordSource,
   extractKeywordsViaRag,
-} from '../../keywords.mjs';
-import { cleanHtml } from '../../html-clean.mjs';
-import { asJson, syncKeywordsToTwin } from '../article-helpers.mjs';
-import { bumpContentGen, getContentGen } from '../content-gen.mjs';
+} from '../../../keywords.mjs';
+import { cleanHtml } from '../../../html-clean.mjs';
+import { asJson, syncKeywordsToTwin } from '../../core/article-helpers.mjs';
+import { getContentGen } from '../../core/content-gen.mjs';
+import { emitDeskLifecycle } from '../../core/lifecycle.mjs';
 
 export async function handleDeskArticleKeywords(req, res, _parts, ctx, existing) {
   const { pool, sendJson, readBody, session, actor, ip } = ctx;
@@ -75,7 +76,6 @@ export async function handleDeskArticleKeywords(req, res, _parts, ctx, existing)
     );
     existing.access = 'subscribers';
     const twinId = await syncKeywordsToTwin(pool, session, existing, keywords);
-    bumpContentGen();
     await auditLog(pool, {
       actor,
       action: 'article.keywords',
@@ -88,11 +88,18 @@ export async function handleDeskArticleKeywords(req, res, _parts, ctx, existing)
       'SELECT * FROM el_articles WHERE article_id = ?',
       [articleId]
     );
+    const article = rowToArticle(rows[0]);
+    const contentGen = await emitDeskLifecycle(
+      ctx.plugins,
+      'onMutate',
+      { article, action: 'keywords' },
+      ctx
+    );
     return sendJson(res, 200, {
       keywords,
-      article: rowToArticle(rows[0]),
+      article,
       twinId,
-      contentGen: getContentGen(),
+      contentGen: contentGen || getContentGen(),
     });
   } catch (err) {
     console.error('[desk] keywords', err.message);
