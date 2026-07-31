@@ -87,7 +87,8 @@ Création manuelle au pupitre **ou** après paiement Stripe (abonnement mensuel)
 - **Mensuel** : 10 jours d’essai, puis 100 € / mois sans engagement — Checkout Stripe (CB + PayPal) sur `/abonnement/`
 - **Annuel** : 900 € / an — demande par e-mail (`info@electronlibre.info`)
 - Après checkout : compte `el_users` (`source=stripe`, `plan=monthly`, `access_until`) + e-mail Brevo de bienvenue (choix du mot de passe) ; statut Stripe `trialing` pendant l’essai
-- Toute création de compte (Stripe ou Pupitre, tous rôles) déclenche un e-mail Brevo de confirmation (`server/lib/account-email.mjs`)
+- Comptes : e-mail Brevo au titulaire à la création + notification admins à la création **et** à la suppression (`server/lib/account-email.mjs`, template `server/lib/email/brand.mjs`)
+- Newsletter : opt-in dès création Stripe / Pupitre (`ensureNewsletterEnrollment`) — **sans** attendre le mot de passe
 - Espace abonné : `/compte/` (statut, portail facturation Stripe, MDP, newsletter)
 - SQL colonnes : [`scripts/sql/el_users_billing.sql`](scripts/sql/el_users_billing.sql) (aussi via `ensureBillingSchema`)
 

@@ -10,6 +10,9 @@ import { ROLES, STATUSES, isStaffRole } from '../roles.mjs';
 import { PLAN_MONTHLY } from './config.mjs';
 import { ensureBillingSchema } from './schema.mjs';
 import { sendWelcomeEmail } from './welcome.mjs';
+import { notifyAdminsAccountCreated } from '../account-email.mjs';
+import { ensureNewsletterSchema } from '../newsletter/schema.mjs';
+import { ensureNewsletterEnrollment } from '../newsletter/recipients.mjs';
 
 function toMysqlDate(d) {
   if (!d) return null;
@@ -123,7 +126,9 @@ export async function provisionSubscriberFromStripe(pool, opts, brevo, siteUrl) 
   const accessUntil = opts.accessUntil
     ? toMysqlDate(opts.accessUntil)
     : null;
-  const newsletterOptIn = opts.newsletterOptIn !== false ? 1 : 0;
+  // Paiement = accès + newsletter (indépendant du mot de passe).
+  const newsletterOptIn = 1;
+  await ensureNewsletterSchema(pool);
 
   let user =
     (await findUserByStripeSubscription(pool, subscriptionId)) ||
@@ -150,6 +155,7 @@ export async function provisionSubscriberFromStripe(pool, opts, brevo, siteUrl) 
         user.id,
       ]
     );
+    await ensureNewsletterEnrollment(pool, user.id, { optIn: true });
     const [rows] = await pool.query(
       `SELECT id, login, email, display_name, role, status, access_until,
               stripe_customer_id, stripe_subscription_id, plan
@@ -169,6 +175,7 @@ export async function provisionSubscriberFromStripe(pool, opts, brevo, siteUrl) 
         stripe_subscription_id = COALESCE(?, stripe_subscription_id),
         plan = ?,
         billing_email = ?,
+        newsletter_opt_in = 1,
         display_name = CASE WHEN display_name = '' OR display_name IS NULL THEN ? ELSE display_name END
        WHERE id = ?`,
       [
@@ -183,6 +190,7 @@ export async function provisionSubscriberFromStripe(pool, opts, brevo, siteUrl) 
         user.id,
       ]
     );
+    await ensureNewsletterEnrollment(pool, user.id, { optIn: true });
     const [rows] = await pool.query(
       `SELECT id, login, email, display_name, role, status, access_until,
               stripe_customer_id, stripe_subscription_id, plan
@@ -226,6 +234,7 @@ export async function provisionSubscriberFromStripe(pool, opts, brevo, siteUrl) 
       email,
     ]
   );
+  await ensureNewsletterEnrollment(pool, id, { optIn: true });
 
   // Jeton pour choisir le mot de passe (ne pas envoyer le MDP temporaire).
   const token = crypto.randomBytes(32).toString('hex');
@@ -246,6 +255,7 @@ export async function provisionSubscriberFromStripe(pool, opts, brevo, siteUrl) 
   const created = rows[0];
 
   let welcomeSent = false;
+  let adminEmailSent = false;
   try {
     const out = await sendWelcomeEmail({
       user: created,
@@ -257,8 +267,20 @@ export async function provisionSubscriberFromStripe(pool, opts, brevo, siteUrl) 
   } catch (err) {
     console.error('[billing] welcome email', err.message);
   }
+  try {
+    const adminOut = await notifyAdminsAccountCreated({
+      pool,
+      user: created,
+      brevo,
+      siteUrl,
+      source: 'stripe',
+    });
+    adminEmailSent = Boolean(adminOut?.ok);
+  } catch (err) {
+    console.error('[billing] admin account-created email', err.message);
+  }
 
-  return { user: created, created: true, welcomeSent };
+  return { user: created, created: true, welcomeSent, adminEmailSent };
 }
 
 /** Met à jour access_until / status depuis un abonnement Stripe. */

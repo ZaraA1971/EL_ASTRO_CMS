@@ -10,7 +10,14 @@ import {
   effectiveStatus,
 } from './roles.mjs';
 import { auditLog } from './audit.mjs';
-import { sendAccountCreatedEmail } from './account-email.mjs';
+import {
+  sendAccountCreatedEmail,
+  notifyAdminsAccountCreated,
+  notifyAdminsAccountDeleted,
+} from './account-email.mjs';
+import { ensurePasswordResetSchema } from './password-reset.mjs';
+import { ensureNewsletterSchema } from './newsletter/schema.mjs';
+import { ensureNewsletterEnrollment } from './newsletter/recipients.mjs';
 
 const hashPassword =
   wordpressHash.HashPassword || wordpressHash.hashPassword;
@@ -268,29 +275,74 @@ export async function handleDeskUsers(req, res, parts, ctx) {
       [id]
     );
     const created = rows[0];
+
+    // Newsletter dès la création (indépendant du mot de passe).
+    try {
+      await ensureNewsletterSchema(pool);
+      await ensureNewsletterEnrollment(pool, id, {
+        optIn: newsletterOptIn === 1,
+      });
+    } catch (err) {
+      console.error('[users] newsletter enrollment', err.message);
+    }
+
+    // Lien pour choisir un mot de passe (connexion site) — 7 j.
+    let resetToken = null;
+    try {
+      await ensurePasswordResetSchema(pool);
+      resetToken = crypto.randomBytes(32).toString('hex');
+      const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      await pool.query(
+        `UPDATE el_users
+         SET password_reset_token = ?, password_reset_expires = ?
+         WHERE id = ?`,
+        [resetToken, expires.toISOString().slice(0, 19).replace('T', ' '), id]
+      );
+    } catch (err) {
+      console.error('[users] password setup token', err.message);
+      resetToken = null;
+    }
+
     let emailSent = false;
+    let adminEmailSent = false;
     try {
       const out = await sendAccountCreatedEmail({
-        user: created,
+        user: { ...created, newsletter_opt_in: newsletterOptIn },
         brevo,
         siteUrl,
+        resetToken,
         source: 'desk',
+        newsletterOptIn: newsletterOptIn === 1,
       });
       emailSent = Boolean(out?.ok);
     } catch (err) {
       console.error('[users] account-created email', err.message);
+    }
+    try {
+      const adminOut = await notifyAdminsAccountCreated({
+        pool,
+        user: created,
+        brevo,
+        siteUrl,
+        source: 'desk',
+        actorLogin: session.login || actor?.login || null,
+      });
+      adminEmailSent = Boolean(adminOut?.ok);
+    } catch (err) {
+      console.error('[users] admin account-created email', err.message);
     }
     await auditLog(pool, {
       actor: actor || { uid: session.uid, login: session.login },
       action: 'user.create',
       targetType: 'user',
       targetId: id,
-      meta: { role, status, emailSent },
+      meta: { role, status, emailSent, adminEmailSent },
       ip,
     });
     return sendJson(res, 201, {
       user: rowToDeskUser(created),
       emailSent,
+      adminEmailSent,
     });
   }
 
@@ -363,6 +415,20 @@ export async function handleDeskUsers(req, res, parts, ctx) {
       }
     }
     await pool.query('DELETE FROM el_users WHERE id = ?', [userId]);
+    let adminEmailSent = false;
+    try {
+      const adminOut = await notifyAdminsAccountDeleted({
+        pool,
+        user: existing,
+        brevo,
+        siteUrl,
+        source: existing.source === 'stripe' ? 'stripe' : 'desk',
+        actorLogin: session.login || actor?.login || null,
+      });
+      adminEmailSent = Boolean(adminOut?.ok);
+    } catch (err) {
+      console.error('[users] admin account-deleted email', err.message);
+    }
     await auditLog(pool, {
       actor: actor || { uid: session.uid, login: session.login },
       action: 'user.delete',
@@ -373,10 +439,15 @@ export async function handleDeskUsers(req, res, parts, ctx) {
         email: existing.email,
         role: normalizeRole(existing.role),
         source: existing.source || null,
+        adminEmailSent,
       },
       ip,
     });
-    return sendJson(res, 200, { ok: true, deleted: userId });
+    return sendJson(res, 200, {
+      ok: true,
+      deleted: userId,
+      adminEmailSent,
+    });
   }
 
   // PUT /api/desk/users/:id

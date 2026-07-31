@@ -382,6 +382,21 @@ details.x-panel[open] {
   line-height: 1.4;
 }
 
+.field-error {
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--danger);
+  line-height: 1.35;
+}
+
+.field input.is-invalid,
+.field select.is-invalid,
+.field textarea.is-invalid {
+  border-color: var(--danger);
+  background: #fffafa;
+  box-shadow: 0 0 0 2px var(--danger-soft);
+}
+
 .btn-uk {
   background: #0f172a;
   color: #fff;

@@ -124,3 +124,25 @@ export async function ensureUnsubToken(pool, userRow) {
   userRow.newsletter_unsub_token = token;
   return token;
 }
+
+/**
+ * Opt-in newsletter + jeton de désabo — indépendant du mot de passe.
+ * Appelé à la création / provisionnement compte (Stripe, Pupitre).
+ */
+export async function ensureNewsletterEnrollment(pool, userId, { optIn = true } = {}) {
+  const id = Number(userId);
+  if (!id) return { ok: false };
+  if (optIn) {
+    await pool.query(`UPDATE el_users SET newsletter_opt_in = 1 WHERE id = ?`, [
+      id,
+    ]);
+  }
+  const [rows] = await pool.query(
+    `SELECT id, newsletter_unsub_token FROM el_users WHERE id = ? LIMIT 1`,
+    [id]
+  );
+  const row = rows[0];
+  if (!row) return { ok: false };
+  await ensureUnsubToken(pool, row);
+  return { ok: true, optIn: Boolean(optIn), unsubToken: row.newsletter_unsub_token };
+}

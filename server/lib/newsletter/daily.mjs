@@ -5,6 +5,10 @@
 
 import { parseJsonArray } from '../db.mjs';
 import { chapo } from '../excerpt.mjs';
+import {
+  escapeHtml,
+  renderAppInstallPill,
+} from '../email/brand.mjs';
 
 const TZ = 'Europe/Paris';
 /** « Si vous l’aviez manqué » — court (hors contexte hero). */
@@ -56,14 +60,6 @@ const TOKENS = {
   fontUi: '-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif',
   fontEditorial: 'Georgia, Times New Roman, serif',
 };
-
-function escapeHtml(s) {
-  return String(s ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
 
 export function normalizeKeyword(value) {
   return String(value || '')
@@ -409,7 +405,7 @@ export async function composeDailyNewsletter(pool, opts = {}) {
   html += `</div>`;
   html += `<div style="padding:16px 16px 20px;text-align:center;background:rgba(255,255,255,0.08);border-top:1px solid rgba(255,255,255,0.12);overflow:hidden;">`;
   html += `<table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" width="100%" style="width:100%;max-width:100%;margin:0 auto;border-collapse:collapse;table-layout:fixed;text-align:center;"><tr>`;
-  html += `<td align="center" style="padding:4px;"><a href="https://apps.apple.com/fr/app/electronlibre-ia/id6743965549" target="_blank" style="display:inline-block;background-color:${t.accent};color:#ffffff !important;padding:11px 14px;border-radius:999px;font-size:13px;font-weight:700;text-decoration:none;font-family:${t.fontUi};">Installer l’app</a></td>`;
+  html += `<td align="center" style="padding:4px;">${renderAppInstallPill(t)}</td>`;
   html += `<td align="center" style="padding:4px;"><a href="${escapeHtml(siteUrl)}" target="_blank" style="display:inline-block;color:${t.onDarkMuted} !important;font-size:12px;text-decoration:none;font-family:${t.fontUi};">Site</a></td>`;
   html += `<td align="center" style="padding:4px;"><a href="mailto:info@electronlibre.info" style="display:inline-block;color:${t.onDarkMuted} !important;font-size:12px;text-decoration:none;font-family:${t.fontUi};">Contact</a></td>`;
   html += `<td align="center" style="padding:4px;"><a href="https://x.com/@3l3ctr0nLibr3" target="_blank" style="display:inline-block;color:${t.onDarkMuted} !important;font-size:12px;text-decoration:none;font-family:${t.fontUi};">X / Twitter</a></td>`;

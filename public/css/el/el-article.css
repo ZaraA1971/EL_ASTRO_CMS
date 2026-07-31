@@ -2264,6 +2264,23 @@ body.el-auth-page .btn-subscribe:disabled {
   font-size: 0.9rem;
 }
 
+.el-compte__app-lead {
+  margin: 0 0 14px;
+  color: #475569;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.el-compte__app-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 10px 18px;
+  border-radius: 999px;
+  text-decoration: none;
+}
+
 .el-subscribe__actions {
   display: flex;
   flex-wrap: wrap;

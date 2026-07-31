@@ -1,6 +1,9 @@
 ---
 export const prerender = true;
 import AuthLayout from "../layouts/AuthLayout.astro";
+
+const iosAppStoreUrl =
+  "https://apps.apple.com/fr/app/electronlibre-ia/id6743965549";
 ---
 
 <AuthLayout
@@ -48,15 +51,18 @@ import AuthLayout from "../layouts/AuthLayout.astro";
               <dt>Période en cours jusqu’au</dt>
               <dd id="el-compte-until-val">—</dd>
             </div>
-            <div>
+            <div id="el-compte-login-row" hidden>
               <dt>Identifiant</dt>
               <dd id="el-compte-login-val">—</dd>
             </div>
             <div>
-              <dt>E-mail</dt>
+              <dt>E-mail de connexion</dt>
               <dd id="el-compte-email-val">—</dd>
             </div>
           </dl>
+          <p class="el-compte__app-lead" id="el-compte-login-hint">
+            Connectez-vous avec votre e-mail (site et app).
+          </p>
           <div class="el-compte__actions">
             <button type="button" class="btn-subscribe" id="el-compte-portal" hidden>
               Gérer paiement &amp; factures
@@ -77,8 +83,29 @@ import AuthLayout from "../layouts/AuthLayout.astro";
           <p id="el-compte-nl-msg" class="el-compte__ok" hidden></p>
         </section>
 
+        <section class="el-compte__section" aria-labelledby="el-compte-app-ios">
+          <h2 id="el-compte-app-ios" class="el-compte__h2">Application iOS</h2>
+          <p class="el-compte__app-lead">
+            Suivez l’actualité et les alertes ElectronLibre en mobilité.
+          </p>
+          <div class="el-compte__actions">
+            <a
+              class="btn-subscribe el-compte__app-cta"
+              href={iosAppStoreUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              >Installer l’app</a
+            >
+          </div>
+        </section>
+
         <section class="el-compte__section" aria-labelledby="el-compte-pwd">
           <h2 id="el-compte-pwd" class="el-compte__h2">Mot de passe</h2>
+          <p class="el-compte__app-lead">
+            Ce mot de passe sert à vous connecter sur le site et dans l’application
+            iOS. Sans connexion, l’app ne pourra pas afficher l’ensemble des contenus
+            ni ouvrir EL Compagnon.
+          </p>
           <form id="el-compte-pwd-form" class="el-auth__form">
             <label for="el-compte-pwd-input">Nouveau mot de passe</label>
             <input
@@ -118,7 +145,7 @@ import AuthLayout from "../layouts/AuthLayout.astro";
     var params = new URLSearchParams(location.search);
     if (params.get("checkout") === "success") {
       banner.textContent =
-        "Paiement reçu. Si c’est votre première souscription, vérifiez votre e-mail pour choisir un mot de passe.";
+        "Paiement reçu — votre accès est ouvert. Vérifiez votre e-mail pour choisir un mot de passe et vous connecter.";
       banner.hidden = false;
     }
 
@@ -188,10 +215,23 @@ import AuthLayout from "../layouts/AuthLayout.astro";
         document.getElementById("el-compte-until-val").textContent = isStaff
           ? "—"
           : formatDate(a.access_until);
+        var emailVal = a.billing_email || a.email || "—";
+        var loginVal = a.login || "";
+        var loginRow = document.getElementById("el-compte-login-row");
+        var loginHint = document.getElementById("el-compte-login-hint");
+        document.getElementById("el-compte-email-val").textContent = emailVal;
         document.getElementById("el-compte-login-val").textContent =
-          a.login || "—";
-        document.getElementById("el-compte-email-val").textContent =
-          a.billing_email || a.email || "—";
+          loginVal || "—";
+        var sameLogin =
+          loginVal &&
+          emailVal &&
+          String(loginVal).toLowerCase() === String(emailVal).toLowerCase();
+        if (loginRow) loginRow.hidden = !loginVal || sameLogin;
+        if (loginHint) {
+          loginHint.textContent = sameLogin || !loginVal
+            ? "Connectez-vous avec votre e-mail (site et app)."
+            : "Connexion possible avec l’identifiant ou l’e-mail (site et app).";
+        }
         var portalBtn = document.getElementById("el-compte-portal");
         if (a.canManageBilling) {
           portalBtn.hidden = false;

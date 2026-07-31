@@ -240,6 +240,10 @@ const state = {
   authorPick: null, // { name, slug, userId } depuis l’autocomplete
   editUser: null, // null = create
   generatedPassword: "",
+  /** Brouillon MDP (conservé si erreur d’enregistrement — jamais renvoyé par l’API). */
+  userPasswordDraft: "",
+  /** Erreurs de champ { login?, email?, password? } */
+  userFieldErrors: {},
   /** true = panneau de confirmation suppression compte affiché */
   userDeleteConfirm: false,
   nlDate: new Date().toISOString().slice(0, 10),
@@ -2022,10 +2026,156 @@ function emptyUserForm() {
   };
 }
 
+/** Lit le formulaire compte depuis le DOM (sans re-render). */
+function readUserFormDom() {
+  const roleEl = document.getElementById("u-role");
+  const role = roleEl?.disabled
+    ? state.editUser?.role || "subscriber"
+    : roleEl?.value || "subscriber";
+  return {
+    login: document.getElementById("u-login")?.value?.trim().toLowerCase() || "",
+    email: document.getElementById("u-email")?.value?.trim().toLowerCase() || "",
+    name: document.getElementById("u-name")?.value?.trim() || "",
+    role,
+    status: document.getElementById("u-status")?.value || "active",
+    access_until: fromDatetimeLocalValue(
+      document.getElementById("u-until")?.value || ""
+    ),
+    notes: document.getElementById("u-notes")?.value || "",
+    password: document.getElementById("u-password")?.value || "",
+    newsletter_opt_in: Boolean(
+      document.getElementById("u-newsletter")?.checked
+    ),
+  };
+}
+
+/** Persiste les valeurs du formulaire dans state avant tout render. */
+function syncUserFormToState() {
+  if (!state.editUser || state.view !== "user-edit") return null;
+  if (!document.getElementById("user-form")) return null;
+  const form = readUserFormDom();
+  state.editUser = {
+    ...state.editUser,
+    login: form.login,
+    email: form.email,
+    name: form.name,
+    role: form.role,
+    status: form.status,
+    access_until: form.access_until,
+    notes: form.notes,
+    newsletter_opt_in: form.newsletter_opt_in,
+  };
+  state.userPasswordDraft = form.password;
+  return form;
+}
+
+function validateUserFormFields(form, isNew) {
+  const errors = {};
+  const login = String(form.login || "");
+  if (!login) {
+    errors.login = "Identifiant requis.";
+  } else if (!/^[a-z0-9._-]{3,60}$/.test(login)) {
+    errors.login =
+      "Identifiant : 3–60 caractères (a-z, 0-9, point, underscore, tiret).";
+  }
+  const email = String(form.email || "");
+  if (!email) {
+    errors.email = "E-mail requis.";
+  } else if (!email.includes("@") || email.indexOf("@") < 1) {
+    errors.email = "E-mail invalide.";
+  }
+  const password = String(form.password || "");
+  if (isNew) {
+    if (!password) {
+      errors.password = "Mot de passe requis.";
+    } else if (password.length < 8) {
+      errors.password = "Mot de passe : 8 caractères minimum.";
+    }
+  } else if (password && password.length < 8) {
+    errors.password = "Mot de passe : 8 caractères minimum.";
+  }
+  return errors;
+}
+
+function mapUserApiErrorToFields(message) {
+  const msg = String(message || "");
+  const errors = {};
+  if (/identifiant/i.test(msg)) errors.login = msg;
+  else if (/e-?mail/i.test(msg)) errors.email = msg;
+  else if (/mot de passe/i.test(msg)) errors.password = msg;
+  return errors;
+}
+
+function setUserFieldErrorDom(field, message) {
+  const input = document.getElementById(`u-${field}`);
+  const errEl = document.getElementById(`u-${field}-error`);
+  if (input) {
+    input.classList.toggle("is-invalid", Boolean(message));
+    input.setAttribute("aria-invalid", message ? "true" : "false");
+  }
+  if (errEl) {
+    errEl.textContent = message || "";
+    errEl.hidden = !message;
+  }
+}
+
+/** Validation live d’un champ (sans re-render complet). */
+function validateUserFieldLive(field) {
+  if (!state.editUser) return;
+  const form = readUserFormDom();
+  const isNew = !state.editUser.id;
+  const all = validateUserFormFields(form, isNew);
+  const msg = all[field] || "";
+  state.userFieldErrors = { ...state.userFieldErrors, [field]: msg };
+  if (!msg) delete state.userFieldErrors[field];
+  setUserFieldErrorDom(field, msg);
+  // Si le message global venait de ce champ, le retirer dès correction
+  if (
+    state.error &&
+    ((field === "login" && /identifiant/i.test(state.error)) ||
+      (field === "email" && /e-?mail/i.test(state.error)) ||
+      (field === "password" && /mot de passe/i.test(state.error)))
+  ) {
+    if (!msg) {
+      state.error = "";
+      const globalErr = document.querySelector("#user-form > .err");
+      if (globalErr) globalErr.remove();
+    }
+  }
+}
+
+function bindUserFormValidation() {
+  const pairs = [
+    ["u-login", "login"],
+    ["u-email", "email"],
+    ["u-password", "password"],
+  ];
+  for (const [id, field] of pairs) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.addEventListener("blur", () => validateUserFieldLive(field));
+    el.addEventListener("input", () => {
+      // Affiche l’erreur dès que le champ a été touché / a déjà une erreur
+      if (state.userFieldErrors[field] || el.classList.contains("is-invalid")) {
+        validateUserFieldLive(field);
+      }
+    });
+  }
+  const roleEl = document.getElementById("u-role");
+  if (roleEl && !roleEl.disabled) {
+    roleEl.addEventListener("change", () => {
+      syncUserFormToState();
+      render();
+    });
+  }
+}
+
 async function openUser(id) {
   state.error = "";
   state.status = "";
   state.generatedPassword = "";
+  state.userPasswordDraft = "";
+  state.userFieldErrors = {};
   state.userDeleteConfirm = false;
   if (!id) {
     state.editUser = emptyUserForm();
@@ -2047,39 +2197,39 @@ async function saveUser(ev) {
   ev?.preventDefault?.();
   if (!state.editUser || state.userDeleteConfirm) return;
   const isNew = !state.editUser.id;
-  const login = document.getElementById("u-login")?.value?.trim().toLowerCase() || "";
-  const email = document.getElementById("u-email")?.value?.trim().toLowerCase() || "";
-  const name = document.getElementById("u-name")?.value?.trim() || "";
-  const roleEl = document.getElementById("u-role");
-  const role = roleEl?.disabled
-    ? state.editUser.role || "subscriber"
-    : roleEl?.value || "subscriber";
-  const status = document.getElementById("u-status")?.value || "active";
-  const accessRaw = document.getElementById("u-until")?.value || "";
-  const notes = document.getElementById("u-notes")?.value || "";
-  const password = document.getElementById("u-password")?.value || "";
-  const newsletterOptIn = Boolean(
-    document.getElementById("u-newsletter")?.checked
-  );
+  const form = syncUserFormToState() || readUserFormDom();
+  const fieldErrors = validateUserFormFields(form, isNew);
+  state.userFieldErrors = fieldErrors;
+
+  if (Object.keys(fieldErrors).length) {
+    state.error = "Corrigez les champs indiqués avant d’enregistrer.";
+    state.status = "";
+    state.saving = false;
+    render();
+    const firstKey = ["login", "email", "password"].find((k) => fieldErrors[k]);
+    document.getElementById(firstKey ? `u-${firstKey}` : "u-login")?.focus();
+    return;
+  }
 
   const payload = {
-    login,
-    email,
-    display_name: name,
-    role,
-    status,
-    access_until: fromDatetimeLocalValue(accessRaw),
-    notes,
-    newsletter_opt_in: newsletterOptIn,
+    login: form.login,
+    email: form.email,
+    display_name: form.name,
+    role: form.role,
+    status: form.status,
+    access_until: form.access_until,
+    notes: form.notes,
+    newsletter_opt_in: form.newsletter_opt_in,
   };
   if (isNew) {
-    payload.password = password;
-  } else if (password) {
-    payload.password = password;
+    payload.password = form.password;
+  } else if (form.password) {
+    payload.password = form.password;
   }
 
   state.saving = true;
   state.error = "";
+  state.userFieldErrors = {};
   state.generatedPassword = "";
   state.status = isNew ? "Création…" : "Enregistrement…";
   render();
@@ -2090,20 +2240,34 @@ async function saveUser(ev) {
         body: JSON.stringify(payload),
       });
       state.editUser = data.user;
-      state.status = data.emailSent
-        ? "Compte créé — e-mail de confirmation envoyé"
-        : "Compte créé (e-mail de confirmation non envoyé)";
+      state.userPasswordDraft = "";
+      state.userFieldErrors = {};
+      if (data.emailSent && data.adminEmailSent) {
+        state.status =
+          "Compte créé — e-mails envoyés (titulaire + admins)";
+      } else if (data.emailSent) {
+        state.status =
+          "Compte créé — e-mail titulaire envoyé (admins : échec ou aucun)";
+      } else {
+        state.status = "Compte créé (e-mail de confirmation non envoyé)";
+      }
     } else {
       const data = await api(`/api/desk/users/${state.editUser.id}`, {
         method: "PUT",
         body: JSON.stringify(payload),
       });
       state.editUser = data.user;
+      state.userPasswordDraft = "";
+      state.userFieldErrors = {};
       state.status = "Compte enregistré";
     }
   } catch (err) {
     state.error = err.message;
     state.status = "";
+    state.userFieldErrors = {
+      ...state.userFieldErrors,
+      ...mapUserApiErrorToFields(err.message),
+    };
   } finally {
     state.saving = false;
     render();
@@ -2119,6 +2283,7 @@ async function regenerateUserPassword() {
   ) {
     return;
   }
+  syncUserFormToState();
   state.saving = true;
   state.error = "";
   state.status = "Régénération…";
@@ -2163,12 +2328,18 @@ async function confirmDeleteUser() {
   state.status = "Suppression…";
   render();
   try {
-    await api(`/api/desk/users/${state.editUser.id}`, { method: "DELETE" });
+    const data = await api(`/api/desk/users/${state.editUser.id}`, {
+      method: "DELETE",
+    });
     state.editUser = null;
     state.generatedPassword = "";
+    state.userPasswordDraft = "";
+    state.userFieldErrors = {};
     state.userDeleteConfirm = false;
     state.view = "users";
-    state.status = `Compte « ${label} » supprimé`;
+    state.status = data.adminEmailSent
+      ? `Compte « ${label} » supprimé — admins notifiés`
+      : `Compte « ${label} » supprimé`;
     state.saving = false;
     await loadUsers();
   } catch (err) {
@@ -3095,6 +3266,7 @@ function renderUserEdit() {
   const isNew = !u.id;
   const isSelf = !isNew && Number(u.id) === Number(state.user?.id);
   const roles = state.usersMeta.roles || ["subscriber", "other"];
+  const fe = state.userFieldErrors || {};
   const roleOpts = roles
     .map(
       (r) =>
@@ -3108,6 +3280,7 @@ function renderUserEdit() {
     )
     .join("");
   const nlOn = u.newsletter_opt_in !== false && u.newsletter_opt_in !== 0;
+  const pwdVal = escapeHtml(state.userPasswordDraft || "");
 
   app.innerHTML = `
     <header class="topbar">
@@ -3115,14 +3288,17 @@ function renderUserEdit() {
       <button class="btn btn-ghost" type="button" id="btn-back-users">Comptes</button>
     </header>
     <main class="main">
-      <form class="card stack" id="user-form">
+      <form class="card stack" id="user-form" novalidate>
         <div class="field">
           <label for="u-login">Identifiant</label>
-          <input id="u-login" value="${escapeHtml(u.login || "")}" required autocomplete="off" />
+          <input id="u-login" value="${escapeHtml(u.login || "")}" required autocomplete="off" spellcheck="false" class="${fe.login ? "is-invalid" : ""}" aria-invalid="${fe.login ? "true" : "false"}" aria-describedby="u-login-help u-login-error" />
+          <p class="uk-help" id="u-login-help">3–60 caractères : a-z, 0-9, point, underscore, tiret.</p>
+          <p class="field-error" id="u-login-error" ${fe.login ? "" : "hidden"}>${escapeHtml(fe.login || "")}</p>
         </div>
         <div class="field">
           <label for="u-email">Email</label>
-          <input id="u-email" type="email" value="${escapeHtml(u.email || "")}" required />
+          <input id="u-email" type="email" value="${escapeHtml(u.email || "")}" required class="${fe.email ? "is-invalid" : ""}" aria-invalid="${fe.email ? "true" : "false"}" aria-describedby="u-email-error" />
+          <p class="field-error" id="u-email-error" ${fe.email ? "" : "hidden"}>${escapeHtml(fe.email || "")}</p>
         </div>
         <div class="field">
           <label for="u-name">Nom affiché</label>
@@ -3160,12 +3336,13 @@ function renderUserEdit() {
         </div>
         <div class="field">
           <label for="u-password">${isNew ? "Mot de passe" : "Nouveau mot de passe (optionnel)"}</label>
-          <input id="u-password" type="password" autocomplete="new-password" ${isNew ? "required minlength=\"8\"" : 'minlength="8"'} />
-          ${
-            !isNew
-              ? `<p class="uk-help">Ou utilisez « Régénérer » pour créer un mot de passe temporaire à communiquer une fois.</p>`
-              : ""
-          }
+          <input id="u-password" type="password" autocomplete="new-password" value="${pwdVal}" ${isNew ? "required minlength=\"8\"" : 'minlength="8"'} class="${fe.password ? "is-invalid" : ""}" aria-invalid="${fe.password ? "true" : "false"}" aria-describedby="u-password-help u-password-error" />
+          <p class="uk-help" id="u-password-help">${
+            isNew
+              ? "8 caractères minimum (secours). Le compte est actif dès la création ; un e-mail propose aussi de choisir un mot de passe pour se connecter."
+              : "Ou utilisez « Régénérer » pour créer un mot de passe temporaire à communiquer une fois."
+          }</p>
+          <p class="field-error" id="u-password-error" ${fe.password ? "" : "hidden"}>${escapeHtml(fe.password || "")}</p>
         </div>
         ${
           state.generatedPassword
@@ -3229,6 +3406,8 @@ function renderUserEdit() {
     state.view = "users";
     state.editUser = null;
     state.generatedPassword = "";
+    state.userPasswordDraft = "";
+    state.userFieldErrors = {};
     state.userDeleteConfirm = false;
     await loadUsers();
   };
@@ -3236,10 +3415,13 @@ function renderUserEdit() {
     state.view = "users";
     state.editUser = null;
     state.generatedPassword = "";
+    state.userPasswordDraft = "";
+    state.userFieldErrors = {};
     state.userDeleteConfirm = false;
     await loadUsers();
   };
   document.getElementById("user-form").onsubmit = (e) => saveUser(e);
+  bindUserFormValidation();
   const regenBtn = document.getElementById("btn-regen-pwd");
   if (regenBtn) regenBtn.onclick = () => regenerateUserPassword();
   const delBtn = document.getElementById("btn-delete-user");
@@ -3255,6 +3437,7 @@ function renderUserEdit() {
       try {
         await navigator.clipboard.writeText(val);
         state.status = "Mot de passe copié";
+        syncUserFormToState();
         render();
       } catch {
         document.getElementById("u-generated-pwd")?.select();

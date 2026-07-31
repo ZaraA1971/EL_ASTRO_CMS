@@ -11,7 +11,11 @@ import {
   dayBoundsParis,
   injectUnsubscribe,
 } from './daily.mjs';
-import { normalizeGroups, DEFAULT_GROUPS } from './recipients.mjs';
+import {
+  normalizeGroups,
+  DEFAULT_GROUPS,
+  ensureNewsletterEnrollment,
+} from './recipients.mjs';
 
 describe('newsletter daily helpers', () => {
   it('previousBusinessDay skips weekend from Monday', () => {
@@ -101,5 +105,30 @@ describe('newsletter groups', () => {
       'admin',
       'abonnes',
     ]);
+  });
+});
+
+describe('ensureNewsletterEnrollment', () => {
+  it('opts in and mints unsub token without needing a password', async () => {
+    const calls = [];
+    const pool = {
+      async query(sql, params) {
+        calls.push({ sql: String(sql), params });
+        if (/SELECT id, newsletter_unsub_token/i.test(sql)) {
+          return [[{ id: 42, newsletter_unsub_token: null }]];
+        }
+        return [{}];
+      },
+    };
+    const out = await ensureNewsletterEnrollment(pool, 42, { optIn: true });
+    assert.equal(out.ok, true);
+    assert.ok(
+      calls.some((c) => /newsletter_opt_in\s*=\s*1/i.test(c.sql)),
+      'sets newsletter_opt_in=1'
+    );
+    assert.ok(
+      calls.some((c) => /newsletter_unsub_token/i.test(c.sql) && /UPDATE/i.test(c.sql)),
+      'mints unsub token'
+    );
   });
 });
