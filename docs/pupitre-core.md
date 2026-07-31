@@ -30,9 +30,10 @@ examples/pupitre-minimal/   # démo exécutable (registry + hooks)
 |--------------------|---------------------|
 | Registry + hooks lifecycle | `desk.mjs` — auth, `/me`, media, authors, users |
 | `createArticleHelpers` | `article-host` (`el_articles` + rôles) |
-| `tryHandleCoreCrud` (articles + catégories) | Plugins Brevo / Goat / X / OneSignal / DeepL / RAG |
-| `createCategoriesStore` | Hooks `afterPublish` (push), twins / auto-keywords |
+| `tryHandleCoreCrud` (articles + catégories + médias) | Plugins Brevo / Goat / X / OneSignal / DeepL / RAG |
+| `createCategoriesStore` / `createMediaStore` | Hooks `afterPublish` (push), twins / auto-keywords |
 | `contentGen` + utils purs | Marque (`DESK_BRAND_*`), assist, front-cache |
+| | FS médias : `media/storage.mjs` + `process.mjs` (injectés) |
 
 ## Registry & hooks
 
@@ -74,20 +75,21 @@ Hors scope Phase 4 :
 - Extract du CRUD `handleDesk` hors monorepo
 - Sortie assist / keywords / translate de `desk/views/edit.js`
 
-## Extract CRUD (pass 1 — faite)
+## Extract CRUD (faite)
 
-- Articles + catégories dans `server/lib/desk/core/{articles,categories,crud}.mjs`
-- Host EL mince : auth → plugins → media/authors/users → `tryHandleCoreCrud`
-- Hooks injectés : `beforeArticleRoute`, `afterPublish`, keywords/twins
+- Pass 1 : articles + catégories → `desk/core/{articles,categories,crud}.mjs`
+- Pass 2 : médias → `desk/core/media/` (`createMediaStore` + `handleCoreMedia`)
+- Host EL : auth → plugins → authors/users → `tryHandleCoreCrud`
+- Hooks : `beforeArticleRoute`, `afterPublish`, keywords/twins ; FS via `ctx.mediaFs`
 
-Encore dans le host : media, users, authors autocomplete.
+Encore dans le host : users, authors autocomplete.
 
 ## Suite éventuelle
 
-1. Extraire media (store + router injectable)
-2. Repo public `pupitre-core` (+ exemple)
-3. Plugins UI desk pour assist / keywords / translate
-4. `npm publish @electronlibre/pupitre-core` (lever `private`)
+1. Repo public `pupitre-core` (+ exemple)
+2. Plugins UI desk pour assist / keywords / translate
+3. `npm publish @electronlibre/pupitre-core` (lever `private`)
+4. Extraire users (difficile — WP hash, Brevo, …)
 
 ## Ops (prod EL)
 

@@ -4,13 +4,24 @@
  */
 import crypto from 'node:crypto';
 import { parseJsonArray, rowToArticle } from './db.mjs';
-import { canAccessDesk, canEditAll, canPublish } from './roles.mjs';
+import { canAccessDesk, canEditAll, canPublish, isStaffRole } from './roles.mjs';
 import { canManageUsers, handleDeskUsers } from './users.mjs';
 import { auditLog } from './audit.mjs';
 import { chapo } from './excerpt.mjs';
 import { cleanHtml } from './html-clean.mjs';
-import { handleDeskMedia } from './media/handler.mjs';
 import { elCategoriesStore } from './categories.mjs';
+import { elMediaStore } from './media/schema.mjs';
+import {
+  resolveMediaRoot,
+  slugifyFilename,
+  yyyymmDirs,
+  uniqueRelPath,
+  publicUrlFromPath,
+  absoluteFromRel,
+  toMediaDto,
+  MAX_UPLOAD_BYTES,
+} from './media/storage.mjs';
+import { detectMediaMime, writeMediaFile } from './media/process.mjs';
 import { createElDeskRegistry } from './desk/el/el-plugins.mjs';
 import { normalizeKeywords } from './keywords.mjs';
 import {
@@ -27,6 +38,19 @@ import {
 import { pushPublishedArticle } from './desk/el/plugins/push.mjs';
 import { getContentGen } from './desk/core/content-gen.mjs';
 import { tryHandleCoreCrud } from './desk/core/crud.mjs';
+
+const elMediaFs = {
+  resolveMediaRoot,
+  slugifyFilename,
+  yyyymmDirs,
+  uniqueRelPath,
+  publicUrlFromPath,
+  absoluteFromRel,
+  toMediaDto,
+  MAX_UPLOAD_BYTES,
+  detectMediaMime,
+  writeMediaFile,
+};
 
 function deskBrand(ctx) {
   return {
@@ -126,10 +150,13 @@ export async function handleDesk(req, res, parts, ctx) {
     articleHelpers,
     articlesTable: ARTICLES_TABLE,
     categories: elCategoriesStore,
+    mediaStore: elMediaStore,
+    mediaFs: elMediaFs,
     rowToArticle,
     parseJsonArray,
     canEditAll,
     canPublish,
+    isStaffRole,
     cleanHtml,
     chapo,
     auditLog,
@@ -175,16 +202,6 @@ export async function handleDesk(req, res, parts, ctx) {
   // Plugins top-level (newsletter, audience, …)
   if (await plugins.tryHandle(req, res, parts, deskReqCtx)) {
     return;
-  }
-
-  // /api/desk/media — médiathèque (EL)
-  if (parts[2] === 'media') {
-    return handleDeskMedia(req, res, parts, {
-      ...ctx,
-      session,
-      actor,
-      ip,
-    });
   }
 
   // GET /api/desk/authors?q= — autocomplete (EL)

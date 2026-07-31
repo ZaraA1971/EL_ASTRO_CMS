@@ -11,8 +11,8 @@ Façade dans le monorepo ElectronLibre (`private: true`).
 | Oui | Non (encore) |
 |-----|----------------|
 | Code source sous `server/lib/desk/core/` | Package npm publié |
-| Aucun import `roles.mjs` / `keywords.mjs` / tables `el_*` | Médias / users / authors |
-| CRUD articles + catégories via `tryHandleCoreCrud` | UI desk (`desk/`) |
+| Aucun import `roles.mjs` / `keywords.mjs` / tables `el_*` | Users / authors autocomplete |
+| CRUD articles + catégories + médias via `tryHandleCoreCrud` | UI desk (`desk/`) |
 | Exemple exécutable `examples/pupitre-minimal/` | Plugins EL (Brevo, OneSignal, RAG, …) |
 
 Doc d’architecture : [`docs/pupitre-core.md`](../../docs/pupitre-core.md).
@@ -46,7 +46,8 @@ import { createPluginRegistry } from '@electronlibre/pupitre-core';
 | `bumpContentGen` / `getContentGen` | Génération de cache |
 | `createArticleHelpers({ tableName, canAccessDesk, canEditAll })` | Helpers SQL/droits liés au host |
 | `createCategoriesStore({ tableName, defaults })` | Rubriques |
-| `tryHandleCoreCrud` / `handleCoreArticles` / `handleCoreCategories` | Routes CRUD HTTP |
+| `createMediaStore({ tableName })` / `handleCoreMedia` | Médiathèque (FS via `ctx.mediaFs`) |
+| `tryHandleCoreCrud` | Routes CRUD HTTP (articles, catégories, médias) |
 | `slugify`, `asJson`, `nowMysql`, `toMysqlDate`, `PLACEHOLDER_SLUGS` | Utils purs |
 
 Le host fournit predicates de rôles, tables, `rowToArticle`, et hooks optionnels (`beforeArticleRoute`, `afterPublish`, RAG/twins). Chez ElectronLibre : `server/lib/desk.mjs` + `desk/el/article-host.mjs`.
