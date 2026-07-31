@@ -207,7 +207,7 @@ export async function handleCoreMedia(req, res, parts, ctx) {
 
   const id = Number(parts[3]) || 0;
   if (!id || parts[4]) {
-    sendJson(res, 404, { error: 'Not found' });
+    sendJson(res, 404, { error: 'Introuvable' });
     return true;
   }
 
@@ -295,6 +295,6 @@ export async function handleCoreMedia(req, res, parts, ctx) {
     return true;
   }
 
-  sendJson(res, 405, { error: 'Method not allowed' });
+  sendJson(res, 405, { error: 'Méthode non autorisée' });
   return true;
 }

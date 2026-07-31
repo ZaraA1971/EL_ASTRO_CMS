@@ -3,14 +3,21 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Pupitre CMS core — registry, lifecycle, article helpers (source: server/lib/desk/core). Monorepo façade — not a standalone npm publish yet.",
+  "description": "Pupitre CMS core — monorepo façade pointing at server/lib/desk/core. Not a standalone npm publish yet.",
   "license": "MIT",
   "exports": {
     ".": "../../server/lib/desk/core/index.mjs"
   },
   "files": [
-    "../../server/lib/desk/core/",
     "LICENSE",
     "README.md"
-  ]
+  ],
+  "peerDependencies": {
+    "busboy": "^1.6.0"
+  },
+  "peerDependenciesMeta": {
+    "busboy": {
+      "optional": false
+    }
+  }
 }

@@ -122,6 +122,13 @@ export const elUserPolicy = {
   rowToDeskUser,
   effectiveStatus,
   adminRoles: ['admin', 'administrator'],
+  /** Alias filtres liste comptes (UI desk). */
+  roleGroupFilters: {
+    redacteurs: ['editor', 'author'],
+    redaction: ['editor', 'author'],
+  },
+  /** Masqués aux non-admins (évite confusion + fuite d’infos). */
+  hideFromNonAdminRoles: ['admin', 'administrator'],
 };
 
 /**
@@ -210,7 +217,9 @@ export async function elAfterUserDelete({ existing }, ctx) {
 }
 
 /**
- * Routes /api/desk/users[/:id] — délègue au core avec policy/hooks EL.
+ * Compat — wrapper EL autour de `handleCoreUsers`.
+ * Chemin live : `desk.mjs` → `tryHandleCoreCrud` (même policy/hooks).
+ * Conservé pour appels directs / tests hors host.
  */
 export async function handleDeskUsers(req, res, parts, ctx) {
   return handleCoreUsers(req, res, parts, {

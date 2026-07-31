@@ -1,21 +1,26 @@
 # @electronlibre/pupitre-core
 
-Cœur portable **Pupitre** — registry de plugins, hooks de cycle de vie, helpers articles injectables.
+Cœur portable **Pupitre** — registry de plugins, hooks de cycle de vie, CRUD HTTP injectable (articles, catégories, médias, authors, users).
 
 Licence **MIT** — voir [`LICENSE`](./LICENSE).
 
-## Statut
+## Statut (lire avant toute extraction)
 
 Façade dans le monorepo ElectronLibre (`private: true`).
 
-| Oui | Non (encore) |
-|-----|----------------|
-| Code source sous `server/lib/desk/core/` | Package npm publié |
-| Aucun import `roles.mjs` / `keywords.mjs` / tables `el_*` | Hash mots de passe / Brevo / newsletter |
-| CRUD articles + catégories + médias + authors + users | UI desk (`desk/`) |
-| Exemple exécutable `examples/pupitre-minimal/` | Plugins EL (Brevo, OneSignal, RAG, …) |
+| Oui | Non |
+|-----|-----|
+| Sources sous [`server/lib/desk/core/`](../../server/lib/desk/core/) | Package npm autonome / `npm publish` |
+| Aucun import host (`roles`, `keywords`, `wordpress-hash`, Brevo…) | Hash mots de passe, mails, newsletter |
+| CRUD via `tryHandleCoreCrud` + stores injectés | UI SPA `desk/`, adapters `desk/el/` |
+| Exemple [`examples/pupitre-minimal/`](../../examples/pupitre-minimal/) | Secrets / `.env` / billing Stripe |
 
-Doc d’architecture : [`docs/pupitre-core.md`](../../docs/pupitre-core.md).
+**Périmètre public envisagé :** uniquement `server/lib/desk/core/` + cet exemple + MIT.  
+**Ne jamais publier** `desk/el/`, `server/lib/users.mjs` (hooks Brevo), ni le monorepo entier.
+
+Dépendance runtime médias : peer `busboy` (déclarée ici ; fournie par le monorepo).
+
+Doc : [`docs/pupitre-core.md`](../../docs/pupitre-core.md).
 
 ## Install (monorepo)
 
@@ -24,37 +29,31 @@ import {
   createPluginRegistry,
   emitDeskLifecycle,
   createArticleHelpers,
-  bumpContentGen,
-  getContentGen,
+  tryHandleCoreCrud,
 } from '../../server/lib/desk/core/index.mjs';
 ```
-
-Ou via le package local :
-
-```js
-import { createPluginRegistry } from '@electronlibre/pupitre-core';
-```
-
-(`package.json` → `exports` pointe vers `server/lib/desk/core`.)
 
 ## Surface
 
 | Export | Rôle |
 |--------|------|
 | `createPluginRegistry` / `resolveEnabledPluginIds` | Plugins, caps, routes, hooks |
-| `emitDeskLifecycle` | bump `contentGen` + hooks (`onPublish`, …) |
+| `emitDeskLifecycle` | bump `contentGen` + hooks |
 | `bumpContentGen` / `getContentGen` | Génération de cache |
-| `createArticleHelpers({ tableName, canAccessDesk, canEditAll })` | Helpers SQL/droits liés au host |
-| `createCategoriesStore({ tableName, defaults })` | Rubriques |
-| `createMediaStore` / `handleCoreMedia` | Médiathèque (`ctx.mediaFs`) |
+| `createArticleHelpers({ tableName, canAccessDesk, canEditAll })` | Helpers articles |
+| `createCategoriesStore` / `handleCoreCategories` | Rubriques |
+| `createMediaStore` / `handleCoreMedia` | Médiathèque (`ctx.mediaFs`, peer `busboy`) |
 | `handleCoreAuthors` | Autocomplete auteurs |
 | `createUsersStore` / `handleCoreUsers` | Comptes (`ctx.userPolicy` + hooks) |
 | `tryHandleCoreCrud` | Toutes les routes CRUD ci-dessus |
-
-**Users — contrat de sécurité :** le host doit fournir `userPolicy.hashPassword` (chez EL : phpass WordPress). Le core refuse de démarrer sans policy complète. Side-effects (mails, newsletter) = `afterUserCreate` / `afterUserDelete` uniquement.
 | `slugify`, `asJson`, `nowMysql`, `toMysqlDate`, `PLACEHOLDER_SLUGS` | Utils purs |
 
-Le host fournit predicates de rôles, tables, `rowToArticle`, et hooks optionnels (`beforeArticleRoute`, `afterPublish`, RAG/twins). Chez ElectronLibre : `server/lib/desk.mjs` + `desk/el/article-host.mjs`.
+### Users — contrat de sécurité
+
+Le host **doit** fournir `userPolicy.hashPassword` (chez EL : phpass WordPress `$P$`).  
+Le core refuse de démarrer sans policy complète.  
+Side-effects (mails, newsletter, tokens reset) = `afterUserCreate` / `afterUserDelete` uniquement.  
+Colonnes `wp_role` / `newsletter_opt_in` = schéma CMS opinionné, pas un import WordPress.
 
 ## Exemple
 
@@ -62,8 +61,8 @@ Le host fournit predicates de rôles, tables, `rowToArticle`, et hooks optionnel
 node examples/pupitre-minimal/demo.mjs
 ```
 
-## Ce qui reste hors package
+## Hors package
 
-- `server/lib/desk.mjs` — host HTTP CRUD EL
+- `server/lib/desk.mjs` — host auth / `/me` / câblage EL
 - `server/lib/desk/el/` — adapters produit
-- `desk/` — SPA éditoriale
+- `desk/` — SPA éditoriale ElectronLibre

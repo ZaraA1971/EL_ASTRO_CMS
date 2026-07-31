@@ -11,7 +11,9 @@
  *     canManageUsers, canMutateUser, allowedRolesForActor, isAdmin,
  *     normalizeRole, isStaffRole, sanitizeRole?, sanitizeStatus?,
  *     hashPassword, generateTempPassword, rowToDeskUser, effectiveStatus?,
- *     ROLES, STATUSES, adminRoles?
+ *     ROLES, STATUSES, adminRoles?,
+ *     roleGroupFilters?,      // ex. { redacteurs: ['editor','author'] }
+ *     hideFromNonAdminRoles?  // ex. ['admin','administrator']
  *   }
  *
  * ctx optionnel :
@@ -132,8 +134,14 @@ export async function handleCoreUsers(req, res, parts, ctx) {
       const like = `%${q}%`;
       params.push(like, like, like);
     }
-    if (role === 'redacteurs' || role === 'redaction') {
-      where.push("role IN ('editor','author')");
+    const groupFilters = policy.roleGroupFilters || {
+      redacteurs: ['editor', 'author'],
+      redaction: ['editor', 'author'],
+    };
+    if (role && groupFilters[role]) {
+      const roles = groupFilters[role];
+      where.push(`role IN (${roles.map(() => '?').join(', ')})`);
+      params.push(...roles);
     } else if (role) {
       where.push('role = ?');
       params.push(policy.normalizeRole(role));
@@ -145,7 +153,12 @@ export async function handleCoreUsers(req, res, parts, ctx) {
       params.push(sanitizeStatus(status));
     }
     if (!policy.isAdmin(session.role)) {
-      where.push("role NOT IN ('admin','administrator')");
+      const hide = policy.hideFromNonAdminRoles || [
+        'admin',
+        'administrator',
+      ];
+      where.push(`role NOT IN (${hide.map(() => '?').join(', ')})`);
+      params.push(...hide);
     }
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
@@ -523,6 +536,6 @@ export async function handleCoreUsers(req, res, parts, ctx) {
     return true;
   }
 
-  sendJson(res, 405, { error: 'Method not allowed' });
+  sendJson(res, 405, { error: 'Méthode non autorisée' });
   return true;
 }

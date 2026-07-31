@@ -1,6 +1,7 @@
 /**
- * Compat EL — délègue au router médias Pupitre core.
- * Préférer `handleCoreMedia` + ctx.mediaStore depuis le host.
+ * Compat — wrapper EL autour de `handleCoreMedia`.
+ * Chemin live : `desk.mjs` → `tryHandleCoreCrud` (même store/FS).
+ * Conservé pour appels directs hors host.
  */
 import { canEditAll, isStaffRole } from '../roles.mjs';
 import { auditLog } from '../audit.mjs';

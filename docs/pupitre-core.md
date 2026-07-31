@@ -1,6 +1,7 @@
 # Pupitre — architecture & contrats
 
-État au **2026-07-31** — phases **0–4** + **extract CRUD articles/catégories**.
+État au **2026-07-31** — phases 0–4 + extract CRUD (articles, catégories, médias, authors, users).  
+Nettoyage pré–repo public fait ; **repo GitHub dédié / npm publish encore hors scope**.
 
 ## Décisions
 
@@ -8,91 +9,66 @@
 |-------|--------|
 | Identité article | PK `article_id` (ex-`wp_id`, valeurs inchangées) |
 | URLs | `/articles/{id}-{slug}/` inchangé |
-| Open source | Slice MIT dans le monorepo ; **pas** de repo séparé ni `npm publish` (encore) |
-| Tables | Host EL : `el_articles` via `createArticleHelpers({ tableName })` |
+| Open source | Slice MIT (`desk/core` + exemple) ; pas de repo séparé ni `npm publish` encore |
+| Tables | Injectées par le host (`el_*` chez EL) |
+| Mots de passe | Hash **uniquement** via `userPolicy.hashPassword` (EL = phpass `$P$`) |
 
 ## Layout
 
 ```
 server/lib/desk/
-  core/     # portable : registry, lifecycle, content-gen, article-helpers
-  el/       # adapters EL : article-host, article-el, plugins/*
-desk/       # SPA : core/ · views/ · plugins/ (UI)
-packages/
-  pupitre-core/   # façade npm + LICENSE MIT + README public
-  pupitre-el/     # façade → desk/el
-examples/pupitre-minimal/   # démo exécutable (registry + hooks)
+  core/          # PORTABLE (OSS envisagé)
+    plugin-registry, lifecycle, content-gen, article-helpers
+    articles/ categories/ media/ authors/ users/  # CRUD HTTP
+    crud.mjs     # tryHandleCoreCrud
+  el/            # HORS OSS — adapters produit EL
+desk/            # HORS OSS — SPA EL (marque via /me)
+server/lib/
+  desk.mjs       # host : auth, /me, câblage stores/policy/hooks
+  users.mjs      # hash WP + elUserPolicy + hooks mails/newsletter
+packages/pupitre-core/   # façade + LICENSE MIT + README
+packages/pupitre-el/     # façade EL — ne pas publier
+examples/pupitre-minimal/
 ```
 
-## Core vs EL
+## Core vs host EL
 
-| Core (`desk/core`) | Host / adapters EL |
-|--------------------|---------------------|
-| Registry + hooks lifecycle | `desk.mjs` — auth, `/me` uniquement |
-| `tryHandleCoreCrud` (articles, catégories, médias, authors, users) | Plugins Brevo / Goat / X / OneSignal / DeepL / RAG |
-| Stores injectables (tables) | `users.mjs` — hash WP, policy rôles, hooks mails/newsletter |
-| | `article-host`, FS médias, marque, assist, front-cache |
-
-## Registry & hooks
-
-[`server/lib/desk/core/plugin-registry.mjs`](../server/lib/desk/core/plugin-registry.mjs) :
-
-- `caps` · `match` / `handle` · `matchArticle` / `handleArticle`
-- Hooks : `onPublish` · `onDraft` · `onMutate` · `onCategoryChange`
-- `emitDeskLifecycle()` = bump `contentGen` + hooks
-
-Env : `DESK_PLUGINS=front-cache,newsletter,audience,x,push,keywords,translate,assist,content-gen`  
-Absent = tous ; vide = aucun plugin.
-
-Marque host :
-
-```bash
-DESK_BRAND_NAME=ElectronLibre
-DESK_BRAND_PRODUCT=ElectronLibre
-DESK_BRAND_SHORT=Pupitre EL
-DESK_ASSIST_PROFILE=electronlibre
-```
-
-`GET /api/desk/me` → `brand`, `capabilities`, `plugins`.
+| Core | Host EL |
+|------|---------|
+| Registry, lifecycle, contentGen | `desk.mjs` auth + `/me` |
+| `tryHandleCoreCrud` | Câble stores, `userPolicy`, `mediaFs`, hooks |
+| Stores (tables injectées) | `hashUserPassword`, Brevo, newsletter, tokens reset |
+| Aucun secret, aucun `wordpress-hash` | Plugins X / OneSignal / DeepL / RAG / front-cache |
 
 ## Caps UI
 
 Onglets plugin **uniquement** si la cap est vraie (`newsletter`, `audience`, …).
 
-## Phase 4 (faite) — slice OSS-ready
+Marque : `DESK_BRAND_*` → `GET /api/desk/me` → `state.brand`.
 
-Livré :
+## Extract CRUD
 
-1. Core sans import `roles.mjs` / `keywords.mjs` / SQL `el_*` hardcodé
-2. README + MIT dans [`packages/pupitre-core/`](../packages/pupitre-core/)
-3. Démo exécutable [`examples/pupitre-minimal/demo.mjs`](../examples/pupitre-minimal/demo.mjs)
+1. Articles + catégories  
+2. Médias (`busboy` peer)  
+3. Authors + users — hash/mails restent EL  
 
-Hors scope Phase 4 :
+## Avant repo public (checklist)
 
-- Repo GitHub public dédié / `npm publish`
-- Extract du CRUD `handleDesk` hors monorepo
-- Sortie assist / keywords / translate de `desk/views/edit.js`
+- [x] Core sans import host / secrets  
+- [x] Tests sécurité `handleCoreUsers` (mocks)  
+- [x] README périmètre + `pupitre-el` hors OSS  
+- [ ] Copier/extraire `desk/core` + exemple + MIT dans un repo dédié  
+- [ ] Ne pas inclure `.env`, `desk/el`, billing, SPA  
 
-## Extract CRUD (faite)
+## Suite
 
-- Pass 1 : articles + catégories
-- Pass 2 : médias (`createMediaStore` + `handleCoreMedia`)
-- Pass 3 : authors + users — **avec précautions**
-  - Core : SQL/HTTP + `createUsersStore` / `handleCoreUsers` / `handleCoreAuthors`
-  - EL : `hashUserPassword` (phpass `$P$`), `elUserPolicy`, `elAfterUserCreate` / `elAfterUserDelete` (newsletter, tokens reset, mails Brevo)
-  - Le core ne hashe jamais lui-même et n’importe pas `wordpress-hash-node`
+1. Repo public `pupitre-core`  
+2. Plugins UI assist / keywords / translate (optionnel)  
+3. `npm publish` (lever `private`, sources dans le package)
 
-Host EL : auth → plugins → `tryHandleCoreCrud`.
+## Ops prod EL
 
-## Suite éventuelle
-
-1. Repo public `pupitre-core` (+ exemple)
-2. Plugins UI desk pour assist / keywords / translate
-3. `npm publish @electronlibre/pupitre-core` (lever `private`)
-
-## Ops (prod EL)
-
-Relire [`CURSOR.md`](../CURSOR.md) avant deploy.
+Relire [`CURSOR.md`](../CURSOR.md).
 
 ```bash
 npm test

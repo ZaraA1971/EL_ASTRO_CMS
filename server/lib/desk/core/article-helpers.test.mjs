@@ -25,7 +25,7 @@ describe('article-helpers portable', () => {
     assert.throws(
       () =>
         createArticleHelpers({
-          tableName: 'el_articles; drop',
+          tableName: 'cms_articles; drop',
           canAccessDesk: () => true,
           canEditAll: () => true,
         }),

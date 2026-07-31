@@ -1,6 +1,9 @@
 /**
  * Store comptes desk — table + plancher d’ids injectés.
  * Pas de hash / mails / newsletter ici.
+ *
+ * Schéma opinionné (CMS éditorial) : colonnes `wp_role` et `newsletter_opt_in`
+ * sont des champs produit courants ; le host peut les ignorer. Pas d’import WP.
  */
 import { assertSafeSqlIdent } from '../http.mjs';
 
