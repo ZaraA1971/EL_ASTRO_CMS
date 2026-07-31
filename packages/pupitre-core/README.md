@@ -15,7 +15,9 @@ Façade dans le monorepo ElectronLibre (`private: true`).
 | CRUD via `tryHandleCoreCrud` + stores injectés | UI SPA `desk/`, adapters `desk/el/` |
 | Exemple [`examples/pupitre-minimal/`](../../examples/pupitre-minimal/) | Secrets / `.env` / billing Stripe |
 
-**Périmètre public envisagé :** uniquement `server/lib/desk/core/` + cet exemple + MIT.  
+**Repo public :** [github.com/ZaraA1971/pupitre-core](https://github.com/ZaraA1971/pupitre-core)  
+(extrait `desk/core` + exemple + MIT — pas un miroir du monorepo).
+
 **Ne jamais publier** `desk/el/`, `server/lib/users.mjs` (hooks Brevo), ni le monorepo entier.
 
 Dépendance runtime médias : peer `busboy` (déclarée ici ; fournie par le monorepo).

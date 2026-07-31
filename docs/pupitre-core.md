@@ -1,7 +1,8 @@
 # Pupitre — architecture & contrats
 
 État au **2026-07-31** — phases 0–4 + extract CRUD (articles, catégories, médias, authors, users).  
-Nettoyage pré–repo public fait ; **repo GitHub dédié / npm publish encore hors scope**.
+Repo public : [github.com/ZaraA1971/pupitre-core](https://github.com/ZaraA1971/pupitre-core) (slice MIT).  
+`npm publish` encore hors scope (`private: true` dans le monorepo).
 
 ## Décisions
 
@@ -52,19 +53,17 @@ Marque : `DESK_BRAND_*` → `GET /api/desk/me` → `state.brand`.
 2. Médias (`busboy` peer)  
 3. Authors + users — hash/mails restent EL  
 
-## Avant repo public (checklist)
+## Repo public (fait)
 
 - [x] Core sans import host / secrets  
 - [x] Tests sécurité `handleCoreUsers` (mocks)  
-- [x] README périmètre + `pupitre-el` hors OSS  
-- [ ] Copier/extraire `desk/core` + exemple + MIT dans un repo dédié  
-- [ ] Ne pas inclure `.env`, `desk/el`, billing, SPA  
+- [x] Extract → https://github.com/ZaraA1971/pupitre-core (public, MIT)  
+- [x] Hors extract : `.env`, `desk/el`, billing, SPA  
 
 ## Suite
 
-1. Repo public `pupitre-core`  
-2. Plugins UI assist / keywords / translate (optionnel)  
-3. `npm publish` (lever `private`, sources dans le package)
+1. Plugins UI assist / keywords / translate (optionnel)  
+2. `npm publish` (lever `private`, sources dans le package)
 
 ## Ops prod EL
 
