@@ -1,6 +1,14 @@
 import { state } from "../core/state.js";
 import { api } from "../core/api.js";
-import { escapeHtml, formatDate, filterChips, brandBlock } from "../core/format.js";
+import {
+  escapeHtml,
+  formatDate,
+  formatDateTime,
+  filterChips,
+  brandBlock,
+  listMetaRow,
+  updateDateLabel,
+} from "../core/format.js";
 import {
   rangeLabel,
   pagerHtml,
@@ -32,9 +40,16 @@ const listAc = createAutocomplete({
   },
   mapItem: (a) => {
     const d = a.data;
+    const maj = updateDateLabel(d) || (d.draft && d.modified ? formatDateTime(d.modified) : "");
     return {
       title: d.title,
-      sub: `${d.draft ? "Brouillon" : formatDate(d.date) || "Sans date"} · ${d.author || ""}`,
+      sub: [
+        d.draft ? "Brouillon" : formatDate(d.date) || "Sans date",
+        maj ? `maj ${maj}` : "",
+        d.author || "",
+      ]
+        .filter(Boolean)
+        .join(" · "),
     };
   },
   onPick: (a) => openArticle(a.data.article_id),
@@ -51,16 +66,33 @@ function articlesItemsHtml(articles) {
       const badge = d.draft
         ? `<span class="badge draft">Brouillon</span>`
         : `<span class="badge live">En ligne</span>`;
+      const pubLabel = d.draft
+        ? "Brouillon"
+        : formatDate(d.date) || "Sans date";
+      // En ligne : maj seulement si ≠ date de pub. Brouillon : dernière édition si dispo.
+      const majLabel =
+        updateDateLabel(d) ||
+        (d.draft && d.modified ? formatDateTime(d.modified) : "");
       return `
-        <button class="list-item" type="button" data-open="${d.article_id}">
-          <div class="row" style="justify-content:space-between">
-            ${badge}
-            <span class="sub">${escapeHtml(
-              d.draft ? "—" : formatDate(d.date) || "—"
-            )} · ${escapeHtml(d.lang || "fr")}</span>
+        <button class="list-item list-item--article" type="button" data-open="${d.article_id}">
+          <div class="list-item-article">
+            <div class="list-item-article__body">
+              <h2>${escapeHtml(d.title)}</h2>
+              <p class="list-item-byline">${escapeHtml(d.author || "Sans auteur")}</p>
+              <div class="list-item-meta list-item-meta--article${
+                majLabel ? " has-maj" : ""
+              }">
+                ${listMetaRow(d.draft ? "Statut" : "Publication", pubLabel)}
+                ${majLabel ? listMetaRow("Mis à jour", majLabel) : ""}
+              </div>
+            </div>
+            <aside class="list-item-article__aside" aria-label="Métadonnées">
+              <span class="badge badge-role">${escapeHtml(
+                String(d.lang || "fr").toUpperCase()
+              )}</span>
+              ${badge}
+            </aside>
           </div>
-          <h2>${escapeHtml(d.title)}</h2>
-          <div class="sub">${escapeHtml(d.author || "")}</div>
         </button>`;
     })
     .join("");

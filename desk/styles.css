@@ -770,6 +770,46 @@ details.x-panel[open] {
   margin-bottom: 10px;
 }
 
+.list-item--article {
+  padding: 16px 18px;
+}
+
+.list-item-article {
+  display: flex;
+  align-items: stretch;
+  gap: 16px 20px;
+}
+
+.list-item-article__body {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-right: 4px;
+}
+
+.list-item-article__aside {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 100%;
+  padding: 2px 0;
+}
+
+.list-item--article h2 {
+  margin: 0 0 8px;
+  padding-right: 8px;
+}
+
+.list-item-byline {
+  margin: 0 0 14px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.35;
+}
+
 .list-item-meta {
   display: grid;
   gap: 4px 12px;
@@ -779,6 +819,17 @@ details.x-panel[open] {
 @media (min-width: 640px) {
   .list-item-meta {
     grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* Articles : dates Publication [| Mis à jour] sous la byline. */
+.list-item-meta--article.has-maj {
+  grid-template-columns: 1fr 1fr;
+}
+
+@media (max-width: 520px) {
+  .list-item-article__aside {
+    min-width: 4.5rem;
   }
 }
 
