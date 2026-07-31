@@ -11,18 +11,18 @@ import {
   createCategory,
 } from './categories.mjs';
 import { createElDeskRegistry } from './desk/el/el-plugins.mjs';
+import { normalizeKeywords } from './keywords.mjs';
 import {
   asJson,
   canEditArticle,
   ensureArticleDateNullable,
   nextArticleId,
-  normalizeKeywords,
   nowMysql,
   resolveArticleSlug,
   slugify,
   toMysqlDate,
   uniqueSlug,
-} from './desk/core/article-helpers.mjs';
+} from './desk/el/article-host.mjs';
 import {
   ensureSubscriberKeywords,
   loadEditableTwin,
@@ -45,7 +45,7 @@ function deskBrand(ctx) {
 }
 
 export { canAccessDesk, canEditAll, canPublish };
-export { canEditArticle } from './desk/core/article-helpers.mjs';
+export { canEditArticle } from './desk/el/article-host.mjs';
 export { bumpContentGen, getContentGen } from './desk/core/content-gen.mjs';
 
 /** Plugins EL (+ front-cache hooks). */

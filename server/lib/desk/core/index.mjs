@@ -1,6 +1,6 @@
 /**
  * Surface publique Pupitre core.
- * Host EL : `../el/index.mjs` pour les adapters.
+ * Host EL : `../el/index.mjs` / `../el/article-host.mjs` pour les bindings.
  */
 export {
   createPluginRegistry,
@@ -9,15 +9,10 @@ export {
 export { bumpContentGen, getContentGen } from './content-gen.mjs';
 export { emitDeskLifecycle } from './lifecycle.mjs';
 export {
-  canEditArticle,
-  normalizeKeywords,
-  nextArticleId,
-  uniqueSlug,
-  resolveArticleSlug,
+  createArticleHelpers,
   slugify,
   asJson,
   nowMysql,
   toMysqlDate,
-  ensureArticleDateNullable,
   PLACEHOLDER_SLUGS,
 } from './article-helpers.mjs';

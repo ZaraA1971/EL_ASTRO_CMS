@@ -1,33 +1,62 @@
 # @electronlibre/pupitre-core
 
-Cœur CMS **Pupitre** (registry plugins, lifecycle, helpers articles).
+Cœur portable **Pupitre** — registry de plugins, hooks de cycle de vie, helpers articles injectables.
 
-## Statut (important)
+Licence **MIT** — voir [`LICENSE`](./LICENSE).
 
-Ce dossier est une **façade** dans le monorepo ElectronLibre.
+## Statut
 
-- Le code source vit dans `../../server/lib/desk/core/`
-- Ce n’est **pas** encore un package npm publiable autonome
-- Les tables SQL utilisent encore le préfixe host `el_*`
-- Le host EL reste `server/lib/desk.mjs` + `server/lib/desk/el/`
+Façade dans le monorepo ElectronLibre (`private: true`).
 
-Objectif Phase 4 : extraire un vrai package installable. Aujourd’hui : frontière claire pour les dév qui lisent le repo.
+| Oui | Non (encore) |
+|-----|----------------|
+| Code source sous `server/lib/desk/core/` | Package npm publié |
+| Aucun import `roles.mjs` / `keywords.mjs` / tables `el_*` | CRUD articles / médias / users |
+| Exemple exécutable `examples/pupitre-minimal/` | UI desk (`desk/`) |
+| | Plugins EL (Brevo, OneSignal, RAG, …) |
 
-## Surface exportée
+Doc d’architecture : [`docs/pupitre-core.md`](../../docs/pupitre-core.md).
+
+## Install (monorepo)
 
 ```js
 import {
   createPluginRegistry,
   emitDeskLifecycle,
+  createArticleHelpers,
   bumpContentGen,
   getContentGen,
-  canEditArticle,
-  nextArticleId,
-  uniqueSlug,
-  resolveArticleSlug,
 } from '../../server/lib/desk/core/index.mjs';
 ```
 
-## Licence
+Ou via le package local :
 
-MIT — voir `LICENSE`.
+```js
+import { createPluginRegistry } from '@electronlibre/pupitre-core';
+```
+
+(`package.json` → `exports` pointe vers `server/lib/desk/core`.)
+
+## Surface
+
+| Export | Rôle |
+|--------|------|
+| `createPluginRegistry` / `resolveEnabledPluginIds` | Plugins, caps, routes, hooks |
+| `emitDeskLifecycle` | bump `contentGen` + hooks (`onPublish`, …) |
+| `bumpContentGen` / `getContentGen` | Génération de cache |
+| `createArticleHelpers({ tableName, canAccessDesk, canEditAll })` | Helpers SQL/droits liés au host |
+| `slugify`, `asJson`, `nowMysql`, `toMysqlDate`, `PLACEHOLDER_SLUGS` | Utils purs |
+
+Le host fournit les predicates de rôles et le nom de table articles. Chez ElectronLibre : `server/lib/desk/el/article-host.mjs` (`el_articles`).
+
+## Exemple
+
+```bash
+node examples/pupitre-minimal/demo.mjs
+```
+
+## Ce qui reste hors package
+
+- `server/lib/desk.mjs` — host HTTP CRUD EL
+- `server/lib/desk/el/` — adapters produit
+- `desk/` — SPA éditoriale

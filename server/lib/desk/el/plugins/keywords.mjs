@@ -5,7 +5,7 @@ import {
   extractKeywordsViaRag,
 } from '../../../keywords.mjs';
 import { cleanHtml } from '../../../html-clean.mjs';
-import { asJson } from '../../core/article-helpers.mjs';
+import { asJson } from '../article-host.mjs';
 import { syncKeywordsToTwin } from '../article-el.mjs';
 import { getContentGen } from '../../core/content-gen.mjs';
 import { emitDeskLifecycle } from '../../core/lifecycle.mjs';

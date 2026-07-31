@@ -7,7 +7,7 @@ import {
   extractKeywordsViaRag,
   normalizeKeywords,
 } from '../../keywords.mjs';
-import { canEditArticle, asJson } from '../core/article-helpers.mjs';
+import { canEditArticle, asJson } from './article-host.mjs';
 
 /**
  * Valide un lien de traduction : la cible doit exister et être éditable

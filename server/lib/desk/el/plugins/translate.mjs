@@ -10,7 +10,7 @@ import {
   nextArticleId,
   nowMysql,
   uniqueSlug,
-} from '../../core/article-helpers.mjs';
+} from '../article-host.mjs';
 import { getContentGen } from '../../core/content-gen.mjs';
 import { emitDeskLifecycle } from '../../core/lifecycle.mjs';
 
