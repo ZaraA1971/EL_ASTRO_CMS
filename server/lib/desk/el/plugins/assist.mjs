@@ -21,7 +21,7 @@ async function handle(req, res, ctx) {
       type: body.type,
       text: body.text,
       prompt: body.prompt,
-      profile: 'electronlibre',
+        profile: ctx.agentEditorial?.profile || 'default',
     });
     await auditLog(pool, {
       actor,

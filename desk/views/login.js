@@ -11,7 +11,7 @@ export function renderLogin() {
       <form class="card login-card stack" id="login-form">
         <div class="brand" style="margin-bottom:4px">
           <span class="brand-mark" aria-hidden="true"></span>
-          <h1 style="margin:0">Pupitre EL</h1>
+          <h1 style="margin:0">${escapeHtml(state.brand?.shortName || "Pupitre")}</h1>
         </div>
         <p style="margin:0;color:var(--muted)">Espace rédacteur · éditeur · admin</p>
         <div class="field">
@@ -53,7 +53,9 @@ export async function login(ev) {
     try {
       const deskMe = await api("/api/desk/me");
       state.caps = deskMe.capabilities || {};
+      if (deskMe.brand) state.brand = { ...state.brand, ...deskMe.brand };
       if (deskMe.user) state.user = { ...state.user, ...deskMe.user };
+      document.title = `Pupitre — ${state.brand.product || state.brand.name}`;
     } catch {
       state.caps = { manageUsers: false };
     }

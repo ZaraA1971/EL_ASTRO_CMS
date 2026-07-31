@@ -20,7 +20,7 @@
     "import:articles:db": "node scripts/import-md-to-el-articles.mjs",
     "media:index": "node scripts/index-el-media.mjs",
     "keywords:from-wp-tags": "node scripts/sync-ia-keywords.mjs",
-    "test": "node --test server/lib/*.test.mjs server/lib/desk/core/*.test.mjs server/lib/newsletter/*.test.mjs server/lib/ios/*.test.mjs server/lib/media/*.test.mjs server/lib/billing/*.test.mjs server/lib/x-*.test.mjs",
+    "test": "node --test server/lib/*.test.mjs server/lib/desk/core/*.test.mjs server/lib/desk/el/*.test.mjs server/lib/newsletter/*.test.mjs server/lib/ios/*.test.mjs server/lib/media/*.test.mjs server/lib/billing/*.test.mjs server/lib/x-*.test.mjs",
     "deploy": "./scripts/deploy.sh",
     "deploy:web": "./scripts/deploy.sh web",
     "deploy:api": "./scripts/deploy.sh api",

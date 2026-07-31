@@ -1,6 +1,6 @@
 /**
- * Surface publique Pupitre core (portable).
- * Host EL : importer aussi `../el/el-plugins.mjs`.
+ * Surface publique Pupitre core.
+ * Host EL : `../el/index.mjs` pour les adapters.
  */
 export {
   createPluginRegistry,
@@ -18,4 +18,6 @@ export {
   asJson,
   nowMysql,
   toMysqlDate,
+  ensureArticleDateNullable,
+  PLACEHOLDER_SLUGS,
 } from './article-helpers.mjs';

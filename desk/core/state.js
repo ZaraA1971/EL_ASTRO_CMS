@@ -1,6 +1,12 @@
 /** État mutable partagé — importer `{ state }` (binding vif, jamais cloner). */
 export const state = {
   user: null,
+  /** Marque host — remplie via GET /api/desk/me (`brand`). */
+  brand: {
+    name: "Pupitre",
+    product: "",
+    shortName: "Pupitre",
+  },
   caps: { manageUsers: false, editAll: false, publish: false, audience: false },
   view: "list", // list | edit | users | user-edit | newsletter | audience | media | login
   /** Rubriques (chips) — chargées via GET /api/desk/categories */

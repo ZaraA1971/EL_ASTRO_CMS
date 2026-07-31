@@ -820,15 +820,30 @@ const deskCtx = {
   siteUrl: SITE_URL,
   ragUpstream: UPSTREAM,
   ragApiKey: RAG_KEY,
+  brand: {
+    name: process.env.DESK_BRAND_NAME || fileEnv.DESK_BRAND_NAME || 'ElectronLibre',
+    product:
+      process.env.DESK_BRAND_PRODUCT ||
+      fileEnv.DESK_BRAND_PRODUCT ||
+      'ElectronLibre',
+    shortName:
+      process.env.DESK_BRAND_SHORT || fileEnv.DESK_BRAND_SHORT || 'Pupitre EL',
+  },
   agentEditorial: {
     url: AGENT_EDITORIAL_URL,
     apiKey: AGENT_API_KEY,
+    profile:
+      process.env.DESK_ASSIST_PROFILE ||
+      fileEnv.DESK_ASSIST_PROFILE ||
+      'electronlibre',
   },
   onesignal: {
     appId: ONESIGNAL_APP_ID,
     apiKey: ONESIGNAL_REST_API_KEY,
     siteUrl: ONESIGNAL_SITE_URL,
     dryRun: ONESIGNAL_DRY_RUN,
+    title:
+      process.env.DESK_BRAND_NAME || fileEnv.DESK_BRAND_NAME || 'ElectronLibre',
   },
   brevo: {
     apiKey: BREVO_API_KEY,

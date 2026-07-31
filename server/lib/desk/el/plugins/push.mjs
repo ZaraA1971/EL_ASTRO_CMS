@@ -2,6 +2,31 @@ import { auditLog } from '../../../audit.mjs';
 import { sendArticlePush } from '../../../onesignal.mjs';
 import { canPublish } from '../../../roles.mjs';
 
+/** Titre notification : ctx.brand.name ou onesignal.title, jamais hardcodé produit. */
+function pushTitle(ctx) {
+  return (
+    ctx.brand?.name ||
+    ctx.onesignal?.title ||
+    process.env.DESK_BRAND_NAME ||
+    'Notification'
+  );
+}
+
+/**
+ * Push OneSignal pour un article déjà publié (appelé depuis /push ou publish+push).
+ */
+export async function pushPublishedArticle(article, ctx, { segment } = {}) {
+  return sendArticlePush(article, {
+    appId: ctx.onesignal?.appId,
+    apiKey: ctx.onesignal?.apiKey,
+    siteUrl: ctx.onesignal?.siteUrl,
+    dryRun: Boolean(ctx.onesignal?.dryRun),
+    title: pushTitle(ctx),
+    segment: segment || 'All',
+    sendToMobile: true,
+  });
+}
+
 export async function handleDeskArticlePush(req, res, _parts, ctx, article) {
   const { pool, sendJson, readBody, session, actor, ip } = ctx;
   const articleId = Number(article.article_id);
@@ -23,14 +48,8 @@ export async function handleDeskArticlePush(req, res, _parts, ctx, article) {
     return sendJson(res, 400, { error: 'JSON invalide' });
   }
   try {
-    const push = await sendArticlePush(article, {
-      appId: ctx.onesignal?.appId,
-      apiKey: ctx.onesignal?.apiKey,
-      siteUrl: ctx.onesignal?.siteUrl,
-      dryRun: Boolean(ctx.onesignal?.dryRun),
-      title: 'ElectronLibre',
-      segment: payload.segment || 'All',
-      sendToMobile: true,
+    const push = await pushPublishedArticle(article, ctx, {
+      segment: payload.segment,
     });
     await auditLog(pool, {
       actor,

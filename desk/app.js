@@ -78,14 +78,12 @@ function navTabs(active) {
   const usersTab = state.caps.manageUsers
     ? `<button type="button" class="nav-tab ${active === "users" ? "active" : ""}" data-nav="users">Comptes</button>`
     : "";
-  const nlTab =
-    state.caps.newsletter || state.caps.publish
-      ? `<button type="button" class="nav-tab ${active === "newsletter" ? "active" : ""}" data-nav="newsletter">Newsletter</button>`
-      : "";
-  const audTab =
-    state.caps.audience || state.caps.publish
-      ? `<button type="button" class="nav-tab ${active === "audience" ? "active" : ""}" data-nav="audience">Audience</button>`
-      : "";
+  const nlTab = state.caps.newsletter
+    ? `<button type="button" class="nav-tab ${active === "newsletter" ? "active" : ""}" data-nav="newsletter">Newsletter</button>`
+    : "";
+  const audTab = state.caps.audience
+    ? `<button type="button" class="nav-tab ${active === "audience" ? "active" : ""}" data-nav="audience">Audience</button>`
+    : "";
   const mediaTab = `<button type="button" class="nav-tab ${active === "media" ? "active" : ""}" data-nav="media">Documents</button>`;
   return `
     <nav class="desk-nav" aria-label="Sections">
@@ -134,14 +132,14 @@ function bindNav() {
 
 async function openDesiredView() {
   const wanted = desiredViewFromUrl();
-  if (wanted === "newsletter" && (state.caps.newsletter || state.caps.publish)) {
+  if (wanted === "newsletter" && state.caps.newsletter) {
     state.view = "newsletter";
     syncViewToUrl("newsletter");
     const mod = await loadNewsletterPlugin();
     await mod.loadNewsletter();
     return;
   }
-  if (wanted === "audience" && (state.caps.audience || state.caps.publish)) {
+  if (wanted === "audience" && state.caps.audience) {
     state.view = "audience";
     syncViewToUrl("audience");
     const mod = await loadAudiencePlugin();
@@ -201,7 +199,11 @@ async function bootstrap() {
     try {
       const deskMe = await api("/api/desk/me");
       state.caps = deskMe.capabilities || state.caps;
+      if (deskMe.brand) state.brand = { ...state.brand, ...deskMe.brand };
       if (deskMe.user) state.user = { ...state.user, ...deskMe.user };
+      if (state.brand.shortName) {
+        document.title = `Pupitre — ${state.brand.product || state.brand.name}`;
+      }
     } catch {
       /* ignore */
     }

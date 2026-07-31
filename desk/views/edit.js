@@ -122,7 +122,9 @@ function buildArticlePreviewDoc({
             : ""
         }
         <div class="el-paywall abonnement-cta">
-          <p>Cet article est réservé aux abonnés ElectronLibre.</p>
+          <p>Cet article est réservé aux abonnés${
+            state.brand?.product ? ` ${escapeHtml(state.brand.product)}` : ""
+          }.</p>
           <a class="btn-subscribe" href="/login/">Connexion</a>
           <a class="btn-subscribe" href="/abonnement/">Je m’abonne</a>
         </div>

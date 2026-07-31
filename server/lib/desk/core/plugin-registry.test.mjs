@@ -4,7 +4,6 @@ import {
   createPluginRegistry,
   resolveEnabledPluginIds,
 } from './plugin-registry.mjs';
-import { createElDeskRegistry, EL_DESK_PLUGINS } from '../el/el-plugins.mjs';
 
 describe('plugin-registry', () => {
   it('merges plugin caps onto core caps', () => {
@@ -117,20 +116,5 @@ describe('resolveEnabledPluginIds', () => {
       'newsletter',
       'x',
     ]);
-  });
-});
-
-describe('createElDeskRegistry', () => {
-  it('registers default EL plugins', () => {
-    const reg = createElDeskRegistry(undefined);
-    assert.deepEqual(
-      reg.ids().sort(),
-      EL_DESK_PLUGINS.map((p) => p.id).sort()
-    );
-  });
-
-  it('honours DESK_PLUGINS empty', () => {
-    const reg = createElDeskRegistry('');
-    assert.deepEqual(reg.ids(), []);
   });
 });

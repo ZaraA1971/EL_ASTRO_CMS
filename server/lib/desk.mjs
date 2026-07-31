@@ -1,6 +1,5 @@
 import crypto from 'node:crypto';
 import { parseJsonArray, rowToArticle } from './db.mjs';
-import { sendArticlePush } from './onesignal.mjs';
 import { canAccessDesk, canEditAll, canPublish } from './roles.mjs';
 import { canManageUsers, handleDeskUsers } from './users.mjs';
 import { auditLog } from './audit.mjs';
@@ -16,19 +15,34 @@ import {
   asJson,
   canEditArticle,
   ensureArticleDateNullable,
-  ensureSubscriberKeywords,
-  loadEditableTwin,
   nextArticleId,
   normalizeKeywords,
   nowMysql,
   resolveArticleSlug,
   slugify,
-  syncKeywordsToTwin,
   toMysqlDate,
   uniqueSlug,
 } from './desk/core/article-helpers.mjs';
+import {
+  ensureSubscriberKeywords,
+  loadEditableTwin,
+  syncKeywordsToTwin,
+} from './desk/el/article-el.mjs';
+import { pushPublishedArticle } from './desk/el/plugins/push.mjs';
 import { emitDeskLifecycle } from './desk/core/lifecycle.mjs';
 import { getContentGen } from './desk/core/content-gen.mjs';
+
+function deskBrand(ctx) {
+  return {
+    name: ctx.brand?.name || process.env.DESK_BRAND_NAME || 'Pupitre',
+    product:
+      ctx.brand?.product || process.env.DESK_BRAND_PRODUCT || '',
+    shortName:
+      ctx.brand?.shortName ||
+      process.env.DESK_BRAND_SHORT ||
+      'Pupitre',
+  };
+}
 
 export { canAccessDesk, canEditAll, canPublish };
 export { canEditArticle } from './desk/core/article-helpers.mjs';
@@ -130,6 +144,7 @@ export async function handleDesk(req, res, parts, ctx) {
         ctx,
         session
       ),
+      brand: deskBrand(ctx),
       contentGen: getContentGen(),
       plugins: plugins.ids(),
     });
@@ -408,7 +423,7 @@ export async function handleDesk(req, res, parts, ctx) {
       return sendJson(res, 201, { article });
     }
 
-    return sendJson(res, 405, { error: 'Method not allowed' });
+    return sendJson(res, 405, { error: 'Méthode non autorisée' });
   }
 
   // /api/desk/articles/:articleId[/publish]
@@ -483,14 +498,8 @@ export async function handleDesk(req, res, parts, ctx) {
     let push = null;
     if (payload.push) {
       try {
-        push = await sendArticlePush(rows[0], {
-          appId: ctx.onesignal?.appId,
-          apiKey: ctx.onesignal?.apiKey,
-          siteUrl: ctx.onesignal?.siteUrl,
-          dryRun: Boolean(ctx.onesignal?.dryRun),
-          title: 'ElectronLibre',
-          segment: payload.segment || 'All',
-          sendToMobile: true,
+        push = await pushPublishedArticle(rows[0], deskReqCtx, {
+          segment: payload.segment,
         });
       } catch (err) {
         console.error('[desk] onesignal', err.message);
@@ -793,5 +802,5 @@ export async function handleDesk(req, res, parts, ctx) {
     return sendJson(res, 200, { ok: true, contentGen });
   }
 
-  return sendJson(res, 404, { error: 'Unknown desk route' });
+  return sendJson(res, 404, { error: 'Route desk inconnue' });
 }

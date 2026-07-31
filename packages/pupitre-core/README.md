@@ -1,30 +1,33 @@
 # @electronlibre/pupitre-core
 
-Cœur portable du CMS **Pupitre** (Phase 3).
+Cœur CMS **Pupitre** (registry plugins, lifecycle, helpers articles).
 
-## Source of truth (aujourd’hui)
+## Statut (important)
 
-Le code vit encore dans le monorepo EL :
+Ce dossier est une **façade** dans le monorepo ElectronLibre.
 
+- Le code source vit dans `../../server/lib/desk/core/`
+- Ce n’est **pas** encore un package npm publiable autonome
+- Les tables SQL utilisent encore le préfixe host `el_*`
+- Le host EL reste `server/lib/desk.mjs` + `server/lib/desk/el/`
+
+Objectif Phase 4 : extraire un vrai package installable. Aujourd’hui : frontière claire pour les dév qui lisent le repo.
+
+## Surface exportée
+
+```js
+import {
+  createPluginRegistry,
+  emitDeskLifecycle,
+  bumpContentGen,
+  getContentGen,
+  canEditArticle,
+  nextArticleId,
+  uniqueSlug,
+  resolveArticleSlug,
+} from '../../server/lib/desk/core/index.mjs';
 ```
-../../server/lib/desk/core/
-```
 
-Ce package expose la surface publique via `exports` → `index.mjs`.
+## Licence
 
-## Contenu core
-
-| Module | Rôle |
-|--------|------|
-| `plugin-registry` | Registry plugins + `runHooks` |
-| `lifecycle` | `emitDeskLifecycle` (bump + hooks) |
-| `content-gen` | Compteur cache HTTP (sans side-effects host) |
-| `article-helpers` | slug, ids, droits édition, sync mots-clés jumeau |
-
-## Hors core (package `pupitre-el`)
-
-Newsletter, audience, X, OneSignal, DeepL, RAG keywords, assist, purge nginx.
-
-## UI
-
-SPA sous `/desk/` (`desk/core`, `desk/views`, `desk/plugins`) — même produit, couche navigateur.
+MIT — voir `LICENSE`.
