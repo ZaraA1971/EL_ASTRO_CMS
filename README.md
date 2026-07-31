@@ -123,13 +123,17 @@ Sans ces clés, le checkout affiche un message « bientôt » et renvoie `BILLIN
 
 ## Ops
 
+**Référence agents / deploy :** [`CURSOR.md`](./CURSOR.md)
+
 ```bash
 cd /var/www/el-astro
-npm test
-npm run build
-sudo systemctl restart el-astro-web.service el-astro-rag-proxy.service
-sudo find /var/cache/nginx/el-astro-prod -type f -delete
+./scripts/deploy.sh          # tests + build atomique + restart + cache + health
+./scripts/deploy.sh web      # front seulement
+./scripts/deploy.sh api      # API seulement
 ```
+
+Ne **jamais** supprimer les dossiers `/var/cache/nginx/el-astro-*` (uniquement
+`find … -type f -delete`). Ne jamais redémarrer `el-astro-web` pendant un build.
 
 OneSignal : `ONESIGNAL_DRY_RUN=1` jusqu’au premier push contrôlé.
 

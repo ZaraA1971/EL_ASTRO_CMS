@@ -32,19 +32,30 @@ describe('billing config', () => {
     assert.equal(pub.trialPeriodDays, TRIAL_PERIOD_DAYS);
   });
 
-  it('enables when secret + price present', () => {
+  it('enables when secret + price + webhook present', () => {
     const cfg = loadBillingConfig({
       STRIPE_SECRET_KEY: 'sk_test_x',
       STRIPE_PRICE_MONTHLY: 'price_abc',
+      STRIPE_WEBHOOK_SECRET: 'whsec_x',
     });
     assert.equal(cfg.enabled, true);
     assert.equal(cfg.trialPeriodDays, 10);
+  });
+
+  it('stays disabled without webhook secret', () => {
+    const cfg = loadBillingConfig({
+      STRIPE_SECRET_KEY: 'sk_test_x',
+      STRIPE_PRICE_MONTHLY: 'price_abc',
+      STRIPE_WEBHOOK_SECRET: '',
+    });
+    assert.equal(cfg.enabled, false);
   });
 
   it('disables checkout when STRIPE_CHECKOUT_ENABLED=false', () => {
     const cfg = loadBillingConfig({
       STRIPE_SECRET_KEY: 'sk_test_x',
       STRIPE_PRICE_MONTHLY: 'price_abc',
+      STRIPE_WEBHOOK_SECRET: 'whsec_x',
       STRIPE_CHECKOUT_ENABLED: 'false',
     });
     assert.equal(cfg.enabled, false);
@@ -54,6 +65,7 @@ describe('billing config', () => {
     const cfg = loadBillingConfig({
       STRIPE_SECRET_KEY: 'sk_test_x',
       STRIPE_PRICE_MONTHLY: 'price_abc',
+      STRIPE_WEBHOOK_SECRET: 'whsec_x',
       STRIPE_TRIAL_DAYS: '14',
     });
     assert.equal(cfg.trialPeriodDays, 14);
@@ -64,6 +76,7 @@ describe('billing config', () => {
     const cfg = loadBillingConfig({
       STRIPE_SECRET_KEY: 'sk_test_x',
       STRIPE_PRICE_MONTHLY: 'price_abc',
+      STRIPE_WEBHOOK_SECRET: 'whsec_x',
       STRIPE_TRIAL_DAYS: '0',
     });
     assert.equal(cfg.trialPeriodDays, 0);

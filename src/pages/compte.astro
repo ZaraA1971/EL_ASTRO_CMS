@@ -29,6 +29,17 @@ const iosAppStoreUrl =
         </p>
       </div>
 
+      <div id="el-compte-error" class="el-compte__block" hidden>
+        <p id="el-compte-error-text">
+          Impossible de charger votre espace pour le moment.
+        </p>
+        <p class="el-auth__links">
+          <button type="button" class="btn-subscribe el-auth__submit" id="el-compte-retry">
+            Réessayer
+          </button>
+        </p>
+      </div>
+
       <div id="el-compte-app" hidden>
         <p
           id="el-compte-banner"
@@ -51,6 +62,42 @@ const iosAppStoreUrl =
               <dt>Période en cours jusqu’au</dt>
               <dd id="el-compte-until-val">—</dd>
             </div>
+          </dl>
+        </section>
+
+        <section
+          class="el-compte__section"
+          aria-labelledby="el-compte-manage"
+          id="el-compte-manage-section"
+        >
+          <h2 id="el-compte-manage" class="el-compte__h2">
+            Gestion de l’abonnement
+          </h2>
+          <p class="el-compte__app-lead" id="el-compte-portal-lead">
+            Mettez à jour votre moyen de paiement, téléchargez vos factures ou
+            résiliez votre abonnement.
+          </p>
+          <div class="el-compte__actions" id="el-compte-portal-actions">
+            <button type="button" class="btn-subscribe" id="el-compte-portal">
+              Abonnement, factures
+            </button>
+            <a class="el-auth__textbtn" href="/abonnement/" id="el-compte-renew"
+              >Voir les formules</a
+            >
+          </div>
+          <p class="el-compte__app-lead" id="el-compte-manage-manual" hidden>
+            Abonnement annuel&nbsp;: pour une facture ou un changement, écrivez
+            à
+            <a href="mailto:info@electronlibre.info"
+              >info@electronlibre.info</a
+            >.
+          </p>
+          <p id="el-compte-portal-msg" class="el-auth__error" hidden></p>
+        </section>
+
+        <section class="el-compte__section" aria-labelledby="el-compte-ids">
+          <h2 id="el-compte-ids" class="el-compte__h2">Identifiants</h2>
+          <dl class="el-compte__dl">
             <div id="el-compte-login-row" hidden>
               <dt>Identifiant</dt>
               <dd id="el-compte-login-val">—</dd>
@@ -63,15 +110,6 @@ const iosAppStoreUrl =
           <p class="el-compte__app-lead" id="el-compte-login-hint">
             Connectez-vous avec votre e-mail (site et app).
           </p>
-          <div class="el-compte__actions">
-            <button type="button" class="btn-subscribe" id="el-compte-portal" hidden>
-              Gérer paiement &amp; factures
-            </button>
-            <a class="el-auth__textbtn" href="/abonnement/" id="el-compte-renew"
-              >Voir les formules</a
-            >
-          </div>
-          <p id="el-compte-portal-msg" class="el-auth__error" hidden></p>
         </section>
 
         <section class="el-compte__section" aria-labelledby="el-compte-nl">
@@ -140,6 +178,7 @@ const iosAppStoreUrl =
   (function () {
     var guest = document.getElementById("el-compte-guest");
     var app = document.getElementById("el-compte-app");
+    var errBox = document.getElementById("el-compte-error");
     var sub = document.getElementById("el-compte-sub");
     var banner = document.getElementById("el-compte-banner");
     var params = new URLSearchParams(location.search);
@@ -147,6 +186,26 @@ const iosAppStoreUrl =
       banner.textContent =
         "Paiement reçu — votre accès est ouvert. Vérifiez votre e-mail pour choisir un mot de passe et vous connecter.";
       banner.hidden = false;
+    }
+
+    function showGuest() {
+      guest.hidden = false;
+      app.hidden = true;
+      if (errBox) errBox.hidden = true;
+    }
+    function showError(msg) {
+      guest.hidden = true;
+      app.hidden = true;
+      if (errBox) {
+        errBox.hidden = false;
+        var t = document.getElementById("el-compte-error-text");
+        if (t && msg) t.textContent = msg;
+      }
+    }
+    function showApp() {
+      guest.hidden = true;
+      if (errBox) errBox.hidden = true;
+      app.hidden = false;
     }
 
     function formatDate(iso) {
@@ -162,7 +221,12 @@ const iosAppStoreUrl =
       }
     }
 
-    function planLabel(plan, stripe) {
+    function isStaffRole(role) {
+      return role === "admin" || role === "editor" || role === "author";
+    }
+
+    function planLabel(plan, stripe, role) {
+      if (isStaffRole(role)) return "Compte équipe";
       if (plan === "monthly" || stripe) return "Mensuel en ligne (100 €)";
       if (plan === "annual_manual") return "Annuel (900 €)";
       return plan || "—";
@@ -170,6 +234,7 @@ const iosAppStoreUrl =
 
     function statusLabel(account) {
       if (!account) return "—";
+      if (isStaffRole(account.role)) return "Actif (équipe)";
       if (account.entitled) return "Actif";
       if (account.status === "expired") return "Expiré";
       if (account.status === "disabled") return "Désactivé";
@@ -182,8 +247,7 @@ const iosAppStoreUrl =
         var me = await meRes.json();
         if (!me.authenticated) {
           sub.textContent = "Espace abonné";
-          guest.hidden = false;
-          app.hidden = true;
+          showGuest();
           return;
         }
         var billRes = await fetch("/api/billing/me", {
@@ -193,24 +257,25 @@ const iosAppStoreUrl =
           return {};
         });
         if (!billRes.ok) {
-          sub.textContent = "Espace abonné";
-          guest.hidden = false;
-          app.hidden = true;
+          sub.textContent = me.user?.name || me.user?.login || "Mon compte";
+          showError(
+            bill.error ||
+              "Impossible de charger les informations d’abonnement. Réessayez."
+          );
           return;
         }
         var a = bill.account || me.user || {};
         sub.textContent = a.name || a.login || "Espace abonné";
-        guest.hidden = true;
-        app.hidden = false;
+        showApp();
+        var isStaff = isStaffRole(a.role);
         document.getElementById("el-compte-status-val").textContent =
           statusLabel(a);
         document.getElementById("el-compte-plan-val").textContent = planLabel(
           a.plan,
-          a.stripe
+          a.stripe,
+          a.role
         );
         var untilRow = document.getElementById("el-compte-until-row");
-        var isStaff =
-          a.role === "admin" || a.role === "editor" || a.role === "author";
         if (untilRow) untilRow.hidden = isStaff;
         document.getElementById("el-compte-until-val").textContent = isStaff
           ? "—"
@@ -232,17 +297,46 @@ const iosAppStoreUrl =
             ? "Connectez-vous avec votre e-mail (site et app)."
             : "Connexion possible avec l’identifiant ou l’e-mail (site et app).";
         }
+        var manageSection = document.getElementById("el-compte-manage-section");
         var portalBtn = document.getElementById("el-compte-portal");
-        if (a.canManageBilling) {
-          portalBtn.hidden = false;
+        var portalLead = document.getElementById("el-compte-portal-lead");
+        var portalActions = document.getElementById("el-compte-portal-actions");
+        var manageManual = document.getElementById("el-compte-manage-manual");
+        var renewLink = document.getElementById("el-compte-renew");
+        var canPortal = !isStaff && !!a.canManageBilling;
+        var isAnnual = !isStaff && a.plan === "annual_manual" && !canPortal;
+        if (manageSection) manageSection.hidden = isStaff;
+        if (portalBtn) portalBtn.hidden = !canPortal;
+        if (portalLead) portalLead.hidden = !canPortal;
+        if (manageManual) manageManual.hidden = !isAnnual;
+        if (portalActions) {
+          portalActions.hidden = !canPortal && isAnnual;
+        }
+        if (renewLink) {
+          renewLink.hidden = canPortal || isAnnual || isStaff;
+        }
+        if (!isStaff && !canPortal && !isAnnual && portalActions) {
+          portalActions.hidden = false;
+          if (portalLead) {
+            portalLead.hidden = false;
+            portalLead.textContent =
+              "Souscrivez en ligne pour gérer paiement, factures et résiliation depuis cet espace.";
+          }
         }
         var nl = document.getElementById("el-compte-nl-check");
         nl.checked = !!a.newsletter_opt_in;
       } catch (e) {
         sub.textContent = "Erreur de chargement";
-        guest.hidden = false;
+        showError("Erreur réseau. Vérifiez votre connexion puis réessayez.");
       }
     }
+
+    document
+      .getElementById("el-compte-retry")
+      ?.addEventListener("click", function () {
+        sub.textContent = "Chargement…";
+        load();
+      });
 
     document
       .getElementById("el-compte-portal")

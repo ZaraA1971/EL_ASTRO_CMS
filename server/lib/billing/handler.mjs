@@ -11,9 +11,18 @@ import Stripe from 'stripe';
 import { rateLimit, clientIp } from '../rate-limit.mjs';
 import { auditLog } from '../audit.mjs';
 import { hashUserPassword } from '../users.mjs';
-import { canAccessPremium, publicUser, STATUSES } from '../roles.mjs';
+import {
+  canAccessPremium,
+  isStaffRole,
+  publicUser,
+  STATUSES,
+} from '../roles.mjs';
 import { ensureBillingSchema } from './schema.mjs';
-import { billingPublicConfig, PLAN_MONTHLY } from './config.mjs';
+import {
+  billingPublicConfig,
+  PLAN_ANNUAL_MANUAL,
+  PLAN_MONTHLY,
+} from './config.mjs';
 import {
   normalizeEmail,
   isValidEmail,
@@ -41,13 +50,16 @@ async function loadBillingUser(pool, userId) {
 
 function accountPayload(user) {
   const pub = publicUser(user);
+  const staff = isStaffRole(user.role);
+  // Staff = accès équipe, pas un abonnement Stripe (même si des IDs trainent en base).
+  const stripeLinked = !staff && Boolean(user.stripe_customer_id);
   return {
     ...pub,
-    plan: user.plan || null,
+    plan: staff ? null : user.plan || null,
     billing_email: user.billing_email || user.email || null,
     newsletter_opt_in: Number(user.newsletter_opt_in) !== 0,
-    stripe: Boolean(user.stripe_customer_id),
-    canManageBilling: Boolean(user.stripe_customer_id),
+    stripe: stripeLinked,
+    canManageBilling: stripeLinked,
   };
 }
 
@@ -178,6 +190,12 @@ export async function handleBilling(req, res, parts, ctx) {
         code: 'BILLING_DISABLED',
       });
     }
+    if (isStaffRole(user.role)) {
+      return sendJson(res, 400, {
+        error: 'Les comptes équipe n’ont pas de portail d’abonnement.',
+        code: 'STAFF_NO_BILLING',
+      });
+    }
     if (!user.stripe_customer_id) {
       return sendJson(res, 400, {
         error:
@@ -191,12 +209,21 @@ export async function handleBilling(req, res, parts, ctx) {
       const portal = await stripe.billingPortal.sessions.create({
         customer: user.stripe_customer_id,
         return_url: `${base}/compte/`,
+        locale: 'fr',
       });
       return sendJson(res, 200, { ok: true, url: portal.url });
     } catch (err) {
       console.error('[billing] portal', err.message);
+      if (err?.code === 'resource_missing') {
+        return sendJson(res, 400, {
+          error:
+            'Aucun client Stripe valide sur ce compte. Refaites un paiement ou contactez-nous.',
+          code: 'NO_STRIPE_CUSTOMER',
+        });
+      }
       return sendJson(res, 502, {
         error: 'Portail de facturation indisponible.',
+        code: 'PORTAL_UNAVAILABLE',
       });
     }
   }
@@ -276,7 +303,20 @@ async function handleCheckout(req, res, ctx) {
   }
 
   const existing = await findUserByEmail(pool, email);
-  if (existing && canAccessPremium(existing) && existing.stripe_subscription_id) {
+  if (existing && isStaffRole(existing.role)) {
+    return sendJson(res, 409, {
+      error:
+        'Cet e-mail correspond à un compte équipe. Utilisez un autre e-mail pour l’abonnement.',
+      code: 'STAFF_EMAIL',
+    });
+  }
+  if (
+    existing &&
+    canAccessPremium(existing) &&
+    (existing.stripe_subscription_id ||
+      existing.plan === PLAN_ANNUAL_MANUAL ||
+      existing.plan === PLAN_MONTHLY)
+  ) {
     return sendJson(res, 409, {
       error:
         'Un abonnement actif est déjà lié à cet e-mail. Connectez-vous ou utilisez « Mot de passe oublié ».',

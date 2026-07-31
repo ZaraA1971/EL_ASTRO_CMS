@@ -21,6 +21,9 @@
     "media:index": "node scripts/index-el-media.mjs",
     "keywords:from-wp-tags": "node scripts/sync-ia-keywords.mjs",
     "test": "node --test server/lib/*.test.mjs server/lib/newsletter/*.test.mjs server/lib/ios/*.test.mjs server/lib/media/*.test.mjs server/lib/billing/*.test.mjs server/lib/x-*.test.mjs",
+    "deploy": "./scripts/deploy.sh",
+    "deploy:web": "./scripts/deploy.sh web",
+    "deploy:api": "./scripts/deploy.sh api",
     "desk": "echo 'Pupitre: https://electronlibre.info/desk/'"
   },
   "dependencies": {

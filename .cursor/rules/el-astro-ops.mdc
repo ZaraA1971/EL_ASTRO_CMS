@@ -1,0 +1,33 @@
+---
+description: Ops prod ElectronLibre — deploy atomique, cache nginx, billing
+alwaysApply: true
+---
+
+# Ops prod (el-astro)
+
+Lire `CURSOR.md` avant tout deploy ou purge cache.
+
+## Never
+
+- Never `rm -rf /var/cache/nginx` or delete zone dirs (`el-astro-prod`, etc.).
+- Never purge with anything wider than `find <zone> -type f -delete`.
+- Never restart `el-astro-web` while `astro build` is running or after a failed build.
+- Never improvise `npm run build && systemctl restart … && rm -rf …/cache`.
+
+## Deploy
+
+Use only:
+
+```bash
+./scripts/deploy.sh          # all
+./scripts/deploy.sh web      # front
+./scripts/deploy.sh api      # API / env
+```
+
+Atomic build (`dist.next` → swap → restart → healthcheck) is mandatory.
+
+## After changes
+
+- Verify `curl -sI http://127.0.0.1:4322/` → 200 and body non-empty.
+- Verify `curl -sS http://127.0.0.1:8787/api/health`.
+- Check `journalctl -u el-astro-web -n 20` for `ERR_MODULE_NOT_FOUND`.

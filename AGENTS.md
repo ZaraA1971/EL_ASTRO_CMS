@@ -1,3 +1,17 @@
+## Production ops (read first)
+
+**Mandatory:** [`CURSOR.md`](./CURSOR.md) — deploy atomique, cache nginx, billing, healthchecks.
+
+Deploy only via:
+
+```bash
+./scripts/deploy.sh          # all
+./scripts/deploy.sh web      # front
+./scripts/deploy.sh api      # API
+```
+
+Never wipe nginx cache zone directories. Never restart `el-astro-web` during a build.
+
 ## Development
 
 When starting the dev server, use background mode:

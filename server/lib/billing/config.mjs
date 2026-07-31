@@ -51,7 +51,10 @@ export function loadBillingConfig(fileEnv = {}) {
     ? fileEnv.STRIPE_TRIAL_DAYS
     : process.env.STRIPE_TRIAL_DAYS;
   const trialPeriodDays = parseTrialDays(trialRaw);
-  const enabled = Boolean(secretKey && priceMonthly && checkoutEnabled);
+  // Webhook obligatoire : sinon paiement Stripe sans provision compte.
+  const enabled = Boolean(
+    secretKey && priceMonthly && webhookSecret && checkoutEnabled
+  );
   return {
     secretKey,
     webhookSecret,
