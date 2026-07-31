@@ -125,7 +125,6 @@ export async function handleCoreUsers(req, res, parts, ctx) {
       100,
       Math.max(1, Number(url.searchParams.get('limit') || 30))
     );
-    const offset = (page - 1) * limit;
 
     const where = [];
     const params = [];
@@ -163,15 +162,19 @@ export async function handleCoreUsers(req, res, parts, ctx) {
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
     const total = await usersStore.count(pool, whereSql, params);
+    const pages = Math.max(1, Math.ceil(total / limit) || 1);
+    const pageClamped = Math.min(page, pages);
+    const offsetClamped = (pageClamped - 1) * limit;
     const rows = await usersStore.list(pool, whereSql, params, {
       limit,
-      offset,
+      offset: offsetClamped,
     });
 
     sendJson(res, 200, {
       total,
-      page,
+      page: pageClamped,
       limit,
+      pages,
       users: rows.map(policy.rowToDeskUser),
       meta: {
         roles: policy.allowedRolesForActor(session.role),

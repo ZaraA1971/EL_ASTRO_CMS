@@ -3,11 +3,19 @@ import { api } from "../core/api.js";
 import {
   escapeHtml,
   formatDate,
+  formatDateTime,
   filterChips,
   brandBlock,
+  listMetaRow,
   toDatetimeLocalValue,
   fromDatetimeLocalValue,
 } from "../core/format.js";
+import {
+  rangeLabel,
+  pagerHtml,
+  bindPager,
+  patchPagerHosts,
+} from "../core/pager.js";
 import { createAutocomplete } from "../core/autocomplete.js";
 import { ctx } from "../core/ctx.js";
 import { logout } from "./login.js";
@@ -28,6 +36,8 @@ const STATUS_LABELS = {
   expired: "Expiré",
 };
 
+const STAFF_ROLES = new Set(["admin", "editor", "author"]);
+
 /** Autocomplete + recherche comptes. */
 const usersAc = createAutocomplete({
   key: "usersAc",
@@ -40,16 +50,25 @@ const usersAc = createAutocomplete({
   debounceMs: 200,
   fetchItems: async (q) => {
     state.usersQ = q;
+    state.usersPage = 1;
     await loadUsers({ soft: true, fromAc: true });
     return state.users;
   },
   mapItem: (u) => ({
     title: u.name || u.login,
-    sub: `${u.login} · ${u.email || ""} · ${ROLE_LABELS[u.role] || u.role}`,
+    sub: [
+      u.login,
+      u.email || "",
+      ROLE_LABELS[u.role] || u.role,
+      u.entitled ? "premium" : "sans premium",
+    ]
+      .filter(Boolean)
+      .join(" · "),
   }),
   onPick: (u) => openUser(u.id),
   onInput: (q) => {
     state.usersQ = q;
+    state.usersPage = 1;
   },
 });
 
@@ -59,18 +78,39 @@ function usersItemsHtml(users) {
       const st = u.status || "active";
       const badgeClass =
         st === "active" ? "live" : st === "disabled" ? "draft" : "warn";
+      const isStaff = STAFF_ROLES.has(u.role);
+      const accessBits = [];
+      if (u.entitled) accessBits.push("Premium oui");
+      else accessBits.push("Premium non");
+      if (u.desk) accessBits.push("Pupitre");
+      if (!isStaff && u.access_until) {
+        accessBits.push(`Fin période ${formatDate(u.access_until)}`);
+      } else if (!isStaff && !u.access_until && u.role === "subscriber") {
+        accessBits.push("Sans date de fin");
+      }
+      const nl =
+        u.newsletter_opt_in === undefined
+          ? null
+          : u.newsletter_opt_in
+            ? "Oui"
+            : "Non";
+      const registered = formatDate(u.registered);
+      const updated = formatDateTime(u.updated_at);
       return `
-        <button class="list-item" type="button" data-user="${u.id}">
-          <div class="row" style="justify-content:space-between">
+        <button class="list-item list-item--user" type="button" data-user="${u.id}">
+          <div class="row" style="justify-content:space-between;gap:8px;flex-wrap:wrap">
             <span class="badge ${badgeClass}">${escapeHtml(STATUS_LABELS[st] || st)}</span>
-            <span class="sub">${escapeHtml(ROLE_LABELS[u.role] || u.role)}</span>
+            <span class="badge badge-role">${escapeHtml(ROLE_LABELS[u.role] || u.role)}</span>
           </div>
           <h2>${escapeHtml(u.name || u.login)}</h2>
-          <div class="sub">${escapeHtml(u.login)} · ${escapeHtml(u.email || "")}${
-            u.access_until && !["admin", "editor", "author"].includes(u.role)
-              ? ` · période au ${escapeHtml(formatDate(u.access_until))}`
-              : ""
-          }${u.entitled ? "" : " · sans accès premium"}</div>
+          <div class="list-item-meta">
+            ${listMetaRow("Identifiant", u.login)}
+            ${listMetaRow("Email", u.email || "—")}
+            ${listMetaRow("Accès", accessBits.join(" · "))}
+            ${nl != null ? listMetaRow("Newsletter", nl) : ""}
+            ${registered ? listMetaRow("Inscrit", registered) : ""}
+            ${updated ? listMetaRow("Mis à jour", updated) : ""}
+          </div>
         </button>`;
     })
     .join("");
@@ -82,14 +122,52 @@ function bindUsersResultClicks(root = app) {
   });
 }
 
+function usersRangeLabel() {
+  return rangeLabel({
+    total: state.usersTotal,
+    page: state.usersPage,
+    limit: state.usersLimit,
+    singular: "compte",
+  });
+}
+
+function usersPagerHtml() {
+  return pagerHtml({
+    page: state.usersPage,
+    pages: state.usersPages,
+    total: state.usersTotal,
+    limit: state.usersLimit,
+    ariaLabel: "Pagination comptes",
+    dataAttr: "users-page",
+  });
+}
+
+async function goUsersPage(next) {
+  const page = Number(next);
+  if (!Number.isFinite(page) || page < 1 || page === state.usersPage) return;
+  state.usersPage = page;
+  usersAc.close();
+  await loadUsers({ soft: true });
+  document.getElementById("users-results")?.scrollIntoView({ block: "start" });
+}
+
+function bindUsersPager(root = app) {
+  bindPager(root, "users-page", goUsersPage);
+}
+
 function patchUsersResults() {
   const count = document.getElementById("users-count");
-  if (count) count.textContent = `${state.usersTotal} compte(s)`;
+  if (count) count.textContent = usersRangeLabel();
   const list = document.getElementById("users-results");
   if (list) {
     list.innerHTML = usersItemsHtml(state.users) || `<div class="empty">Aucun compte</div>`;
     bindUsersResultClicks(list);
   }
+  patchPagerHosts(
+    ["users-pager-host", "users-pager-host-bottom"],
+    usersPagerHtml(),
+    bindUsersPager
+  );
   const err = document.getElementById("users-error");
   if (err) {
     if (state.error) {
@@ -104,7 +182,12 @@ function patchUsersResults() {
 
 export async function loadUsers({ soft = false, fromAc = false } = {}) {
   const seq = (state._searchSeq.users += 1);
-  const params = new URLSearchParams({ limit: "40" });
+  const page = Math.max(1, Number(state.usersPage || 1));
+  const limit = Math.min(50, Math.max(10, Number(state.usersLimit || 25)));
+  const params = new URLSearchParams({
+    limit: String(limit),
+    page: String(page),
+  });
   const q = String(state.usersQ || "").trim();
   if (q) params.set("q", q);
   if (state.usersRole) params.set("role", state.usersRole);
@@ -114,6 +197,11 @@ export async function loadUsers({ soft = false, fromAc = false } = {}) {
     if (seq !== state._searchSeq.users) return; // réponse obsolète
     state.users = data.users || [];
     state.usersTotal = data.total || 0;
+    state.usersLimit = data.limit || limit;
+    state.usersPages =
+      data.pages ||
+      Math.max(1, Math.ceil(state.usersTotal / state.usersLimit) || 1);
+    state.usersPage = Math.min(data.page || page, state.usersPages);
     if (data.meta) state.usersMeta = data.meta;
     state.error = "";
     if (soft && state.view === "users" && document.getElementById("users-results")) {
@@ -503,9 +591,13 @@ export function renderUsers() {
         </div>
         ${filterChips("Filtrer les comptes", filterChipsOpts, activeFilter, "ufilter")}
       </div>
-      <p class="count-line" id="users-count">${state.usersTotal} compte(s)</p>
+      <div class="list-meta">
+        <p class="count-line" id="users-count">${usersRangeLabel()}</p>
+        <div id="users-pager-host">${usersPagerHtml()}</div>
+      </div>
       <p class="err" id="users-error" ${state.error ? "" : "hidden"}>${escapeHtml(state.error || "")}</p>
       <div id="users-results">${items}</div>
+      <div id="users-pager-host-bottom" class="list-pager-bottom">${usersPagerHtml()}</div>
     </main>
     <button class="fab" type="button" id="btn-new-user" title="Nouveau compte" aria-label="Nouveau compte">+</button>`;
 
@@ -517,10 +609,12 @@ export function renderUsers() {
     btn.onclick = async () => {
       state.usersRole = btn.dataset.ufilter || "";
       state.usersStatus = "";
+      state.usersPage = 1;
       usersAc.close();
       await loadUsers({ soft: true });
     };
   });
+  bindUsersPager();
   bindUsersResultClicks();
 }
 

@@ -1,6 +1,12 @@
 import { state } from "../core/state.js";
 import { api } from "../core/api.js";
 import { escapeHtml, formatDate, filterChips, brandBlock } from "../core/format.js";
+import {
+  rangeLabel,
+  pagerHtml,
+  bindPager,
+  patchPagerHosts,
+} from "../core/pager.js";
 import { createAutocomplete } from "../core/autocomplete.js";
 import { ctx } from "../core/ctx.js";
 import { logout } from "./login.js";
@@ -67,41 +73,23 @@ function bindListResultClicks(root = app) {
 }
 
 function listRangeLabel() {
-  const total = Number(state.total || 0);
-  if (!total) return "0 article";
-  const from = (state.page - 1) * state.limit + 1;
-  const to = Math.min(state.page * state.limit, total);
-  return `${from}–${to} sur ${total} article${total > 1 ? "s" : ""}`;
+  return rangeLabel({
+    total: state.total,
+    page: state.page,
+    limit: state.limit,
+    singular: "article",
+  });
 }
 
-function pagerHtml() {
-  const pages = Math.max(1, Number(state.pages || 1));
-  const page = Math.min(Math.max(1, Number(state.page || 1)), pages);
-  if (pages <= 1 && Number(state.total || 0) <= state.limit) {
-    return `<div class="pager" hidden></div>`;
-  }
-  const windowSize = 5;
-  let start = Math.max(1, page - Math.floor(windowSize / 2));
-  let end = Math.min(pages, start + windowSize - 1);
-  start = Math.max(1, end - windowSize + 1);
-  const nums = [];
-  for (let i = start; i <= end; i++) nums.push(i);
-  return `
-    <nav class="pager" aria-label="Pagination articles">
-      <button type="button" class="pager__btn" data-page="1" ${page <= 1 ? "disabled" : ""} aria-label="Première page">«</button>
-      <button type="button" class="pager__btn" data-page="${page - 1}" ${page <= 1 ? "disabled" : ""} aria-label="Page précédente">‹</button>
-      ${nums
-        .map(
-          (n) =>
-            `<button type="button" class="pager__btn${n === page ? " is-active" : ""}" data-page="${n}" ${
-              n === page ? 'aria-current="page"' : ""
-            }>${n}</button>`
-        )
-        .join("")}
-      <button type="button" class="pager__btn" data-page="${page + 1}" ${page >= pages ? "disabled" : ""} aria-label="Page suivante">›</button>
-      <button type="button" class="pager__btn" data-page="${pages}" ${page >= pages ? "disabled" : ""} aria-label="Dernière page">»</button>
-      <span class="pager__meta">p. ${page}/${pages}</span>
-    </nav>`;
+function listPagerHtml() {
+  return pagerHtml({
+    page: state.page,
+    pages: state.pages,
+    total: state.total,
+    limit: state.limit,
+    ariaLabel: "Pagination articles",
+    dataAttr: "page",
+  });
 }
 
 async function goListPage(next) {
@@ -114,9 +102,7 @@ async function goListPage(next) {
 }
 
 function bindListPager(root = app) {
-  root.querySelectorAll(".pager [data-page]").forEach((btn) => {
-    btn.onclick = () => goListPage(btn.dataset.page);
-  });
+  bindPager(root, "page", goListPage);
 }
 
 function patchListResults() {
@@ -128,14 +114,11 @@ function patchListResults() {
       articlesItemsHtml(state.articles) || `<div class="empty">Aucun article</div>`;
     bindListResultClicks(list);
   }
-  const html = pagerHtml();
-  for (const id of ["list-pager-host", "list-pager-host-bottom"]) {
-    const host = document.getElementById(id);
-    if (host) {
-      host.innerHTML = html;
-      bindListPager(host);
-    }
-  }
+  patchPagerHosts(
+    ["list-pager-host", "list-pager-host-bottom"],
+    listPagerHtml(),
+    bindListPager
+  );
 }
 
 export async function loadList({ soft = false, fromAc = false } = {}) {
@@ -209,11 +192,11 @@ export function renderList() {
       </div>
       <div class="list-meta">
         <p class="count-line" id="list-count">${listRangeLabel()}</p>
-        <div id="list-pager-host">${pagerHtml()}</div>
+        <div id="list-pager-host">${listPagerHtml()}</div>
       </div>
       ${state.error ? `<p class="err">${escapeHtml(state.error)}</p>` : ""}
       <div id="list-results">${items}</div>
-      <div id="list-pager-host-bottom" class="list-pager-bottom">${pagerHtml()}</div>
+      <div id="list-pager-host-bottom" class="list-pager-bottom">${listPagerHtml()}</div>
     </main>
     <button class="fab" type="button" id="btn-new" title="Nouvel article" aria-label="Nouvel article">+</button>`;
 

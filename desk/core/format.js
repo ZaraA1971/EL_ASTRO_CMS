@@ -6,6 +6,14 @@ export function escapeHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
+/** Ligne libellé · valeur pour cartouches liste (comptes, …). */
+export function listMetaRow(label, value) {
+  if (value == null || value === "") return "";
+  return `<div class="list-item-kv"><span class="list-item-k">${escapeHtml(
+    label
+  )}</span><span class="list-item-v">${escapeHtml(value)}</span></div>`;
+}
+
 /** Groupe de boutons filtre (remplace les <select>). */
 export function filterChips(ariaLabel, options, activeValue, dataAttr) {
   const buttons = options

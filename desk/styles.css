@@ -766,6 +766,57 @@ details.x-panel[open] {
   color: var(--muted);
 }
 
+.list-item--user h2 {
+  margin-bottom: 10px;
+}
+
+.list-item-meta {
+  display: grid;
+  gap: 4px 12px;
+  margin: 0;
+}
+
+@media (min-width: 640px) {
+  .list-item-meta {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.list-item-kv {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  min-width: 0;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.list-item-k {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.list-item-k::after {
+  content: "·";
+  margin-left: 6px;
+  font-weight: 400;
+  opacity: 0.55;
+}
+
+.list-item-v {
+  min-width: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.badge-role {
+  background: #eef2ff;
+  color: #3730a3;
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+
 .badge {
   display: inline-block;
   font-size: 0.68rem;
