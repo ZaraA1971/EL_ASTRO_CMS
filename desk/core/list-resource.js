@@ -34,6 +34,7 @@ export function roleBadgeHtml(label) {
  *   metaClass?: string,
  *   topBadgeHtml: string,
  *   statusBadgeHtml: string,
+ *   actionsHtml?: string,
  * }} opts
  */
 export function listSplitCardHtml({
@@ -45,12 +46,12 @@ export function listSplitCardHtml({
   metaClass = "",
   topBadgeHtml,
   statusBadgeHtml: statusHtml,
+  actionsHtml = "",
 }) {
   const attrs = Object.entries(dataAttrs || {})
     .map(([k, v]) => `data-${k}="${escapeHtml(String(v))}"`)
     .join(" ");
-  return `
-    <button class="list-item ${itemClass}" type="button" ${attrs}>
+  const inner = `
       <div class="list-item-split">
         <div class="list-item-split__body">
           <h2>${escapeHtml(title)}</h2>
@@ -65,7 +66,17 @@ export function listSplitCardHtml({
           ${topBadgeHtml}
           ${statusHtml}
         </aside>
-      </div>
+      </div>`;
+  if (actionsHtml) {
+    return `
+    <div class="list-item ${itemClass} list-item--with-dismiss">
+      ${actionsHtml}
+      <button class="list-item__hit" type="button" ${attrs}>${inner}</button>
+    </div>`;
+  }
+  return `
+    <button class="list-item ${itemClass}" type="button" ${attrs}>
+      ${inner}
     </button>`;
 }
 

@@ -1,4 +1,5 @@
 import { state } from "../core/state.js";
+import { api } from "../core/api.js";
 import {
   escapeHtml,
   formatDate,
@@ -60,7 +61,12 @@ const listAc = createAutocomplete({
   },
 });
 
+function canDeleteArticles() {
+  return Boolean(state.caps?.editAll);
+}
+
 function articlesItemsHtml(articles) {
+  const canDelete = canDeleteArticles();
   return (articles || [])
     .map((a) => {
       const d = a.data;
@@ -85,14 +91,41 @@ function articlesItemsHtml(articles) {
         statusBadgeHtml: d.draft
           ? statusBadgeHtml("draft", "Brouillon")
           : statusBadgeHtml("live", "En ligne"),
+        actionsHtml: canDelete
+          ? `<button type="button" class="list-item-dismiss" data-delete-article="${escapeHtml(
+              String(d.article_id)
+            )}" data-delete-title="${escapeHtml(
+              d.title || ""
+            )}" title="Supprimer" aria-label="Supprimer l’article">×</button>`
+          : "",
       });
     })
     .join("");
 }
 
+async function deleteArticleFromList(id, title) {
+  const label = String(title || id).trim() || String(id);
+  if (!confirm(`Supprimer définitivement « ${label} » ?`)) return;
+  try {
+    state.error = "";
+    await api(`/api/desk/articles/${id}`, { method: "DELETE" });
+    await loadList({ soft: true });
+  } catch (err) {
+    state.error = err.message || "Suppression impossible";
+    if (state.view === "list") renderList();
+  }
+}
+
 function bindListResultClicks(root = app) {
   root.querySelectorAll("[data-open]").forEach((btn) => {
     btn.onclick = () => openArticle(btn.dataset.open);
+  });
+  root.querySelectorAll("[data-delete-article]").forEach((btn) => {
+    btn.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      deleteArticleFromList(btn.dataset.deleteArticle, btn.dataset.deleteTitle);
+    };
   });
 }
 

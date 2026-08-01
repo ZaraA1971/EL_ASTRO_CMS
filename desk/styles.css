@@ -771,6 +771,53 @@ details.x-panel[open] {
   padding: 16px 18px;
 }
 
+/* Croix supprimer dans le cartouche, coin haut droit. */
+.list-item--with-dismiss {
+  position: relative;
+  cursor: default;
+}
+
+.list-item__hit {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.list-item-dismiss {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: 500 1.15rem/1 var(--ui);
+  cursor: pointer;
+}
+
+.list-item-dismiss:hover {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.list-item--with-dismiss .list-item-split__aside {
+  padding-top: 22px;
+}
+
 /* Corps à gauche · badges coin haut/bas droit (articles + comptes). */
 .list-item-split {
   display: flex;
