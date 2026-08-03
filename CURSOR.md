@@ -133,6 +133,7 @@ Exemples : `shared/excerpt.mjs` (`stripHtmlToText`, chapô),
 `shared/html-clean.mjs`, `shared/escape-html.mjs`,
 `shared/mysql-date.mjs`, `shared/article-path.mjs`,
 `shared/article-row.mjs` (`rowToArticle`, `parseJsonArray`),
+`shared/roles.mjs` (rôles, ACL, libellés UI/e-mail),
 `shared/editorial-update.mjs` (grâce 45 min « Mis à jour »),
 `shared/categories.mjs` (rubriques builtins).
 

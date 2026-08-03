@@ -10,6 +10,11 @@ import {
   publicUser,
   effectiveStatus,
   ROLES,
+  roleLabelUi,
+  roleLabelEmail,
+  statusLabel,
+  STAFF_ROLE_KEYS,
+  isStaffRole,
 } from './roles.mjs';
 
 describe('normalizeRole / mapWpRoleToEl', () => {
@@ -127,5 +132,16 @@ describe('publicUser / effectiveStatus', () => {
       }),
       'expired'
     );
+  });
+});
+
+describe('role / status labels', () => {
+  it('exposes UI and email labels from shared', () => {
+    assert.equal(roleLabelUi('editor'), 'Éditeur');
+    assert.equal(roleLabelEmail('editor'), 'éditeur');
+    assert.equal(statusLabel('active'), 'Actif');
+    assert.deepEqual([...STAFF_ROLE_KEYS], ['admin', 'editor', 'author']);
+    assert.equal(isStaffRole('author'), true);
+    assert.equal(isStaffRole('subscriber'), false);
   });
 });

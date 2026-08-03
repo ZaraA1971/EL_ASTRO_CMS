@@ -1,9 +1,11 @@
 ---
 export const prerender = true;
 import AuthLayout from "../layouts/AuthLayout.astro";
+import { STAFF_ROLE_KEYS } from "@el/roles";
 
 const iosAppStoreUrl =
   "https://apps.apple.com/fr/app/electronlibre-ia/id6743965549";
+const rolesBootstrap = JSON.stringify({ staff: [...STAFF_ROLE_KEYS] });
 ---
 
 <AuthLayout
@@ -174,6 +176,11 @@ const iosAppStoreUrl =
   </section>
 </AuthLayout>
 
+<script
+  id="el-roles-bootstrap"
+  type="application/json"
+  set:html={rolesBootstrap}
+/>
 <script is:inline>
   (function () {
     var guest = document.getElementById("el-compte-guest");
@@ -221,8 +228,16 @@ const iosAppStoreUrl =
       }
     }
 
+    // Source : shared/roles.mjs (STAFF_ROLE_KEYS) via bootstrap JSON.
+    var STAFF_ROLE_KEYS = [];
+    try {
+      var boot = document.getElementById("el-roles-bootstrap");
+      STAFF_ROLE_KEYS = JSON.parse(boot.textContent).staff || [];
+    } catch (e) {
+      STAFF_ROLE_KEYS = ["admin", "editor", "author"];
+    }
     function isStaffRole(role) {
-      return role === "admin" || role === "editor" || role === "author";
+      return STAFF_ROLE_KEYS.indexOf(role) >= 0;
     }
 
     function planLabel(plan, stripe, role) {

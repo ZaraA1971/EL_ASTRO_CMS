@@ -4,7 +4,12 @@
  * - notification aux administrateurs (création / suppression)
  */
 import { sendBrevoEmail, brevoConfigured } from './brevo.mjs';
-import { ROLES, STATUSES, normalizeRole } from './roles.mjs';
+import {
+  ROLES,
+  STATUSES,
+  normalizeRole,
+  roleLabelEmail,
+} from './roles.mjs';
 import {
   CONTACT_EMAIL,
   EL_EMAIL_TOKENS,
@@ -14,18 +19,11 @@ import {
 
 export { IOS_APP_STORE_URL, escapeHtml, renderElEmail } from './email/brand.mjs';
 
-const ROLE_LABELS = Object.freeze({
-  [ROLES.ADMIN]: 'administrateur',
-  [ROLES.EDITOR]: 'éditeur',
-  [ROLES.AUTHOR]: 'auteur',
-  [ROLES.SUBSCRIBER]: 'abonné',
-  [ROLES.OTHER]: 'compte',
-});
-
 const T = EL_EMAIL_TOKENS;
 
+/** Alias historique — source : shared/roles.mjs */
 export function roleLabelFr(role) {
-  return ROLE_LABELS[normalizeRole(role)] || ROLE_LABELS[ROLES.OTHER];
+  return roleLabelEmail(role);
 }
 
 function sourceLabelFr(source) {

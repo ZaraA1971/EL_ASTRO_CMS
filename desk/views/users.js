@@ -20,24 +20,9 @@ import {
 } from "../core/list-resource.js";
 import { ctx } from "../core/ctx.js";
 import { logout } from "./login.js";
+import { isStaffRole, roleLabelUi, statusLabel } from "../roles.js";
 
 const app = document.getElementById("app");
-
-const ROLE_LABELS = {
-  admin: "Admin",
-  editor: "Éditeur",
-  author: "Auteur",
-  subscriber: "Abonné",
-  other: "Autre",
-};
-
-const STATUS_LABELS = {
-  active: "Actif",
-  disabled: "Désactivé",
-  expired: "Expiré",
-};
-
-const STAFF_ROLES = new Set(["admin", "editor", "author"]);
 
 /** Autocomplete + recherche comptes. */
 const usersAc = createAutocomplete({
@@ -60,7 +45,7 @@ const usersAc = createAutocomplete({
     sub: [
       u.login,
       u.email || "",
-      ROLE_LABELS[u.role] || u.role,
+      roleLabelUi(u.role),
       u.entitled ? "premium" : "sans premium",
     ]
       .filter(Boolean)
@@ -85,7 +70,7 @@ function usersItemsHtml(users) {
       const st = u.status || "active";
       const badgeKind =
         st === "active" ? "live" : st === "disabled" ? "draft" : "warn";
-      const isStaff = STAFF_ROLES.has(u.role);
+      const isStaff = isStaffRole(u.role);
       const accessBits = [];
       if (u.entitled) accessBits.push("Premium oui");
       else accessBits.push("Premium non");
@@ -116,8 +101,8 @@ function usersItemsHtml(users) {
           registered ? listMetaRow("Inscrit", registered) : "",
           updated ? listMetaRow("Mis à jour", updated) : "",
         ].join(""),
-        topBadgeHtml: roleBadgeHtml(ROLE_LABELS[u.role] || u.role),
-        statusBadgeHtml: statusBadgeHtml(badgeKind, STATUS_LABELS[st] || st),
+        topBadgeHtml: roleBadgeHtml(roleLabelUi(u.role)),
+        statusBadgeHtml: statusBadgeHtml(badgeKind, statusLabel(st)),
         actionsHtml:
           canDelete && !isSelf
             ? listDismissHtml({
@@ -594,13 +579,13 @@ export function renderUserEdit() {
   const roleOpts = roles
     .map(
       (r) =>
-        `<option value="${r}" ${u.role === r ? "selected" : ""}>${escapeHtml(ROLE_LABELS[r] || r)}</option>`
+        `<option value="${r}" ${u.role === r ? "selected" : ""}>${escapeHtml(roleLabelUi(r))}</option>`
     )
     .join("");
   const statusOpts = (state.usersMeta.statuses || ["active", "disabled", "expired"])
     .map(
       (s) =>
-        `<option value="${s}" ${u.status === s ? "selected" : ""}>${escapeHtml(STATUS_LABELS[s] || s)}</option>`
+        `<option value="${s}" ${u.status === s ? "selected" : ""}>${escapeHtml(statusLabel(s))}</option>`
     )
     .join("");
   const nlOn = u.newsletter_opt_in !== false && u.newsletter_opt_in !== 0;
@@ -713,7 +698,7 @@ export function renderUserEdit() {
                 <p id="user-delete-desc" class="user-delete-confirm__desc">
                   Supprimer définitivement le compte
                   <strong>${escapeHtml(u.login || u.email || String(u.id))}</strong>
-                  (${escapeHtml(ROLE_LABELS[u.role] || u.role || "")})&nbsp;?
+                  (${escapeHtml(roleLabelUi(u.role))})&nbsp;?
                   Cette action est irréversible.
                 </p>
                 <div class="row" style="gap:10px;flex-wrap:wrap">

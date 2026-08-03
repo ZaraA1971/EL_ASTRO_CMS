@@ -87,6 +87,9 @@ URL article `/articles/{id}-{slug}/` : [`shared/article-path.mjs`](shared/articl
 Ligne article MySQL : [`shared/article-row.mjs`](shared/article-row.mjs)  
 (`parseJsonArray`, `parseRowDate`, `rowToArticle`) → API `server/lib/db.mjs` · Astro `@el/article-row`.
 
+Rôles / libellés : [`shared/roles.mjs`](shared/roles.mjs)  
+→ API `server/lib/roles.mjs` · Astro `@el/roles` · desk `desk/roles.js` (symlink).
+
 ```js
 chapo(article, 'hero')           // 130
 chapo(article, 'card')           // 28

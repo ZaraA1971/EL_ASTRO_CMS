@@ -29,6 +29,7 @@ export default defineConfig({
         '@el/editorial-update': path.join(root, 'shared/editorial-update.mjs'),
         '@el/article-path': path.join(root, 'shared/article-path.mjs'),
         '@el/article-row': path.join(root, 'shared/article-row.mjs'),
+        '@el/roles': path.join(root, 'shared/roles.mjs'),
       },
     },
     server: {
