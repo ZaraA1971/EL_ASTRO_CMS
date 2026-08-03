@@ -41,8 +41,14 @@ async function handle(req, res, ctx) {
     });
   } catch (err) {
     console.error('[desk] assist', err.message);
+    const raw = String(err.message || '').trim();
+    const friendly =
+      raw === 'all_models_exhausted'
+        ? 'Assistance IA indisponible (quota / facturation modèle). Réessayez ou contactez un admin.'
+        : raw || 'Échec assist IA';
     return sendJson(res, err.status || 502, {
-      error: err.message || 'Échec assist IA',
+      error: friendly,
+      code: raw === 'all_models_exhausted' ? 'assist_unavailable' : undefined,
     });
   }
 }

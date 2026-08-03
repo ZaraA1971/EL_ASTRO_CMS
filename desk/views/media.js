@@ -1,7 +1,7 @@
 import { state } from "../core/state.js";
 import { api, apiForm } from "../core/api.js";
 import { escapeHtml, brandBlock } from "../core/format.js";
-import { createPagedList } from "../core/list-resource.js";
+import { createPagedList, listDismissHtml } from "../core/list-resource.js";
 import { ctx } from "../core/ctx.js";
 import { getVisualEditor, exec, getBodyFromDom } from "../core/body-editor.js";
 import { logout } from "./login.js";
@@ -69,7 +69,10 @@ function mediaPreviewHtml(item) {
   return `<span class="media-type-badge" aria-hidden="true">${escapeHtml(mediaKindLabel(item))}</span>`;
 }
 
-function mediaGridHtml(items, { selectedId = null, emptyHint = "" } = {}) {
+function mediaGridHtml(
+  items,
+  { selectedId = null, emptyHint = "", canDelete = false } = {}
+) {
   if (!items.length) {
     return `<p class="media-empty">Aucun document${emptyHint}.</p>`;
   }
@@ -80,11 +83,21 @@ function mediaGridHtml(items, { selectedId = null, emptyHint = "" } = {}) {
           selectedId != null && Number(selectedId) === Number(it.id)
             ? " is-selected"
             : "";
-        return `<button type="button" class="media-card${sel}" data-media-id="${it.id}" title="${escapeHtml(it.filename)}">
+        const card = `<button type="button" class="media-card${sel}" data-media-id="${it.id}" title="${escapeHtml(it.filename)}">
           ${mediaPreviewHtml(it)}
           <span class="media-card-name">${escapeHtml(it.filename)}</span>
           <span class="media-card-kind">${escapeHtml(mediaKindLabel(it))}</span>
         </button>`;
+        if (!canDelete) return card;
+        return `<div class="media-card-shell">
+          ${listDismissHtml({
+            dataAttr: "delete-media",
+            id: it.id,
+            title: it.filename || "",
+            ariaLabel: "Supprimer le document",
+          })}
+          ${card}
+        </div>`;
       })
       .join("")}
   </div>`;
@@ -206,14 +219,14 @@ async function deleteMediaItem(id) {
   if (!confirm(`Supprimer « ${item.filename} » ?`)) return;
   try {
     await api(`/api/desk/media/${id}`, { method: "DELETE" });
-    mp.items = mp.items.filter((i) => Number(i.id) !== Number(id));
-    mp.total = Math.max(0, mp.total - 1);
     if (Number(mp.selectedId) === Number(id)) mp.selectedId = null;
     mp.status = "Fichier supprimé.";
+    mp.error = "";
+    await loadMediaPage(mp.page || 1);
   } catch (err) {
     mp.error = err.message || "Suppression impossible";
+    refreshMediaUi();
   }
-  refreshMediaUi();
 }
 
 async function saveMediaAlt(id, alt) {
@@ -302,6 +315,13 @@ function bindMediaControls(root, { idPrefix = "media", mode = "picker" } = {}) {
     };
   }
   mediaCtl.bindPager(root);
+  root.querySelectorAll("[data-delete-media]").forEach((btn) => {
+    btn.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      deleteMediaItem(btn.dataset.deleteMedia);
+    };
+  });
   root.querySelectorAll("[data-media-id]").forEach((btn) => {
     btn.onclick = async (e) => {
       const id = Number(btn.dataset.mediaId);
@@ -344,6 +364,7 @@ function paintMediaPicker() {
     ? `<p class="media-empty">Chargement…</p>`
     : mediaGridHtml(mp.items, {
         emptyHint: mp.q ? " pour cette recherche" : "",
+        canDelete,
       });
 
   root.innerHTML = `
@@ -362,7 +383,7 @@ function paintMediaPicker() {
         ${chrome.bottom}
         ${
           canDelete
-            ? `<p class="uk-help">Clic = insérer le lien. Shift+clic = supprimer (éditeurs).</p>`
+            ? `<p class="uk-help">Clic = insérer le lien. × = supprimer.</p>`
             : `<p class="uk-help">Clic = insérer le lien document dans l’article.</p>`
         }
       </footer>
@@ -398,6 +419,7 @@ export function renderMedia() {
     : mediaGridHtml(mp.items, {
         selectedId: mp.selectedId,
         emptyHint: mp.q ? " pour cette recherche" : "",
+        canDelete,
       });
 
   const detail = selected

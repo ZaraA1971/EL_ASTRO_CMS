@@ -14,6 +14,7 @@ import { createAutocomplete } from "../core/autocomplete.js";
 import {
   createPagedList,
   listSplitCardHtml,
+  listDismissHtml,
   roleBadgeHtml,
   statusBadgeHtml,
 } from "../core/list-resource.js";
@@ -72,7 +73,13 @@ const usersAc = createAutocomplete({
   },
 });
 
+function canDeleteUsers() {
+  return Boolean(state.caps?.manageUsers);
+}
+
 function usersItemsHtml(users) {
+  const canDelete = canDeleteUsers();
+  const selfId = Number(state.user?.id);
   return (users || [])
     .map((u) => {
       const st = u.status || "active";
@@ -96,6 +103,7 @@ function usersItemsHtml(users) {
             : "Non";
       const registered = formatDate(u.registered);
       const updated = formatDateTime(u.updated_at);
+      const isSelf = Number(u.id) === selfId;
       return listSplitCardHtml({
         itemClass: "list-item--user",
         dataAttrs: { user: u.id },
@@ -110,14 +118,43 @@ function usersItemsHtml(users) {
         ].join(""),
         topBadgeHtml: roleBadgeHtml(ROLE_LABELS[u.role] || u.role),
         statusBadgeHtml: statusBadgeHtml(badgeKind, STATUS_LABELS[st] || st),
+        actionsHtml:
+          canDelete && !isSelf
+            ? listDismissHtml({
+                dataAttr: "delete-user",
+                id: u.id,
+                title: u.name || u.login || "",
+                ariaLabel: "Supprimer le compte",
+              })
+            : "",
       });
     })
     .join("");
 }
 
+async function deleteUserFromList(id, title) {
+  const label = String(title || id).trim() || String(id);
+  if (!confirm(`Supprimer définitivement le compte « ${label} » ?`)) return;
+  try {
+    state.error = "";
+    await api(`/api/desk/users/${id}`, { method: "DELETE" });
+    await loadUsers({ soft: true });
+  } catch (err) {
+    state.error = err.message || "Suppression impossible";
+    if (state.view === "users") renderUsers();
+  }
+}
+
 function bindUsersResultClicks(root = app) {
   root.querySelectorAll("[data-user]").forEach((btn) => {
     btn.onclick = () => openUser(btn.dataset.user);
+  });
+  root.querySelectorAll("[data-delete-user]").forEach((btn) => {
+    btn.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      deleteUserFromList(btn.dataset.deleteUser, btn.dataset.deleteTitle);
+    };
   });
 }
 

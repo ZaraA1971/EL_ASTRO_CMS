@@ -24,6 +24,20 @@ export function roleBadgeHtml(label) {
 }
 
 /**
+ * Croix supprimer (coin haut droit du cartouche).
+ * @param {{ dataAttr: string, id: string|number, title?: string, ariaLabel?: string }} opts
+ */
+export function listDismissHtml({ dataAttr, id, title = "", ariaLabel = "Supprimer" }) {
+  const attr = String(dataAttr || "").replace(/[^a-z0-9-]/gi, "");
+  if (!attr) return "";
+  return `<button type="button" class="list-item-dismiss" data-${attr}="${escapeHtml(
+    String(id)
+  )}" data-delete-title="${escapeHtml(title)}" title="Supprimer" aria-label="${escapeHtml(
+    ariaLabel
+  )}">×</button>`;
+}
+
+/**
  * Cartouche split : corps à gauche, badge haut droit + état bas droit.
  * @param {{
  *   itemClass: string,

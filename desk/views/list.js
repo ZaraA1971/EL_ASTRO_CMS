@@ -13,6 +13,7 @@ import { createAutocomplete } from "../core/autocomplete.js";
 import {
   createPagedList,
   listSplitCardHtml,
+  listDismissHtml,
   roleBadgeHtml,
   statusBadgeHtml,
 } from "../core/list-resource.js";
@@ -92,11 +93,12 @@ function articlesItemsHtml(articles) {
           ? statusBadgeHtml("draft", "Brouillon")
           : statusBadgeHtml("live", "En ligne"),
         actionsHtml: canDelete
-          ? `<button type="button" class="list-item-dismiss" data-delete-article="${escapeHtml(
-              String(d.article_id)
-            )}" data-delete-title="${escapeHtml(
-              d.title || ""
-            )}" title="Supprimer" aria-label="Supprimer l’article">×</button>`
+          ? listDismissHtml({
+              dataAttr: "delete-article",
+              id: d.article_id,
+              title: d.title || "",
+              ariaLabel: "Supprimer l’article",
+            })
           : "",
       });
     })
