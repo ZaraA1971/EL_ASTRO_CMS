@@ -12,6 +12,7 @@
  *   node scripts/sync-ia-keywords.mjs --limit=100
  */
 import { loadEnvFile, createPool, parseJsonArray } from '../server/lib/db.mjs';
+import { humanizeTag } from '../shared/humanize.mjs';
 
 const ENV_FILE = process.env.EL_API_ENV_FILE || '/etc/electronlibre/el-astro-api.env';
 const fileEnv = loadEnvFile(ENV_FILE);
@@ -26,14 +27,6 @@ function arg(name, fallback = null) {
 
 const DRY = Boolean(arg('dry-run', false));
 const LIMIT = Math.max(0, Number(arg('limit', 0)) || 0);
-
-function humanizeTag(slug) {
-  return String(slug || '')
-    .split(/[-_]+/)
-    .filter(Boolean)
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ');
-}
 
 function tagsToIaKeywords(tags) {
   const seen = new Set();

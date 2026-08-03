@@ -135,7 +135,9 @@ Exemples : `shared/excerpt.mjs` (`stripHtmlToText`, chapô),
 `shared/article-row.mjs` (`rowToArticle`, `parseJsonArray`),
 `shared/roles.mjs` (rôles, ACL, libellés UI/e-mail),
 `shared/editorial-update.mjs` (grâce 45 min « Mis à jour »),
-`shared/categories.mjs` (rubriques builtins).
+`shared/categories.mjs` (rubriques builtins),
+`shared/slugify.mjs` (articles `-`, rubriques `_`),
+`shared/humanize.mjs` (tags / mots-clés affichés).
 
 Si tu ajoutes une règle utilisée à plusieurs endroits : **factorer / étendre
 `shared/` d’abord**, puis brancher les call-sites. Dupliquer un seuil ou une

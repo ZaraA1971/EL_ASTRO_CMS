@@ -3,6 +3,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { slugify } from '../slugify.mjs';
 
 export const DEFAULT_MEDIA_ROOT = '/var/www/el-media/uploads';
 export const MEDIA_URL_PREFIX = '/media';
@@ -139,15 +140,12 @@ export function slugifyFilename(originalName, mime) {
     throw err;
   }
 
-  const stem = raw
-    .replace(/\.[^.]+$/, '')
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 80);
-  return `${stem || 'document'}.${ext}`;
+  const stem = slugify(raw.replace(/\.[^.]+$/, ''), {
+    sep: '-',
+    max: 80,
+    fallback: 'document',
+  });
+  return `${stem}.${ext}`;
 }
 
 export function yyyymmDirs(date = new Date()) {

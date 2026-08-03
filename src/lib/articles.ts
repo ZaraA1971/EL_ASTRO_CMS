@@ -5,6 +5,10 @@ import {
   articleIdSlug as sharedArticleIdSlug,
 } from '@el/article-path';
 import { rowToArticle as sharedRowToArticle } from '@el/article-row';
+import {
+  humanizeTag as sharedHumanizeTag,
+  displayKeyword as sharedDisplayKeyword,
+} from '@el/humanize';
 
 export type ArticleData = {
   article_id: number;
@@ -190,23 +194,14 @@ export function articleUpdateDate(article: Article): Date | null {
   return modified;
 }
 
+/** Affichage tag slug — source : shared/humanize.mjs */
 export function humanizeTag(slug: string): string {
-  return String(slug || '')
-    .split(/[-_]+/)
-    .filter(Boolean)
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ');
+  return sharedHumanizeTag(slug);
 }
 
 /** Affichage mot-clé IA (libellé déjà lisible) ou tag slug WP. */
 export function displayKeyword(value: string): string {
-  const raw = String(value || '').trim();
-  if (!raw) return '';
-  // Slug WP historique (ex. reseaux-sociaux) → libellé ; sinon garder tel quel
-  if (/^[a-z0-9]+(?:-[a-z0-9]+)+$/i.test(raw) && !/\s/.test(raw)) {
-    return humanizeTag(raw);
-  }
-  return raw;
+  return sharedDisplayKeyword(value);
 }
 
 /** Limite cards grille ; 0 = pas de limite (hero / sujets liés). */

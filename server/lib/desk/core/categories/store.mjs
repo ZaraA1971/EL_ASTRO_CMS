@@ -2,17 +2,7 @@
  * Store rubriques portable — table + defaults injectés par le host.
  */
 import { assertSafeSqlIdent } from '../http.mjs';
-
-function defaultSlugify(name) {
-  const base = String(name || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 64);
-  return base || 'rubrique';
-}
+import { slugifyCategoryName } from '../../../slugify.mjs';
 
 function rowToCategory(row) {
   return {
@@ -32,7 +22,7 @@ function rowToCategory(row) {
 export function createCategoriesStore({
   tableName = 'categories',
   defaults = [],
-  slugify = defaultSlugify,
+  slugify = slugifyCategoryName,
 } = {}) {
   const table = assertSafeSqlIdent(tableName, 'table catégories');
   let ensured = false;

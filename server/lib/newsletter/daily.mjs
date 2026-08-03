@@ -8,8 +8,10 @@ import { chapo, stripHtmlToText, trimExcerpt } from '../excerpt.mjs';
 import {
   escapeHtml,
   renderAppInstallPill,
+  EL_EMAIL_TOKENS,
 } from '../email/brand.mjs';
 import { absoluteArticleUrl } from '../article-path.mjs';
+import { humanizeTag } from '../humanize.mjs';
 
 const TZ = 'Europe/Paris';
 /** « Si vous l’aviez manqué » — court (hors contexte hero). */
@@ -47,19 +49,13 @@ const STOP_WORDS = [
   'cinema',
 ];
 
+/** Jetons e-mail + overrides newsletter (fond hero / corps). */
 const TOKENS = {
-  accent: '#2f6dfb',
+  ...EL_EMAIL_TOKENS,
   dark: '#333333',
   text: '#111827',
   body: '#475569',
-  meta: '#64748b',
-  surfaceAlt: '#f6f7f9',
-  border: '#e2e8f0',
   borderLight: '#f1f5f9',
-  onDarkMuted: '#cbd5e1',
-  brandLibre: '#7a7a7a',
-  fontUi: '-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif',
-  fontEditorial: 'Georgia, Times New Roman, serif',
 };
 
 export function normalizeKeyword(value) {
@@ -134,16 +130,10 @@ export function isEditorialArticle(article) {
 
 export function tagLabel(article) {
   const tags = article.tags || [];
-  if (tags[0]) return humanize(tags[0]);
+  if (tags[0]) return humanizeTag(tags[0]);
   const names = article.category_names || [];
   if (names[0]) return names[0];
   return 'News';
-}
-
-function humanize(slug) {
-  return String(slug || '')
-    .replace(/[-_]+/g, ' ')
-    .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 export function sortNewsletterArticles(articles) {
@@ -163,7 +153,7 @@ export function buildDynamicSubtitle(articles) {
       const norm = normalizeKeyword(tag);
       if (!norm || STOP_NORM.has(norm) || seen.has(norm)) continue;
       seen.add(norm);
-      names.push(humanize(tag));
+      names.push(humanizeTag(tag));
     }
   }
   if (!names.length) {

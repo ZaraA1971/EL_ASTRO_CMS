@@ -30,6 +30,8 @@ export default defineConfig({
         '@el/article-path': path.join(root, 'shared/article-path.mjs'),
         '@el/article-row': path.join(root, 'shared/article-row.mjs'),
         '@el/roles': path.join(root, 'shared/roles.mjs'),
+        '@el/slugify': path.join(root, 'shared/slugify.mjs'),
+        '@el/humanize': path.join(root, 'shared/humanize.mjs'),
       },
     },
     server: {

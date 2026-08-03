@@ -5,20 +5,9 @@
  */
 
 import { toMysqlDate, nowMysql } from '../../mysql-date.mjs';
+import { slugifyArticle as slugify } from '../../slugify.mjs';
 
-export { toMysqlDate, nowMysql };
-
-export function slugify(title) {
-  return (
-    String(title || 'article')
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-      .slice(0, 80) || 'article'
-  );
-}
+export { toMysqlDate, nowMysql, slugify };
 
 export function asJson(v) {
   if (!v) return JSON.stringify([]);

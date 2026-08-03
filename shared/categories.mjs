@@ -1,7 +1,11 @@
 /**
- * Rubriques ElectronLibre — source unique des builtins + helpers slug.
+ * Rubriques ElectronLibre — source unique des builtins + helpers.
  * Persistance runtime : table el_categories (server/lib/categories.mjs).
  */
+
+import { slugifyCategoryName } from './slugify.mjs';
+
+export { slugifyCategoryName };
 
 export const DEFAULT_CATEGORIES = Object.freeze([
   { slug: 'web_1_2_3', name: 'Web 1,2,3', sort_order: 10, show_in_nav: true },
@@ -16,18 +20,6 @@ export const DEFAULT_CATEGORIES = Object.freeze([
   { slug: 'marketing_room', name: 'Marketing', sort_order: 100, show_in_nav: true },
   { slug: 'paper', name: 'Papers', sort_order: 110, show_in_nav: false },
 ]);
-
-/** Slug WP-style : a-z 0-9 _ */
-export function slugifyCategoryName(name) {
-  const base = String(name || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 64);
-  return base || 'rubrique';
-}
 
 export function categoryNameFromList(list, slug) {
   const s = String(slug || '');
