@@ -1,20 +1,12 @@
 import { api } from "./api.js";
 import { state } from "./state.js";
+import { DEFAULT_CATEGORIES } from "../categories.js";
 
-/** Fallback si API rubriques indisponible */
-export const FALLBACK_RUBRICS = [
-  { value: "web_1_2_3", label: "Web 1,2,3" },
-  { value: "so_cult", label: "Culture" },
-  { value: "peer2peer", label: "Piratage" },
-  { value: "old_fashion_media", label: "Médias" },
-  { value: "so_amazing", label: "High-Tech" },
-  { value: "robotic", label: "Robotic" },
-  { value: "gaming", label: "Gaming" },
-  { value: "le_flouze", label: "Économie" },
-  { value: "politique", label: "Politique" },
-  { value: "marketing_room", label: "Marketing" },
-  { value: "paper", label: "Papers" },
-];
+/** Fallback si API rubriques indisponible — dérivé de shared/categories.mjs */
+export const FALLBACK_RUBRICS = DEFAULT_CATEGORIES.map((c) => ({
+  value: c.slug,
+  label: c.name,
+}));
 
 export function rubricList() {
   return state.rubrics && state.rubrics.length

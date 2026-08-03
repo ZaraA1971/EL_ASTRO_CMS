@@ -3,6 +3,8 @@
  * Cible : entités concrètes (noms, entreprises, secteurs) — pas de thèmes larges.
  */
 
+import { stripHtmlToText as htmlToText } from './excerpt.mjs';
+
 /** Plafond de sécurité (articles extrêmes) — le corps entier passe en dessous. */
 const MAX_CONTENT_CHARS = 80_000;
 const MAX_KEYWORDS = 7;
@@ -77,23 +79,9 @@ const KEYWORD_DENYLIST = new Set(
   ].map((s) => s.toLocaleLowerCase('fr'))
 );
 
+/** Texte article pour extracteur — conserve les sauts de blocs. */
 export function stripHtmlToText(html) {
-  return String(html || '')
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/(p|div|h[1-6]|li|tr|blockquote)>/gi, '\n')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/&quot;/gi, '"')
-    .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .replace(/[ \t]{2,}/g, ' ')
-    .trim();
+  return htmlToText(html, { blocks: true });
 }
 
 /**

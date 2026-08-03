@@ -2,6 +2,10 @@
  * Identité e-mail ElectronLibre (partagée newsletter / comptes).
  */
 
+import { escapeHtml } from '../escape-html.mjs';
+
+export { escapeHtml };
+
 export const CONTACT_EMAIL = 'info@electronlibre.info';
 
 /** Lien App Store iOS — même URL partout (newsletter, bienvenue…). */
@@ -22,14 +26,6 @@ export const EL_EMAIL_TOKENS = Object.freeze({
   fontUi: '-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif',
   fontEditorial: 'Georgia, Times New Roman, serif',
 });
-
-export function escapeHtml(s) {
-  return String(s ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
 
 /**
  * Pastille « Installer l’app » (style newsletter).

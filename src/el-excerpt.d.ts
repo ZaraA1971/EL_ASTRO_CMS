@@ -12,7 +12,10 @@ declare module '@el/excerpt' {
   >;
 
   export function stripLeadingChapoHtml(html: string): string;
-  export function stripHtmlToText(html: string): string;
+  export function stripHtmlToText(
+    html: string,
+    opts?: { blocks?: boolean }
+  ): string;
   export function plainTextFromHtml(html: string): string;
   export function deriveExcerptFromBody(
     bodyHtml: string,

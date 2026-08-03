@@ -35,11 +35,23 @@ export function stripLeadingChapoHtml(html) {
   return String(html || '').replace(CHAPO_LEAD_RE, '');
 }
 
-export function stripHtmlToText(html) {
-  return String(html || '')
+/**
+ * HTML → texte.
+ * @param {string} html
+ * @param {{ blocks?: boolean }} [opts] blocks=true : sauts de ligne pour <br>/blocs (extracteurs).
+ */
+export function stripHtmlToText(html, opts = {}) {
+  const blocks = Boolean(opts.blocks);
+  let s = String(html || '')
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ');
+  if (blocks) {
+    s = s
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/(p|div|h[1-6]|li|tr|blockquote)>/gi, '\n');
+  }
+  s = s
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/gi, ' ')
     .replace(/\u00a0/g, ' ')
@@ -47,9 +59,15 @@ export function stripHtmlToText(html) {
     .replace(/&lt;/gi, '<')
     .replace(/&gt;/gi, '>')
     .replace(/&quot;/gi, '"')
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/\s+/g, ' ')
-    .trim();
+    .replace(/&#39;|&apos;/gi, "'");
+  if (blocks) {
+    return s
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .replace(/[ \t]{2,}/g, ' ')
+      .trim();
+  }
+  return s.replace(/\s+/g, ' ').trim();
 }
 
 /** Alias lisible pour le front. */

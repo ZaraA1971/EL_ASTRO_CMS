@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import { sendBrevoEmail, brevoConfigured } from './brevo.mjs';
 import { hashUserPassword } from './users.mjs';
 import { STATUSES } from './roles.mjs';
+import { escapeHtml } from './escape-html.mjs';
 
 const TOKEN_TTL_MS = 60 * 60 * 1000; // 1 h
 
@@ -178,10 +179,3 @@ export async function resetPasswordWithToken(pool, token, newPassword) {
   return { id: Number(user.id), login: user.login };
 }
 
-function escapeHtml(s) {
-  return String(s || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}

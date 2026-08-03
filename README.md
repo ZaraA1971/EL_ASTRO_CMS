@@ -73,6 +73,13 @@ Source unique : [`shared/excerpt.mjs`](shared/excerpt.mjs)
 Mise à jour éditoriale (grâce 45 min) : [`shared/editorial-update.mjs`](shared/editorial-update.mjs)  
 → API `server/lib/editorial-update.mjs` · Astro `@el/editorial-update` · desk `desk/editorial-update.js` (symlink).
 
+Rubriques builtins : [`shared/categories.mjs`](shared/categories.mjs)  
+→ API `server/lib/categories.mjs` · Astro `@el/categories` · desk `desk/categories.js` (symlink ; fallback pupitre via `desk/core/rubrics.js`).
+
+Échappement HTML : [`shared/escape-html.mjs`](shared/escape-html.mjs)  
+→ API `server/lib/escape-html.mjs` · desk `desk/escape-html.js` (symlink).  
+Texte depuis HTML : `stripHtmlToText` / `trimExcerpt` dans [`shared/excerpt.mjs`](shared/excerpt.mjs) (pas de copies locales).
+
 ```js
 chapo(article, 'hero')           // 130
 chapo(article, 'card')           // 28

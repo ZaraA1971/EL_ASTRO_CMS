@@ -4,7 +4,7 @@
  */
 
 import { parseJsonArray } from '../db.mjs';
-import { chapo } from '../excerpt.mjs';
+import { chapo, stripHtmlToText, trimExcerpt } from '../excerpt.mjs';
 import {
   escapeHtml,
   renderAppInstallPill,
@@ -108,35 +108,20 @@ export function todayYmdParis(now = new Date()) {
   return fmt.format(now); // YYYY-MM-DD
 }
 
-function stripHtmlToText(html) {
-  return String(html || '')
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
+/** Alias — même implémentation que shared/excerpt trimExcerpt. */
 export function trimWords(text, limit) {
-  const words = String(text || '').split(/\s+/).filter(Boolean);
-  if (words.length <= limit) return words.join(' ');
-  return `${words.slice(0, limit).join(' ')}…`;
+  return trimExcerpt(text, limit);
 }
 
 export function articleExcerptFromBody(body, wordLimit = 120) {
-  return trimWords(stripHtmlToText(body), wordLimit);
+  return trimExcerpt(stripHtmlToText(body), wordLimit);
 }
 
 /** Extrait court (section « manqué ») — chapô stocké, sinon trim du corps. */
 export function articleExcerptForNewsletter(article, wordLimit = MISSED_EXCERPT_WORDS) {
   const stored = stripHtmlToText(article?.excerpt || '');
   if (stored) {
-    return wordLimit ? trimWords(stored, wordLimit) : stored;
+    return wordLimit ? trimExcerpt(stored, wordLimit) : stored;
   }
   return articleExcerptFromBody(article?.body, wordLimit);
 }

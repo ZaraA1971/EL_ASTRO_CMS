@@ -2,17 +2,10 @@
  * Génération de variantes de posts X orientées engagement.
  */
 
-import { chapo } from './excerpt.mjs';
+import { chapo, stripHtmlToText } from './excerpt.mjs';
 import { callEditorialAssist } from './editorial-assist.mjs';
 import { X_ACCOUNTS, normalizeXAccount, DEFAULT_X_ACCOUNT } from './x-accounts.mjs';
 import { X_MAX_LENGTH, xWeightedLength } from './x-post.mjs';
-
-function stripHtml(html) {
-  return String(html || '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
 
 function articleUrl(siteUrl, row) {
   const base = String(siteUrl || '').replace(/\/+$/, '');
@@ -46,7 +39,8 @@ function compose(hook, url) {
 
 function fallbackVariants(row, url) {
   const title = String(row.title || '').trim();
-  const excerpt = chapo(row, 'card') || stripHtml(row.excerpt).slice(0, 180);
+  const excerpt =
+    chapo(row, 'card') || stripHtmlToText(row.excerpt).slice(0, 180);
   const v1 = title || excerpt || 'À lire sur ElectronLibre';
   const v2 =
     excerpt && excerpt !== title ? excerpt : `${title} — ce qu’il faut retenir`;
@@ -98,7 +92,8 @@ export async function generateXVariants(row, opts) {
   const meta = X_ACCOUNTS[accountId];
   const url = articleUrl(opts.siteUrl, row);
   const title = String(row.title || '').trim();
-  const excerpt = chapo(row, 'card') || stripHtml(row.excerpt).slice(0, 220);
+  const excerpt =
+    chapo(row, 'card') || stripHtmlToText(row.excerpt).slice(0, 220);
   const fallback = fallbackVariants(row, url);
 
   const source = [

@@ -118,6 +118,26 @@ sudo tail -30 /var/log/nginx/error.log
 - Ne pas cacher un CTA billing derrière un état DB incohérent (staff + Stripe).
 - Après fix prod : healthcheck HTTP **avant** de dire que c’est bon.
 
+## Source unique (quand c’est possible)
+
+Règle : **une seule source de vérité** pour une constante, une règle métier ou un
+module partagé. Pas de copie « alignée à la main » entre desk / API / Astro.
+
+- Logique commune → `shared/*.mjs`
+- API → `server/lib/*.mjs` en **re-export** depuis `shared/`
+- Astro → alias Vite `@el/…` + éventuel re-export typé dans `src/lib/`
+- Desk navigateur → **symlink** `desk/foo.js` → `../shared/foo.mjs`
+  (extension `.js` obligatoire côté navigateur ; pas de `.mjs` servi tel quel)
+
+Exemples : `shared/excerpt.mjs` (`stripHtmlToText`, chapô),
+`shared/html-clean.mjs`, `shared/escape-html.mjs`,
+`shared/editorial-update.mjs` (grâce 45 min « Mis à jour »),
+`shared/categories.mjs` (rubriques builtins).
+
+Si tu ajoutes une règle utilisée à plusieurs endroits : **factorer / étendre
+`shared/` d’abord**, puis brancher les call-sites. Dupliquer un seuil ou une
+fonction « pour aller vite » est une dette — la corriger avant de committer.
+
 ## Dev local
 
 Voir `AGENTS.md` : `astro dev --background` (+ `stop` / `status` / `logs`).

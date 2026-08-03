@@ -4,6 +4,7 @@
 import { chapo } from '../excerpt.mjs';
 import { cleanHtml } from '../html-clean.mjs';
 import { isEditorialUpdate } from '../editorial-update.mjs';
+import { escapeHtml } from '../escape-html.mjs';
 
 function normalizeLang(lang) {
   const l = String(lang || 'FR').toUpperCase();
@@ -12,14 +13,6 @@ function normalizeLang(lang) {
 
 function isPublicAccess(row) {
   return String(row?.access || '').toLowerCase() === 'granted';
-}
-
-function escapeHtmlText(s) {
-  return String(s || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 }
 
 /**
@@ -34,7 +27,7 @@ export function sanitizeHtmlForIos(html) {
   if (!/<[a-z][\s\S]*>/i.test(h)) {
     return h
       .split(/\n{2,}/)
-      .map((p) => `<p>${escapeHtmlText(p).replace(/\n/g, '<br />')}</p>`)
+      .map((p) => `<p>${escapeHtml(p).replace(/\n/g, '<br />')}</p>`)
       .join('');
   }
 

@@ -1,12 +1,7 @@
 import { isEditorialUpdate } from "../editorial-update.js";
 
-export function escapeHtml(s) {
-  return String(s || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
+export { escapeHtml } from "../escape-html.js";
+import { escapeHtml } from "../escape-html.js";
 
 /** Ligne libellé · valeur pour cartouches liste (comptes, …). */
 export function listMetaRow(label, value) {

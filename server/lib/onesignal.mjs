@@ -3,19 +3,14 @@
  * Env : ONESIGNAL_APP_ID, ONESIGNAL_REST_API_KEY, ONESIGNAL_SITE_URL
  */
 
+import { stripHtmlToText } from './excerpt.mjs';
+
 function authHeader(apiKey) {
   const key = String(apiKey || '').trim();
   if (!key) return null;
   // Clés riches OneSignal (os_v2_… / os_v…) → "Key …", sinon legacy Basic
   if (key.startsWith('os_v')) return `Key ${key}`;
   return `Basic ${key}`;
-}
-
-function stripHtml(html) {
-  return String(html || '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
 }
 
 /**
@@ -39,7 +34,8 @@ export async function sendArticlePush(articleRow, opts) {
   const articleTitle = String(articleRow.title || 'Nouvel article').trim();
   const heading = String(opts.title || 'ElectronLibre').trim() || 'ElectronLibre';
   const content =
-    stripHtml(articleRow.excerpt).slice(0, 220) || articleTitle.slice(0, 220);
+    stripHtmlToText(articleRow.excerpt).slice(0, 220) ||
+    articleTitle.slice(0, 220);
   const url = siteUrl
     ? `${siteUrl}/articles/${articleId}-${slug}/`
     : `/articles/${articleId}-${slug}/`;
