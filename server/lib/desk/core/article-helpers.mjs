@@ -4,7 +4,9 @@
  * Le host lie table + predicates via `createArticleHelpers()`.
  */
 
-export { toMysqlDate, nowMysql } from '../../mysql-date.mjs';
+import { toMysqlDate, nowMysql } from '../../mysql-date.mjs';
+
+export { toMysqlDate, nowMysql };
 
 export function slugify(title) {
   return (
