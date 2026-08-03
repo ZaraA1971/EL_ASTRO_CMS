@@ -2,6 +2,8 @@
  * Journal d’audit desk (MySQL el_audit_log).
  */
 
+import { nowMysql } from './mysql-date.mjs';
+
 let ensured = false;
 
 export async function ensureAuditTable(pool) {
@@ -24,10 +26,6 @@ export async function ensureAuditTable(pool) {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
   ensured = true;
-}
-
-function nowMysql() {
-  return new Date().toISOString().slice(0, 19).replace('T', ' ');
 }
 
 /**

@@ -13,17 +13,7 @@ import { sendWelcomeEmail } from './welcome.mjs';
 import { notifyAdminsAccountCreated } from '../account-email.mjs';
 import { ensureNewsletterSchema } from '../newsletter/schema.mjs';
 import { ensureNewsletterEnrollment } from '../newsletter/recipients.mjs';
-
-function toMysqlDate(d) {
-  if (!d) return null;
-  const dt = d instanceof Date ? d : new Date(d);
-  if (Number.isNaN(dt.getTime())) return null;
-  return dt.toISOString().slice(0, 19).replace('T', ' ');
-}
-
-function nowMysql() {
-  return toMysqlDate(new Date());
-}
+import { toMysqlDate, nowMysql } from '../mysql-date.mjs';
 
 function normalizeEmail(email) {
   return String(email || '')

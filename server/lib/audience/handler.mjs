@@ -5,6 +5,7 @@
  */
 import { canPublish } from '../roles.mjs';
 import { auditLog } from '../audit.mjs';
+import { articlePath } from '../article-path.mjs';
 import {
   extractGraphData,
   flushAudienceCache,
@@ -69,7 +70,7 @@ async function enrichHitsWithArticles(pool, hits) {
     const slug = art ? String(art.slug) : p.slug;
     const href =
       articleId && slug
-        ? `/articles/${articleId}-${slug}/`
+        ? articlePath(articleId, slug)
         : p.pathname || null;
     return {
       path: p.path,

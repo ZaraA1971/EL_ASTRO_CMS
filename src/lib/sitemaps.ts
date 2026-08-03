@@ -1,4 +1,5 @@
 import { getPool } from './db';
+import { absoluteArticleUrl } from '@el/article-path';
 
 export const SITE = 'https://electronlibre.info';
 /** Aligné sur le chunking WP (~2000 URLs / fichier). */
@@ -22,7 +23,7 @@ export function isoDate(d: Date | string | null | undefined): string {
 }
 
 export function articleLoc(articleId: number, slug: string): string {
-  return `${SITE}/articles/${articleId}-${slug}/`;
+  return absoluteArticleUrl(SITE, articleId, slug);
 }
 
 export function xmlResponse(body: string, { maxAge = 300 } = {}): Response {

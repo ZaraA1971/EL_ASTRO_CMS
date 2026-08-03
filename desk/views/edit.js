@@ -1,4 +1,5 @@
 import { stripLeadingChapoHtml, chapo } from "../excerpt.js";
+import { articlePath } from "../article-path.js";
 import { state } from "../core/state.js";
 import { api } from "../core/api.js";
 import {
@@ -63,9 +64,7 @@ function purifyHtml(html) {
 
 /** URL publique article (enregistré) : /articles/{id}-{slug}/ */
 function articlePublicPath(article) {
-  const d = article?.data;
-  if (!d?.article_id || !d?.slug) return "";
-  return `/articles/${d.article_id}-${d.slug}/`;
+  return articlePath(article);
 }
 
 /**

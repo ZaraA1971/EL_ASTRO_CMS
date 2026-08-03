@@ -8,6 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import matter from 'gray-matter';
 import mysql from 'mysql2/promise';
+import { toMysqlDate } from '../shared/mysql-date.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -36,13 +37,6 @@ function loadEnvFile(file) {
     process.exit(1);
   }
   return out;
-}
-
-function toMysqlDate(v) {
-  if (!v) return null;
-  const d = v instanceof Date ? v : new Date(v);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toISOString().slice(0, 19).replace('T', ' ');
 }
 
 function asJsonArray(v) {

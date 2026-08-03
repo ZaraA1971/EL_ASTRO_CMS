@@ -131,6 +131,7 @@ module partagé. Pas de copie « alignée à la main » entre desk / API / Astro
 
 Exemples : `shared/excerpt.mjs` (`stripHtmlToText`, chapô),
 `shared/html-clean.mjs`, `shared/escape-html.mjs`,
+`shared/mysql-date.mjs`, `shared/article-path.mjs`,
 `shared/editorial-update.mjs` (grâce 45 min « Mis à jour »),
 `shared/categories.mjs` (rubriques builtins).
 

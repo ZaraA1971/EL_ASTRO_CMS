@@ -9,6 +9,7 @@ import {
   escapeHtml,
   renderAppInstallPill,
 } from '../email/brand.mjs';
+import { absoluteArticleUrl } from '../article-path.mjs';
 
 const TZ = 'Europe/Paris';
 /** « Si vous l’aviez manqué » — court (hors contexte hero). */
@@ -175,11 +176,6 @@ export function buildDynamicSubtitle(articles) {
   return `Au sommaire aujourd’hui : ${names.join(', ')} et ${last} — l’essentiel des signaux du jour.`;
 }
 
-function articlePath(siteUrl, article) {
-  const base = String(siteUrl || 'https://electronlibre.info').replace(/\/+$/, '');
-  return `${base}/articles/${article.article_id}-${article.slug}/`;
-}
-
 function rowToNlArticle(row) {
   return {
     article_id: Number(row.article_id),
@@ -283,7 +279,7 @@ function renderArticleCards(articles, siteUrl, t) {
       briefShown = true;
     }
     const label = tagLabel(a);
-    const href = articlePath(siteUrl, a);
+    const href = absoluteArticleUrl(siteUrl, a);
     const titleStyle = editorial
       ? `margin:0 0 12px;font-size:23px;line-height:1.22;letter-spacing:-0.02em;font-weight:700;color:${t.text};font-family:${t.fontEditorial};`
       : `margin:0 0 10px;font-size:19px;line-height:1.32;letter-spacing:-0.01em;font-weight:700;color:${t.meta};font-family:${t.fontEditorial};`;
@@ -324,7 +320,7 @@ function renderMissed(missed, siteUrl, t) {
   html += `<div style="padding:22px 26px;background-color:#ffffff;border:1px solid ${t.border};border-radius:18px;font-family:${t.fontUi};">`;
   html += `<ul style="margin:0;padding:0;list-style:none;">`;
   missed.forEach((a, i) => {
-    const href = articlePath(siteUrl, a);
+    const href = absoluteArticleUrl(siteUrl, a);
     const excerpt = articleExcerptForNewsletter(a, MISSED_EXCERPT_WORDS);
     const border = i === 0 ? 'none' : `1px solid ${t.borderLight}`;
     const padTop = i === 0 ? '0' : '11px';

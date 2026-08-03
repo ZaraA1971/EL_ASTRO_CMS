@@ -80,6 +80,10 @@ Rubriques builtins : [`shared/categories.mjs`](shared/categories.mjs)
 → API `server/lib/escape-html.mjs` · desk `desk/escape-html.js` (symlink).  
 Texte depuis HTML : `stripHtmlToText` / `trimExcerpt` dans [`shared/excerpt.mjs`](shared/excerpt.mjs) (pas de copies locales).
 
+Dates MySQL : [`shared/mysql-date.mjs`](shared/mysql-date.mjs) → `server/lib/mysql-date.mjs`.  
+URL article `/articles/{id}-{slug}/` : [`shared/article-path.mjs`](shared/article-path.mjs)  
+→ API · Astro `@el/article-path` · desk `desk/article-path.js` (symlink).
+
 ```js
 chapo(article, 'hero')           // 130
 chapo(article, 'card')           // 28

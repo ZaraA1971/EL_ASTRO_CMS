@@ -4,6 +4,8 @@
  * Le host lie table + predicates via `createArticleHelpers()`.
  */
 
+export { toMysqlDate, nowMysql } from '../../mysql-date.mjs';
+
 export function slugify(title) {
   return (
     String(title || 'article')
@@ -14,17 +16,6 @@ export function slugify(title) {
       .replace(/^-+|-+$/g, '')
       .slice(0, 80) || 'article'
   );
-}
-
-export function toMysqlDate(v) {
-  if (!v) return null;
-  const d = v instanceof Date ? v : new Date(v);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toISOString().slice(0, 19).replace('T', ' ');
-}
-
-export function nowMysql() {
-  return toMysqlDate(new Date());
 }
 
 export function asJson(v) {

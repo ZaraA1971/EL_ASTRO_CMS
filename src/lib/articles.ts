@@ -1,5 +1,9 @@
 import { getPool, parseJsonArray } from './db';
 import { isEditorialUpdate } from '@el/editorial-update';
+import {
+  articlePath as sharedArticlePath,
+  articleIdSlug as sharedArticleIdSlug,
+} from '@el/article-path';
 
 export type ArticleData = {
   article_id: number;
@@ -76,14 +80,13 @@ function rowToArticle(
   };
 }
 
-/** id URL segment: `{article_id}-{slug}` */
+/** id URL segment: `{article_id}-{slug}` — source : shared/article-path.mjs */
 export function articlePath(article: Article): string {
-  const { article_id, slug } = article.data;
-  return `/articles/${article_id}-${slug}/`;
+  return sharedArticlePath(article);
 }
 
 export function articleIdSlug(article: Article): string {
-  return `${article.data.article_id}-${article.data.slug}`;
+  return sharedArticleIdSlug(article);
 }
 
 export type LangCode = 'fr' | 'en';

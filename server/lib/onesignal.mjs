@@ -4,6 +4,7 @@
  */
 
 import { stripHtmlToText } from './excerpt.mjs';
+import { absoluteArticleUrl } from './article-path.mjs';
 
 function authHeader(apiKey) {
   const key = String(apiKey || '').trim();
@@ -36,9 +37,7 @@ export async function sendArticlePush(articleRow, opts) {
   const content =
     stripHtmlToText(articleRow.excerpt).slice(0, 220) ||
     articleTitle.slice(0, 220);
-  const url = siteUrl
-    ? `${siteUrl}/articles/${articleId}-${slug}/`
-    : `/articles/${articleId}-${slug}/`;
+  const url = absoluteArticleUrl(siteUrl, articleId, slug);
   const segment = String(opts.segment || 'All');
 
   if (dryRun) {

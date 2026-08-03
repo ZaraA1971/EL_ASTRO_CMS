@@ -6,6 +6,7 @@ import { sendBrevoEmail, brevoConfigured } from './brevo.mjs';
 import { hashUserPassword } from './users.mjs';
 import { STATUSES } from './roles.mjs';
 import { escapeHtml } from './escape-html.mjs';
+import { toMysqlDate } from './mysql-date.mjs';
 
 const TOKEN_TTL_MS = 60 * 60 * 1000; // 1 h
 
@@ -41,10 +42,6 @@ export async function ensurePasswordResetSchema(pool) {
   } catch {
     // index exists
   }
-}
-
-function toMysqlDate(d) {
-  return d.toISOString().slice(0, 19).replace('T', ' ');
 }
 
 export function normalizeLoginId(raw) {

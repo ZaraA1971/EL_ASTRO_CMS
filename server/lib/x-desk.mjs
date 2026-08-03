@@ -13,10 +13,8 @@ import {
 } from './x-accounts.mjs';
 import { createXPost, assertXText, xWeightedLength } from './x-post.mjs';
 import { generateXVariants } from './x-generate.mjs';
-
-function nowMysql() {
-  return new Date().toISOString().slice(0, 19).replace('T', ' ');
-}
+import { nowMysql } from './mysql-date.mjs';
+import { absoluteArticleUrl } from './article-path.mjs';
 
 function mapRow(row) {
   if (!row) return null;
@@ -150,7 +148,7 @@ export async function handleDeskArticleX(req, res, parts, ctx, existing) {
       article: {
         id: articleId,
         title: existing.title,
-        url: `${String(ctx.siteUrl || '').replace(/\/+$/, '')}/articles/${articleId}-${existing.slug}/`,
+        url: absoluteArticleUrl(ctx.siteUrl, articleId, existing.slug),
       },
     });
     return true;

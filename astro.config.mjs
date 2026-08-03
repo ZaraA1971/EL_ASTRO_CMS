@@ -27,6 +27,7 @@ export default defineConfig({
         '@el/excerpt': path.join(root, 'shared/excerpt.mjs'),
         '@el/categories': path.join(root, 'shared/categories.mjs'),
         '@el/editorial-update': path.join(root, 'shared/editorial-update.mjs'),
+        '@el/article-path': path.join(root, 'shared/article-path.mjs'),
       },
     },
     server: {

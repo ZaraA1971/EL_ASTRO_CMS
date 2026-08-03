@@ -6,13 +6,7 @@ import { chapo, stripHtmlToText } from './excerpt.mjs';
 import { callEditorialAssist } from './editorial-assist.mjs';
 import { X_ACCOUNTS, normalizeXAccount, DEFAULT_X_ACCOUNT } from './x-accounts.mjs';
 import { X_MAX_LENGTH, xWeightedLength } from './x-post.mjs';
-
-function articleUrl(siteUrl, row) {
-  const base = String(siteUrl || '').replace(/\/+$/, '');
-  const articleId = Number(row.article_id);
-  const slug = String(row.slug || 'article');
-  return `${base}/articles/${articleId}-${slug}/`;
-}
+import { absoluteArticleUrl } from './article-path.mjs';
 
 function trimHook(hook, url, max = X_MAX_LENGTH) {
   const fixed = xWeightedLength(`\n${url}`);
@@ -90,7 +84,7 @@ function parseVariants(raw, url) {
 export async function generateXVariants(row, opts) {
   const accountId = normalizeXAccount(opts.account) || DEFAULT_X_ACCOUNT;
   const meta = X_ACCOUNTS[accountId];
-  const url = articleUrl(opts.siteUrl, row);
+  const url = absoluteArticleUrl(opts.siteUrl, row);
   const title = String(row.title || '').trim();
   const excerpt =
     chapo(row, 'card') || stripHtmlToText(row.excerpt).slice(0, 220);
