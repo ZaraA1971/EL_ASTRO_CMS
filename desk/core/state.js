@@ -48,6 +48,8 @@ export const state = {
   nlGroups: { admin: true, redacteurs: false, abonnes: false },
   nlPreview: null,
   nlHistory: [],
+  /** Campagne historique ouverte pour lecture { id, subject, html } | null */
+  nlHistoryView: null,
   nlDryRun: true,
   audData: null,
   audChart: null,

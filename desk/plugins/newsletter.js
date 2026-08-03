@@ -20,11 +20,11 @@ function selectedNlGroups() {
 
 export async function loadNewsletter() {
   state.error = "";
+  state.nlHistoryView = null;
   try {
     const data = await api("/api/desk/newsletter");
     state.nlHistory = data.newsletters || [];
     state.nlDryRun = Boolean(data.brevoDryRun);
-    // Génère tout de suite (plus besoin de l’ancienne page WP)
     await generateNewsletter({ silent: true });
   } catch (err) {
     state.error = err.message || "Erreur newsletter";
@@ -121,10 +121,45 @@ async function draftAndSendNewsletter() {
   }
 }
 
+function closeHistoryNewsletter() {
+  state.nlHistoryView = null;
+  state.status = "";
+  renderNewsletter();
+}
+
+async function openHistoryNewsletter(id) {
+  const nid = Number(id);
+  if (!Number.isFinite(nid) || nid < 1) return;
+  // Reclic sur l’envoi ouvert → replier.
+  if (state.nlHistoryView && Number(state.nlHistoryView.id) === nid) {
+    closeHistoryNewsletter();
+    return;
+  }
+  state.error = "";
+  state.status = "Chargement de l’envoi…";
+  renderNewsletter();
+  try {
+    const data = await api(`/api/desk/newsletter/${nid}`);
+    const n = data.newsletter || {};
+    state.nlHistoryView = {
+      id: nid,
+      subject: n.subject || "",
+      html: n.html || "",
+    };
+    state.status = "";
+  } catch (err) {
+    state.error = err.message || "Impossible d’ouvrir cet envoi";
+    state.nlHistoryView = null;
+  }
+  renderNewsletter();
+}
+
 export function renderNewsletter() {
   const g = state.nlGroups;
   const preview = state.nlPreview;
-  const hist = (state.nlHistory || [])
+  const histView = state.nlHistoryView;
+  const historyAll = state.nlHistory || [];
+  const hist = historyAll
     .map((n) => {
       const st = n.status || "draft";
       const badge =
@@ -132,10 +167,14 @@ export function renderNewsletter() {
       const stats = n.stats
         ? ` · ${n.stats.sent || 0}/${n.stats.total || 0}`
         : "";
-      return `<li class="nl-history-item">
-        <span class="badge ${badge}">${escapeHtml(st)}</span>
-        <strong>${escapeHtml(n.subject || "")}</strong>
-        <span class="sub">${escapeHtml(n.date || "")}${stats}</span>
+      const active =
+        histView && Number(histView.id) === Number(n.id) ? " is-active" : "";
+      return `<li class="nl-history-item${active}">
+        <button type="button" class="nl-history-btn" data-nl-open="${Number(n.id)}">
+          <span class="badge ${badge}">${escapeHtml(st)}</span>
+          <strong>${escapeHtml(n.subject || "")}</strong>
+          <span class="sub">${escapeHtml(n.date || "")}${stats}</span>
+        </button>
       </li>`;
     })
     .join("");
@@ -146,9 +185,10 @@ export function renderNewsletter() {
       <button class="btn btn-ghost" type="button" id="btn-logout">Sortir</button>
     </header>
     ${ctx.navTabs("newsletter")}
-    <main class="main stack">
+    <main class="main stack nl-page">
       ${state.nlDryRun ? `<p class="nl-banner">Brevo dry-run actif — aucun e-mail réel ne partira.</p>` : ""}
-      <section class="nl-panel">
+      <section class="nl-panel nl-panel--compose" aria-labelledby="nl-compose-title">
+        <h2 class="nl-compose-title" id="nl-compose-title">Newsletter du jour</h2>
         <div class="toolbar-list nl-row">
           <label class="nl-date-field">
             <span class="nl-date-label">Date</span>
@@ -171,13 +211,11 @@ export function renderNewsletter() {
           preview
             ? `<div class="nl-meta">
                 <p><strong>${escapeHtml(preview.subject)}</strong></p>
-                <p class="sub">Aujourd’hui : ${preview.counts?.today || 0} (éditos ${preview.counts?.editorial || 0} · brèves ${preview.counts?.briefs || 0}) · manqués ${preview.counts?.missed || 0}</p>
-                <p class="sub">Groupes actifs : <strong>${escapeHtml(
+                <p class="sub">Aujourd’hui : ${preview.counts?.today || 0} (éditos ${preview.counts?.editorial || 0} · brèves ${preview.counts?.briefs || 0}) · manqués ${preview.counts?.missed || 0} · groupes <strong>${escapeHtml(
                   (preview.groups || selectedNlGroups())
                     .map((x) => NL_GROUP_LABELS[x] || x)
                     .join(" + ") || "—"
-                )}</strong></p>
-                <p class="sub">Dans la sélection → <strong>${preview.recipientTotal || 0}</strong> destinataire(s)${
+                )}</strong> · <strong>${preview.recipientTotal || 0}</strong> destinataire(s)${
                   g.admin ? ` · admin ${preview.recipientCounts?.admin || 0}` : ""
                 }${
                   g.redacteurs
@@ -193,9 +231,29 @@ export function renderNewsletter() {
             : `<p class="empty">Choisissez une date et prévisualisez.</p>`
         }
       </section>
-      <section class="nl-panel">
-        <h2 class="nl-hist-title">Historique</h2>
+      <section class="nl-panel nl-panel--history" aria-labelledby="nl-hist-title">
+        <div class="nl-hist-head">
+          <h2 class="nl-hist-title" id="nl-hist-title">Déjà envoyées${
+            historyAll.length ? ` <span class="sub">(${historyAll.length})</span>` : ""
+          }</h2>
+          <p class="sub nl-hist-hint">${
+            histView
+              ? "Replier via le bouton ou en recliquant la ligne."
+              : "Cliquez une ligne pour afficher l’envoi."
+          }</p>
+        </div>
         <ul class="nl-history">${hist || `<li class="sub">Aucune campagne</li>`}</ul>
+        ${
+          histView
+            ? `<div class="nl-hist-view">
+                <div class="nl-hist-view-bar">
+                  <p class="nl-hist-view-title"><strong>${escapeHtml(histView.subject || "Envoi")}</strong></p>
+                  <button type="button" class="btn" id="nl-hist-close">Replier</button>
+                </div>
+                <iframe class="nl-iframe nl-iframe--history" id="nl-hist-iframe" title="Newsletter envoyée" sandbox=""></iframe>
+              </div>`
+            : ""
+        }
       </section>
     </main>`;
 
@@ -204,6 +262,10 @@ export function renderNewsletter() {
   const iframe = document.getElementById("nl-iframe");
   if (iframe && preview?.html) {
     iframe.srcdoc = preview.html;
+  }
+  const histIframe = document.getElementById("nl-hist-iframe");
+  if (histIframe && histView?.html) {
+    histIframe.srcdoc = histView.html;
   }
   document.getElementById("nl-date").onchange = async (e) => {
     state.nlDate = e.target.value;
@@ -218,6 +280,13 @@ export function renderNewsletter() {
       await generateNewsletter();
     };
   });
+  app.querySelectorAll("[data-nl-open]").forEach((el) => {
+    el.onclick = () => openHistoryNewsletter(el.dataset.nlOpen);
+  });
+  const histClose = document.getElementById("nl-hist-close");
+  if (histClose) {
+    histClose.onclick = () => closeHistoryNewsletter();
+  }
   document.getElementById("nl-generate").onclick = () => generateNewsletter();
   document.getElementById("nl-send").onclick = () => draftAndSendNewsletter();
 }
