@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import mysql from 'mysql2/promise';
 import type { Pool } from 'mysql2/promise';
 
+export { parseJsonArray } from '@el/article-row';
+
 const ENV_FILE = process.env.EL_API_ENV_FILE || '/etc/electronlibre/el-astro-api.env';
 
 function loadEnvFile(file: string): Record<string, string> {
@@ -46,18 +48,4 @@ export function getPool(): Pool {
     connectionLimit: 5,
   });
   return pool;
-}
-
-export function parseJsonArray(v: unknown): string[] {
-  if (v == null) return [];
-  if (Array.isArray(v)) return v.map(String);
-  if (typeof v === 'string') {
-    try {
-      const p = JSON.parse(v);
-      return Array.isArray(p) ? p.map(String) : [];
-    } catch {
-      return [];
-    }
-  }
-  return [];
 }

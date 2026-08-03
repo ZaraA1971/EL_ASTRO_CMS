@@ -84,6 +84,9 @@ Dates MySQL : [`shared/mysql-date.mjs`](shared/mysql-date.mjs) → `server/lib/m
 URL article `/articles/{id}-{slug}/` : [`shared/article-path.mjs`](shared/article-path.mjs)  
 → API · Astro `@el/article-path` · desk `desk/article-path.js` (symlink).
 
+Ligne article MySQL : [`shared/article-row.mjs`](shared/article-row.mjs)  
+(`parseJsonArray`, `parseRowDate`, `rowToArticle`) → API `server/lib/db.mjs` · Astro `@el/article-row`.
+
 ```js
 chapo(article, 'hero')           // 130
 chapo(article, 'card')           // 28

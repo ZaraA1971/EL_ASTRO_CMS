@@ -5,6 +5,7 @@ import { chapo } from '../excerpt.mjs';
 import { cleanHtml } from '../html-clean.mjs';
 import { isEditorialUpdate } from '../editorial-update.mjs';
 import { escapeHtml } from '../escape-html.mjs';
+import { parseRowDate } from '../article-row.mjs';
 
 function normalizeLang(lang) {
   const l = String(lang || 'FR').toUpperCase();
@@ -51,13 +52,6 @@ export function sanitizeHtmlForIos(html) {
   h = h.replace(/\s+srcdoc\s*=\s*("[^"]*"|'[^']*')/gi, '');
   // Styles collés (color noir, font Arial…) — dark mode WebView
   return cleanHtml(h, 'ios');
-}
-
-function parseRowDate(raw) {
-  if (raw == null || raw === '') return null;
-  const d = raw instanceof Date ? raw : new Date(raw);
-  if (Number.isNaN(d.getTime())) return null;
-  return d;
 }
 
 function toIsoUtc(d) {

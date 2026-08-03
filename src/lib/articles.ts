@@ -1,9 +1,10 @@
-import { getPool, parseJsonArray } from './db';
+import { getPool } from './db';
 import { isEditorialUpdate } from '@el/editorial-update';
 import {
   articlePath as sharedArticlePath,
   articleIdSlug as sharedArticleIdSlug,
 } from '@el/article-path';
+import { rowToArticle as sharedRowToArticle } from '@el/article-row';
 
 export type ArticleData = {
   article_id: number;
@@ -14,6 +15,7 @@ export type ArticleData = {
   modified?: Date;
   author: string;
   author_slug?: string;
+  author_user_id?: number | null;
   categories: string[];
   category_names: string[];
   tags: string[];
@@ -40,44 +42,15 @@ export const ARTICLE_LIST_COLUMNS = `
   translation_fr, translation_en, access, lang, source_url, draft
 `.replace(/\s+/g, ' ').trim();
 
-function parseArticleDate(v: unknown): Date | null {
-  if (v == null || v === '') return null;
-  const d = v instanceof Date ? v : new Date(String(v));
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-
 function rowToArticle(
   row: Record<string, unknown>,
-  { includeBody = true }: { includeBody?: boolean } = {}
+  opts: { includeBody?: boolean } = {}
 ): Article {
-  const date = parseArticleDate(row.date);
-  const modified = parseArticleDate(row.modified) || undefined;
-  return {
-    id: `db-${row.article_id}`,
-    data: {
-      article_id: Number(row.article_id),
-      title: String(row.title),
-      slug: String(row.slug),
-      date,
-      modified,
-      author: String(row.author || 'ElectronLibre'),
-      author_slug: row.author_slug ? String(row.author_slug) : undefined,
-      categories: parseJsonArray(row.categories),
-      category_names: parseJsonArray(row.category_names),
-      tags: parseJsonArray(row.tags),
-      ia_keywords: parseJsonArray(row.ia_keywords),
-      translation_fr:
-        row.translation_fr != null ? Number(row.translation_fr) : undefined,
-      translation_en:
-        row.translation_en != null ? Number(row.translation_en) : undefined,
-      access: row.access === 'granted' ? 'granted' : 'subscribers',
-      lang: String(row.lang || 'fr').toLowerCase(),
-      source_url: row.source_url ? String(row.source_url) : undefined,
-      excerpt: String(row.excerpt || ''),
-      draft: Boolean(row.draft),
-    },
-    body: includeBody ? String(row.body || '') : '',
-  };
+  const article = sharedRowToArticle(row, opts);
+  if (!article) {
+    throw new Error('rowToArticle: ligne vide');
+  }
+  return article as Article;
 }
 
 /** id URL segment: `{article_id}-{slug}` — source : shared/article-path.mjs */
