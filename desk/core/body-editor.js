@@ -9,7 +9,7 @@ import {
 } from "./format.js";
 import { catLabel } from "./rubrics.js";
 import { ctx } from "./ctx.js";
-import { isPastEditorialUpdateGrace } from "./editorial-update.js";
+import { isPastEditorialUpdateGrace } from "../editorial-update.js";
 
 /** Corps article : toujours via contexte desk (styles collés, data-pm, etc.). */
 export function cleanBody(html) {

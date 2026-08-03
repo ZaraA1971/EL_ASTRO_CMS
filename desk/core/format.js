@@ -1,4 +1,4 @@
-import { EDITORIAL_UPDATE_GRACE_MS } from "./editorial-update.js";
+import { isEditorialUpdate } from "../editorial-update.js";
 
 export function escapeHtml(s) {
   return String(s || "")
@@ -77,14 +77,10 @@ export function fromDatetimeLocalValue(s) {
   return dt.toISOString();
 }
 
-/** Mise à jour éditoriale : en ligne, et ≥ 45 min après la publication. */
+/** Mise à jour éditoriale : en ligne, hors délai de grâce après publication. */
 export function updateDateLabel(d) {
   if (d?.draft) return "";
-  if (!d?.date || !d?.modified) return "";
-  const pub = new Date(d.date).getTime();
-  const mod = new Date(d.modified).getTime();
-  if (Number.isNaN(pub) || Number.isNaN(mod)) return "";
-  if (mod - pub < EDITORIAL_UPDATE_GRACE_MS) return "";
+  if (!isEditorialUpdate(d.date, d.modified)) return "";
   return formatDateTime(d.modified);
 }
 

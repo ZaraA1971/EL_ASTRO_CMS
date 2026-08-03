@@ -70,6 +70,9 @@ npm run media:index -- --dry-run
 Source unique : [`shared/excerpt.mjs`](shared/excerpt.mjs)  
 → API `server/lib/excerpt.mjs` · Astro `@el/excerpt` · desk `desk/excerpt.js` (symlink ; **pas** `.mjs` en navigateur).
 
+Mise à jour éditoriale (grâce 45 min) : [`shared/editorial-update.mjs`](shared/editorial-update.mjs)  
+→ API `server/lib/editorial-update.mjs` · Astro `@el/editorial-update` · desk `desk/editorial-update.js` (symlink).
+
 ```js
 chapo(article, 'hero')           // 130
 chapo(article, 'card')           // 28

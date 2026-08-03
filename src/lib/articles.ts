@@ -1,4 +1,5 @@
 import { getPool, parseJsonArray } from './db';
+import { isEditorialUpdate } from '@el/editorial-update';
 
 export type ArticleData = {
   article_id: number;
@@ -199,9 +200,6 @@ export function formatUpdateDateTime(
   return lang === 'en' ? `${day}, ${time}` : `${day} à ${time}`;
 }
 
-/** Délai min. après publication avant d’afficher « Mis à jour le… » (coquilles exclues). */
-export const EDITORIAL_UPDATE_GRACE_MS = 45 * 60 * 1000;
-
 /**
  * Date de mise à jour éditoriale à afficher, ou null si pas de vrai update
  * (modified absent / trop proche de la date de publication).
@@ -212,9 +210,7 @@ export function articleUpdateDate(article: Article): Date | null {
   const modified = article.data.modified;
   if (!modified || Number.isNaN(modified.getTime())) return null;
   if (!published || Number.isNaN(published.getTime())) return null;
-  if (modified.getTime() - published.getTime() < EDITORIAL_UPDATE_GRACE_MS) {
-    return null;
-  }
+  if (!isEditorialUpdate(published, modified)) return null;
   return modified;
 }
 
