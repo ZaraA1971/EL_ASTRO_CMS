@@ -3,6 +3,7 @@
  */
 import { chapo } from '../excerpt.mjs';
 import { cleanHtml } from '../html-clean.mjs';
+import { isEditorialUpdate } from '../editorial-update.mjs';
 
 function normalizeLang(lang) {
   const l = String(lang || 'FR').toUpperCase();
@@ -59,19 +60,40 @@ export function sanitizeHtmlForIos(html) {
   return cleanHtml(h, 'ios');
 }
 
-function rowDateIso(row) {
-  const raw = row?.date;
-  if (!raw) return '';
+function parseRowDate(raw) {
+  if (raw == null || raw === '') return null;
   const d = raw instanceof Date ? raw : new Date(raw);
-  if (Number.isNaN(d.getTime())) return String(raw);
+  if (Number.isNaN(d.getTime())) return null;
+  return d;
+}
+
+function toIsoUtc(d) {
   return d.toISOString();
+}
+
+function rowDateIso(row) {
+  const d = parseRowDate(row?.date);
+  if (!d) return row?.date ? String(row.date) : '';
+  return toIsoUtc(d);
+}
+
+/**
+ * Date de MAJ éditoriale (colonne `modified`), alignée sur « Mis à jour le… » du site.
+ * Omis si absent ou dans le délai de grâce après publication.
+ */
+function rowUpdatedIso(row) {
+  const published = parseRowDate(row?.date);
+  const modified = parseRowDate(row?.modified);
+  if (!published || !modified) return null;
+  if (!isEditorialUpdate(published, modified)) return null;
+  return toIsoUtc(modified);
 }
 
 export function toIosArticleDto(row, { entitled = false, lang = 'FR' } = {}) {
   const pub = isPublicAccess(row);
   const canSeeBody = pub || entitled;
   const content = canSeeBody ? sanitizeHtmlForIos(row?.body || '') : '';
-  return {
+  const dto = {
     id: Number(row.article_id),
     title: String(row.title || ''),
     date: rowDateIso(row),
@@ -80,6 +102,9 @@ export function toIosArticleDto(row, { entitled = false, lang = 'FR' } = {}) {
     isPublic: pub,
     lang: normalizeLang(lang),
   };
+  const updated = rowUpdatedIso(row);
+  if (updated) dto.updated = updated;
+  return dto;
 }
 
 export async function queryIosArticles(pool, args = {}) {

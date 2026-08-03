@@ -1,3 +1,5 @@
+import { EDITORIAL_UPDATE_GRACE_MS } from "./editorial-update.js";
+
 export function escapeHtml(s) {
   return String(s || "")
     .replace(/&/g, "&amp;")
@@ -75,14 +77,14 @@ export function fromDatetimeLocalValue(s) {
   return dt.toISOString();
 }
 
-/** Mise à jour éditoriale : uniquement articles en ligne, si ≠ date de publication. */
+/** Mise à jour éditoriale : en ligne, et ≥ 45 min après la publication. */
 export function updateDateLabel(d) {
   if (d?.draft) return "";
   if (!d?.date || !d?.modified) return "";
   const pub = new Date(d.date).getTime();
   const mod = new Date(d.modified).getTime();
   if (Number.isNaN(pub) || Number.isNaN(mod)) return "";
-  if (mod - pub < 2 * 60 * 1000) return "";
+  if (mod - pub < EDITORIAL_UPDATE_GRACE_MS) return "";
   return formatDateTime(d.modified);
 }
 

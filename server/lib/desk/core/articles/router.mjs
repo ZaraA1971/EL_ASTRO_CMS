@@ -16,6 +16,7 @@
  */
 import { assertSafeSqlIdent, parseJsonBody } from '../http.mjs';
 import { emitDeskLifecycle } from '../lifecycle.mjs';
+import { isEditorialUpdate } from '../../../editorial-update.mjs';
 
 function tableOf(ctx) {
   return assertSafeSqlIdent(
@@ -530,6 +531,15 @@ async function handleUpdate(req, res, ctx, existing, articleId) {
     : h.toMysqlDate(payload.date) ||
       h.toMysqlDate(existing.date) ||
       h.nowMysql();
+  // En ligne : pas de tampon « mise à jour » dans les 45 min après publication.
+  const nowMysql = h.nowMysql();
+  const publishedForGrace = existing.date || nextDate;
+  const nextModified =
+    !isDraft &&
+    publishedForGrace &&
+    !isEditorialUpdate(publishedForGrace, new Date())
+      ? nextDate || h.toMysqlDate(publishedForGrace) || nowMysql
+      : nowMysql;
 
   await pool.query(
     `UPDATE \`${table}\` SET
@@ -545,7 +555,7 @@ async function handleUpdate(req, res, ctx, existing, articleId) {
       excerpt,
       bodyHtml,
       nextDate,
-      h.nowMysql(),
+      nextModified,
       authorName,
       authorSlug,
       authorUserId,

@@ -26,6 +26,8 @@ import {
   isEditContentDirty,
   confirmLeaveEdit,
   canClickPublish,
+  publishButtonLabel,
+  isPublishUpdateAction,
   syncPublishButton,
   paintEditMessages,
   setEditBusy,
@@ -516,25 +518,32 @@ async function saveArticle({
     Boolean(state.caps.publish) &&
     Boolean(document.getElementById("f-push")?.checked);
   if (publish && !skipPublishConfirm) {
+    const isUpdate = isPublishUpdateAction();
     const msg = wantPush
-      ? "Publier maintenant et envoyer un push OneSignal ?"
-      : "Publier maintenant ?";
+      ? isUpdate
+        ? "Mettre à jour maintenant et envoyer un push OneSignal ?"
+        : "Publier maintenant et envoyer un push OneSignal ?"
+      : isUpdate
+        ? "Mettre à jour maintenant ?"
+        : "Publier maintenant ?";
     if (!confirm(msg)) return;
   }
   const hadKw = (payload.ia_keywords || []).length > 0;
   const wasDraft = Boolean(state.article.data.draft);
+  const asUpdate = publish && isPublishUpdateAction();
   // Sync state sans reconstruire l’éditeur (garde curseur / scroll).
   flushFormToState();
   state.error = "";
+  const pubVerb = asUpdate ? "Mise à jour" : "Publication";
   state.status =
     payload.access === "subscribers" && !hadKw
       ? publish
-        ? "Publication + mots-clés IA…"
+        ? `${pubVerb} + mots-clés IA…`
         : "Enregistrement + mots-clés IA…"
       : publish
         ? wantPush
-          ? "Publication + push…"
-          : "Publication…"
+          ? `${pubVerb} + push…`
+          : `${pubVerb}…`
         : "Enregistrement…";
   setEditBusy(true);
   try {
@@ -1118,9 +1127,9 @@ export function renderEdit() {
               canClickPublish() ? "" : "disabled"
             } title="${
               !d.draft && !canClickPublish()
-                ? "Déjà publié — modifiez le texte ou les métas pour republier"
-                : "Publier"
-            }">Publier</button>`
+                ? "Déjà publié — modifiez le texte ou les métas pour mettre à jour"
+                : escapeHtml(publishButtonLabel())
+            }">${escapeHtml(publishButtonLabel())}</button>`
           : ""
       }
     </div>`;

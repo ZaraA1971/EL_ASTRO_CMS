@@ -137,4 +137,50 @@ describe('ios article dto', () => {
     assert.match(clean, /&amp;/);
     assert.doesNotMatch(clean, /a < b/);
   });
+
+  it('adds updated when modified is meaningfully after date', () => {
+    const dto = toIosArticleDto(
+      {
+        article_id: 106665,
+        title: 'Notre service GEO est disponible',
+        body: '<p>x</p>',
+        access: 'granted',
+        date: '2026-06-15T18:56:25.000Z',
+        modified: '2026-06-26T12:59:00.000Z',
+        lang: 'fr',
+      },
+      { entitled: false, lang: 'FR' }
+    );
+    assert.equal(dto.date, '2026-06-15T18:56:25.000Z');
+    assert.equal(dto.updated, '2026-06-26T12:59:00.000Z');
+    assert.ok(new Date(dto.updated).getTime() > new Date(dto.date).getTime());
+  });
+
+  it('omits updated when never edited or within 45 min grace', () => {
+    const never = toIosArticleDto(
+      {
+        article_id: 1,
+        title: 'T',
+        body: '<p>x</p>',
+        access: 'granted',
+        date: '2026-01-01T12:00:00.000Z',
+      },
+      { entitled: false }
+    );
+    assert.equal(never.date, '2026-01-01T12:00:00.000Z');
+    assert.equal(Object.hasOwn(never, 'updated'), false);
+
+    const grace = toIosArticleDto(
+      {
+        article_id: 2,
+        title: 'T',
+        body: '<p>x</p>',
+        access: 'granted',
+        date: '2026-01-01T12:00:00.000Z',
+        modified: '2026-01-01T12:30:00.000Z',
+      },
+      { entitled: false }
+    );
+    assert.equal(Object.hasOwn(grace, 'updated'), false);
+  });
 });

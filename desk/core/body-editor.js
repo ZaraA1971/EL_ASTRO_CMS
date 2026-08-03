@@ -9,6 +9,7 @@ import {
 } from "./format.js";
 import { catLabel } from "./rubrics.js";
 import { ctx } from "./ctx.js";
+import { isPastEditorialUpdateGrace } from "./editorial-update.js";
 
 /** Corps article : toujours via contexte desk (styles collés, data-pm, etc.). */
 export function cleanBody(html) {
@@ -220,15 +221,34 @@ export function canClickPublish() {
   return Boolean(state.editDirty);
 }
 
+/** Article en ligne hors délai de grâce → une validation compte comme mise à jour. */
+export function isPublishUpdateAction() {
+  return Boolean(
+    state.article &&
+      !state.article.data.draft &&
+      isPastEditorialUpdateGrace(state.article.data.date)
+  );
+}
+
+/** Libellé Publier : « Mis à jour » si en ligne, dirty, et ≥ 45 min après publication. */
+export function publishButtonLabel() {
+  if (!state.article) return "Publier";
+  if (state.article.data.draft) return "Publier";
+  if (!isEditContentDirty()) return "Publier";
+  return isPublishUpdateAction() ? "Mis à jour" : "Publier";
+}
+
 export function syncPublishButton() {
   refreshEditDirty();
   const btn = document.getElementById("btn-publish");
   if (!btn) return;
   const ok = canClickPublish();
+  const label = publishButtonLabel();
   btn.disabled = !ok || state.saving;
+  btn.textContent = label;
   btn.title = ok
-    ? "Publier"
-    : "Déjà publié — modifiez le texte ou les métas pour republier";
+    ? label
+    : "Déjà publié — modifiez le texte ou les métas pour mettre à jour";
 }
 
 /** Messages sous l’éditeur — sans reconstruire le DOM. */
