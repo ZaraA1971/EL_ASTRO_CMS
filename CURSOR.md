@@ -132,12 +132,16 @@ module partagé. Pas de copie « alignée à la main » entre desk / API / Astro
 Exemples : `shared/excerpt.mjs` (`stripHtmlToText`, chapô),
 `shared/html-clean.mjs`, `shared/escape-html.mjs`,
 `shared/mysql-date.mjs`, `shared/article-path.mjs`,
-`shared/article-row.mjs` (`rowToArticle`, `parseJsonArray`),
+`shared/article-row.mjs` (`rowToArticle`, `normalizeAccess`),
 `shared/roles.mjs` (rôles, ACL, libellés UI/e-mail),
 `shared/editorial-update.mjs` (grâce 45 min « Mis à jour »),
-`shared/categories.mjs` (rubriques builtins),
-`shared/slugify.mjs` (articles `-`, rubriques `_`),
-`shared/humanize.mjs` (tags / mots-clés affichés).
+`shared/categories.mjs` (builtins + DDL/seed),
+`shared/slugify.mjs` / `shared/humanize.mjs`,
+`shared/keyword-policy.mjs` (denylist IA + stop tags NL),
+`shared/format-date-fr.mjs` (presets date FR).
+
+Note desk : si un `shared/*.mjs` importe un autre module partagé en
+`./foo.mjs`, ajouter aussi le symlink `desk/foo.mjs` (résolution URL navigateur).
 
 Si tu ajoutes une règle utilisée à plusieurs endroits : **factorer / étendre
 `shared/` d’abord**, puis brancher les call-sites. Dupliquer un seuil ou une

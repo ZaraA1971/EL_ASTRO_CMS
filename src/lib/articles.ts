@@ -9,6 +9,10 @@ import {
   humanizeTag as sharedHumanizeTag,
   displayKeyword as sharedDisplayKeyword,
 } from '@el/humanize';
+import {
+  formatDateFrLong,
+  formatDateTimeFrLong,
+} from '@el/format-date-fr';
 
 export type ArticleData = {
   article_id: number;
@@ -152,11 +156,7 @@ export function isFreeArticle(article: Article): boolean {
 }
 
 export function formatArchiveDate(date: Date): string {
-  return date.toLocaleDateString('fr-FR', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
+  return formatDateFrLong(date);
 }
 
 /** Mise à jour éditoriale : date + heure (fuseau Europe/Paris). */
@@ -164,20 +164,7 @@ export function formatUpdateDateTime(
   date: Date,
   lang: 'fr' | 'en' = 'fr'
 ): string {
-  const locale = lang === 'en' ? 'en-GB' : 'fr-FR';
-  const day = date.toLocaleDateString(locale, {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-    timeZone: 'Europe/Paris',
-  });
-  const time = date.toLocaleTimeString(locale, {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-    timeZone: 'Europe/Paris',
-  });
-  return lang === 'en' ? `${day}, ${time}` : `${day} à ${time}`;
+  return formatDateTimeFrLong(date, { lang });
 }
 
 /**

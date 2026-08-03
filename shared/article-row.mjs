@@ -2,6 +2,11 @@
  * Ligne MySQL el_articles → objet article desk/Astro — source unique.
  */
 
+/** Normalise access stocké → `granted` | `subscribers`. */
+export function normalizeAccess(v) {
+  return v === 'granted' ? 'granted' : 'subscribers';
+}
+
 export function parseJsonArray(v) {
   if (v == null) return [];
   if (Array.isArray(v)) return v.map(String);
@@ -50,7 +55,7 @@ export function rowToArticle(row, { includeBody = true } = {}) {
         row.translation_fr != null ? Number(row.translation_fr) : undefined,
       translation_en:
         row.translation_en != null ? Number(row.translation_en) : undefined,
-      access: row.access === 'granted' ? 'granted' : 'subscribers',
+      access: normalizeAccess(row.access),
       lang: String(row.lang || 'fr').toLowerCase(),
       source_url: row.source_url ? String(row.source_url) : undefined,
       excerpt: String(row.excerpt || ''),

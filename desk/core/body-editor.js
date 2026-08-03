@@ -10,6 +10,7 @@ import {
 import { catLabel } from "./rubrics.js";
 import { ctx } from "./ctx.js";
 import { isPastEditorialUpdateGrace } from "../editorial-update.js";
+import { normalizeAccess } from "../article-row.js";
 
 /** Corps article : toujours via contexte desk (styles collés, data-pm, etc.). */
 export function cleanBody(html) {
@@ -123,7 +124,7 @@ export function editFingerprint(p = {}) {
     author: String(p.author || "").trim(),
     date: fingerprintDate(p.date),
     categories: cats,
-    access: p.access === "granted" ? "granted" : "subscribers",
+    access: normalizeAccess(p.access),
     ia_keywords: kws,
   });
 }

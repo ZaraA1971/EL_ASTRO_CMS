@@ -5,10 +5,18 @@ import {
   DEFAULT_CATEGORIES,
   slugifyCategoryName,
   categoryNameFromList,
+  rowToCategory,
+  categoriesCreateTableSql,
 } from '../../shared/categories.mjs';
 import { createCategoriesStore } from './desk/core/categories/store.mjs';
 
-export { DEFAULT_CATEGORIES, slugifyCategoryName, categoryNameFromList };
+export {
+  DEFAULT_CATEGORIES,
+  slugifyCategoryName,
+  categoryNameFromList,
+  rowToCategory,
+  categoriesCreateTableSql,
+};
 
 /** Store EL partagé (desk host + API contenu). */
 export const elCategoriesStore = createCategoriesStore({

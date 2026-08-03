@@ -3,7 +3,6 @@
  * Source : el_articles (MySQL), zéro WP.
  */
 
-import { parseJsonArray } from '../db.mjs';
 import { chapo, stripHtmlToText, trimExcerpt } from '../excerpt.mjs';
 import {
   escapeHtml,
@@ -12,42 +11,16 @@ import {
 } from '../email/brand.mjs';
 import { absoluteArticleUrl } from '../article-path.mjs';
 import { humanizeTag } from '../humanize.mjs';
+import {
+  normalizeKeywordKey,
+  isNewsletterStopTag,
+} from '../keyword-policy.mjs';
+import { formatDateFrNumeric, TZ_PARIS } from '../format-date-fr.mjs';
+import { rowToArticle } from '../article-row.mjs';
 
-const TZ = 'Europe/Paris';
+const TZ = TZ_PARIS;
 /** « Si vous l’aviez manqué » — court (hors contexte hero). */
 const MISSED_EXCERPT_WORDS = 18;
-
-const STOP_WORDS = [
-  'ia',
-  'ai',
-  'tech',
-  'web',
-  'web 1,2,3',
-  'culture',
-  'politique',
-  'economie',
-  'économie',
-  'robotic',
-  'high-tech',
-  'android',
-  'newsletter',
-  'googlebook',
-  'so amazing',
-  'so cult',
-  'le flouze',
-  'médias',
-  'medias',
-  'numérique',
-  'numerique',
-  'innovation',
-  'régulation',
-  'regulation',
-  'plateformes',
-  'streaming',
-  'musique',
-  'cinéma',
-  'cinema',
-];
 
 /** Jetons e-mail + overrides newsletter (fond hero / corps). */
 const TOKENS = {
@@ -58,19 +31,10 @@ const TOKENS = {
   borderLight: '#f1f5f9',
 };
 
+/** @deprecated alias — préférer normalizeKeywordKey */
 export function normalizeKeyword(value) {
-  return String(value || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+  return normalizeKeywordKey(value);
 }
-
-const STOP_NORM = new Set(
-  STOP_WORDS.map(normalizeKeyword).filter(Boolean)
-);
 
 /** @param {string} ymd YYYY-MM-DD */
 export function dayBoundsParis(ymd) {
@@ -150,8 +114,8 @@ export function buildDynamicSubtitle(articles) {
   const seen = new Set();
   for (const a of articles) {
     for (const tag of a.tags || []) {
-      const norm = normalizeKeyword(tag);
-      if (!norm || STOP_NORM.has(norm) || seen.has(norm)) continue;
+      const norm = normalizeKeywordKey(tag);
+      if (!norm || isNewsletterStopTag(tag) || seen.has(norm)) continue;
       seen.add(norm);
       names.push(humanizeTag(tag));
     }
@@ -167,17 +131,19 @@ export function buildDynamicSubtitle(articles) {
 }
 
 function rowToNlArticle(row) {
+  const a = rowToArticle(row, { includeBody: true });
+  if (!a) return null;
   return {
-    article_id: Number(row.article_id),
-    slug: String(row.slug),
-    title: String(row.title),
-    excerpt: String(row.excerpt || ''),
-    body: String(row.body || ''),
-    date: row.date instanceof Date ? row.date : new Date(row.date),
-    tags: parseJsonArray(row.tags),
-    categories: parseJsonArray(row.categories),
-    category_names: parseJsonArray(row.category_names),
-    access: row.access === 'granted' ? 'granted' : 'subscribers',
+    article_id: a.data.article_id,
+    slug: a.data.slug,
+    title: a.data.title,
+    excerpt: a.data.excerpt,
+    body: a.body,
+    date: a.data.date,
+    tags: a.data.tags,
+    categories: a.data.categories,
+    category_names: a.data.category_names,
+    access: a.data.access,
   };
 }
 
@@ -193,15 +159,7 @@ async function fetchArticlesForDay(pool, ymd, { paywalledOnly = false } = {}) {
   }
   sql += ` ORDER BY date ASC`;
   const [rows] = await pool.query(sql, params);
-  return (rows || []).map(rowToNlArticle);
-}
-
-function formatDateFr(date) {
-  const d = date instanceof Date ? date : new Date(date);
-  const dd = String(d.getDate()).padStart(2, '0');
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const yyyy = d.getFullYear();
-  return `${dd}/${mm}/${yyyy}`;
+  return (rows || []).map(rowToNlArticle).filter(Boolean);
 }
 
 /**
@@ -276,7 +234,7 @@ function renderArticleCards(articles, siteUrl, t) {
     const linkColor = editorial ? t.text : t.meta;
 
     html += `<div style="${cardShell}margin-bottom:18px;"><div style="${articleInner}">`;
-    html += `<p style="margin:0 0 10px;color:${t.meta};font-size:11px;line-height:1.4;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;font-family:${t.fontUi};">${escapeHtml(label)} · ${escapeHtml(formatDateFr(a.date))}</p>`;
+    html += `<p style="margin:0 0 10px;color:${t.meta};font-size:11px;line-height:1.4;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;font-family:${t.fontUi};">${escapeHtml(label)} · ${escapeHtml(formatDateFrNumeric(a.date))}</p>`;
     html += `<h2 style="${titleStyle}"><a href="${escapeHtml(href)}" rel="bookmark" style="color:${linkColor};text-decoration:none;">${escapeHtml(a.title)}</a></h2>`;
     html += `<div style="font-size:15px;color:${t.body};line-height:1.65;margin:0;font-family:${t.fontUi};">`;
     if (editorial) {

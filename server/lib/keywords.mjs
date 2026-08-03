@@ -4,80 +4,11 @@
  */
 
 import { stripHtmlToText as htmlToText } from './excerpt.mjs';
+import { isDeniedKeyword } from './keyword-policy.mjs';
 
 /** Plafond de sécurité (articles extrêmes) — le corps entier passe en dessous. */
 const MAX_CONTENT_CHARS = 80_000;
 const MAX_KEYWORDS = 7;
-
-/** Thèmes / termes trop larges à écarter côté API même si le modèle les renvoie. */
-const KEYWORD_DENYLIST = new Set(
-  [
-    'innovation',
-    'régulation',
-    'regulation',
-    'réseaux sociaux',
-    'reseaux sociaux',
-    'social media',
-    'intelligence artificielle',
-    'artificial intelligence',
-    'ia',
-    'ai',
-    'numérique',
-    'numerique',
-    'digital',
-    'tech',
-    'technologie',
-    'technologies',
-    'actualité',
-    'actualite',
-    'news',
-    'transformation',
-    'marché',
-    'marche',
-    'market',
-    'croissance',
-    'growth',
-    'scandale',
-    'enquête',
-    'enquete',
-    'investigation',
-    'internet',
-    'web',
-    'données',
-    'donnees',
-    'data',
-    'cybersécurité',
-    'cybersecurite',
-    'cybersecurity',
-    'privacy',
-    'vie privée',
-    'vie privee',
-    'économie',
-    'economie',
-    'economy',
-    'politique',
-    'politics',
-    'entreprise',
-    'entreprises',
-    'company',
-    'companies',
-    'secteur',
-    'secteurs',
-    'industrie',
-    'futur',
-    'avenir',
-    'enjeu',
-    'enjeux',
-    'tendance',
-    'tendances',
-    'trend',
-    'trends',
-    'electronlibre',
-    'electron libre',
-    'électronlibre',
-    'électron libre',
-  ].map((s) => s.toLocaleLowerCase('fr'))
-);
 
 /** Texte article pour extracteur — conserve les sauts de blocs. */
 export function stripHtmlToText(html) {
@@ -135,7 +66,7 @@ export function normalizeKeywords(raw, { max = MAX_KEYWORDS } = {}) {
       );
     if (looksLikePerson ? words.length > 4 : words.length > 3) continue;
     const key = item.toLocaleLowerCase('fr');
-    if (seen.has(key) || KEYWORD_DENYLIST.has(key)) continue;
+    if (seen.has(key) || isDeniedKeyword(item)) continue;
     seen.add(key);
     out.push(item);
     if (out.length >= max) break;

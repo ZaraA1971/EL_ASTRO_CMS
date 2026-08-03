@@ -3,15 +3,10 @@
  */
 import { assertSafeSqlIdent } from '../http.mjs';
 import { slugifyCategoryName } from '../../../slugify.mjs';
-
-function rowToCategory(row) {
-  return {
-    slug: String(row.slug),
-    name: String(row.name),
-    sort_order: Number(row.sort_order) || 0,
-    show_in_nav: Boolean(row.show_in_nav),
-  };
-}
+import {
+  ensureCategoriesSchema as ensureSharedSchema,
+  rowToCategory,
+} from '../../../../../shared/categories.mjs';
 
 /**
  * @param {object} opts
@@ -29,26 +24,7 @@ export function createCategoriesStore({
 
   async function ensureSchema(pool) {
     if (ensured) return;
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS \`${table}\` (
-        slug VARCHAR(64) NOT NULL,
-        name VARCHAR(120) NOT NULL,
-        sort_order INT NOT NULL DEFAULT 100,
-        show_in_nav TINYINT(1) NOT NULL DEFAULT 1,
-        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        PRIMARY KEY (slug),
-        KEY idx_sort (sort_order),
-        KEY idx_nav_sort (show_in_nav, sort_order)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    `);
-    for (const c of defaults) {
-      await pool.query(
-        `INSERT IGNORE INTO \`${table}\` (slug, name, sort_order, show_in_nav)
-         VALUES (?, ?, ?, ?)`,
-        [c.slug, c.name, c.sort_order ?? 100, c.show_in_nav ? 1 : 0]
-      );
-    }
+    await ensureSharedSchema(pool, table, defaults);
     ensured = true;
   }
 

@@ -2,6 +2,10 @@ import { isEditorialUpdate } from "../editorial-update.js";
 
 export { escapeHtml } from "../escape-html.js";
 import { escapeHtml } from "../escape-html.js";
+import {
+  formatDateFrShort,
+  formatDateTimeFrShort,
+} from "../format-date-fr.js";
 
 /** Ligne libellé · valeur pour cartouches liste (comptes, …). */
 export function listMetaRow(label, value) {
@@ -23,35 +27,11 @@ export function filterChips(ariaLabel, options, activeValue, dataAttr) {
 }
 
 export function formatDate(d) {
-  if (d == null || d === "") return "";
-  try {
-    const dt = new Date(d);
-    if (Number.isNaN(dt.getTime())) return "";
-    return dt.toLocaleDateString("fr-FR", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    });
-  } catch {
-    return "";
-  }
+  return formatDateFrShort(d);
 }
 
 export function formatDateTime(d) {
-  if (d == null || d === "") return "";
-  try {
-    const dt = new Date(d);
-    if (Number.isNaN(dt.getTime())) return "";
-    return dt.toLocaleString("fr-FR", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch {
-    return "";
-  }
+  return formatDateTimeFrShort(d);
 }
 
 /** Valeur pour <input type="datetime-local"> en heure locale (pas UTC). */
