@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   EDITORIAL_UPDATE_GRACE_MS,
   isEditorialUpdate,
+  shouldBumpEditorialModified,
 } from './editorial-update.mjs';
 
 describe('editorial-update', () => {
@@ -23,6 +24,44 @@ describe('editorial-update', () => {
     );
     assert.equal(
       isEditorialUpdate(pub, new Date(pub.getTime() + 2 * 60 * 60 * 1000)),
+      true
+    );
+  });
+
+  it('access-only (and keyword cascade) does not bump modified', () => {
+    assert.equal(
+      shouldBumpEditorialModified({
+        accessChanged: true,
+        iaKeywordsChanged: true,
+        otherFieldsChanged: false,
+      }),
+      false
+    );
+    assert.equal(
+      shouldBumpEditorialModified({
+        accessChanged: true,
+        iaKeywordsChanged: false,
+        otherFieldsChanged: false,
+      }),
+      false
+    );
+  });
+
+  it('keyword-only or content change does bump modified', () => {
+    assert.equal(
+      shouldBumpEditorialModified({
+        accessChanged: false,
+        iaKeywordsChanged: true,
+        otherFieldsChanged: false,
+      }),
+      true
+    );
+    assert.equal(
+      shouldBumpEditorialModified({
+        accessChanged: true,
+        iaKeywordsChanged: false,
+        otherFieldsChanged: true,
+      }),
       true
     );
   });

@@ -29,3 +29,20 @@ export function isEditorialUpdate(published, modifiedOrNow = new Date()) {
 export function isPastEditorialUpdateGrace(published, now = Date.now()) {
   return isEditorialUpdate(published, now);
 }
+
+/**
+ * Faut-il remonter `modified` (affichage « Mis à jour ») ?
+ * Un seul changement Accès abonné ↔ gratuit (et effets mots-clés liés)
+ * ne doit pas compter comme mise à jour éditoriale.
+ *
+ * @param {{
+ *   accessChanged?: boolean,
+ *   iaKeywordsChanged?: boolean,
+ *   otherFieldsChanged?: boolean,
+ * }} flags
+ */
+export function shouldBumpEditorialModified(flags = {}) {
+  if (flags.otherFieldsChanged) return true;
+  if (!flags.accessChanged && flags.iaKeywordsChanged) return true;
+  return false;
+}

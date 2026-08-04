@@ -8,4 +8,9 @@ declare module '@el/editorial-update' {
     published: Date | string | number | null | undefined,
     now?: Date | string | number
   ): boolean;
+  export function shouldBumpEditorialModified(flags?: {
+    accessChanged?: boolean;
+    iaKeywordsChanged?: boolean;
+    otherFieldsChanged?: boolean;
+  }): boolean;
 }

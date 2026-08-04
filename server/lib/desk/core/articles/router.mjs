@@ -16,7 +16,11 @@
  */
 import { assertSafeSqlIdent, parseJsonBody } from '../http.mjs';
 import { emitDeskLifecycle } from '../lifecycle.mjs';
-import { isEditorialUpdate } from '../../../editorial-update.mjs';
+import {
+  isEditorialUpdate,
+  shouldBumpEditorialModified,
+} from '../../../editorial-update.mjs';
+import { normalizeAccess } from '../../../article-row.mjs';
 
 function tableOf(ctx) {
   return assertSafeSqlIdent(
@@ -531,15 +535,70 @@ async function handleUpdate(req, res, ctx, existing, articleId) {
     : h.toMysqlDate(payload.date) ||
       h.toMysqlDate(existing.date) ||
       h.nowMysql();
-  // En ligne : pas de tampon « mise à jour » dans les 45 min après publication.
+
+  const accessPrev = normalizeAccess(existing.access);
+  const accessChanged = accessPrev !== accessNext;
+  const iaPrev = parseJsonArray(existing.ia_keywords);
+  const iaChanged = h.asJson(iaKeywordsNext) !== h.asJson(iaPrev);
+  const tagsNext =
+    payload.tags != null ? payload.tags : parseJsonArray(existing.tags);
+  const langNext =
+    payload.lang != null
+      ? String(payload.lang).toLowerCase()
+      : existing.lang;
+  // datetime-local côté desk est à la minute — ignorer les secondes.
+  const dateKey = (v) => {
+    const s = h.toMysqlDate(v);
+    return s ? s.slice(0, 16) : null;
+  };
+  const otherFieldsChanged =
+    title !== String(existing.title || '') ||
+    slug !== String(existing.slug || '') ||
+    bodyHtml !== String(existing.body || '') ||
+    authorName !== String(existing.author || '') ||
+    String(authorSlug || '') !== String(existing.author_slug || '') ||
+    (authorUserId == null ? null : Number(authorUserId)) !==
+      (existing.author_user_id == null
+        ? null
+        : Number(existing.author_user_id)) ||
+    h.asJson(cats) !== h.asJson(parseJsonArray(existing.categories)) ||
+    h.asJson(tagsNext) !== h.asJson(parseJsonArray(existing.tags)) ||
+    Number(draftVal) !== Number(existing.draft) ||
+    String(langNext || '') !== String(existing.lang || '') ||
+    (translationFr == null ? null : Number(translationFr)) !==
+      (existing.translation_fr == null
+        ? null
+        : Number(existing.translation_fr)) ||
+    (translationEn == null ? null : Number(translationEn)) !==
+      (existing.translation_en == null
+        ? null
+        : Number(existing.translation_en)) ||
+    dateKey(nextDate) !== dateKey(existing.date);
+
   const nowMysql = h.nowMysql();
   const publishedForGrace = existing.date || nextDate;
-  const nextModified =
+  let nextModified = nowMysql;
+  if (
+    !shouldBumpEditorialModified({
+      accessChanged,
+      iaKeywordsChanged: iaChanged,
+      otherFieldsChanged,
+    })
+  ) {
+    // Accès seul (ou no-op) : garder modified / date de pub.
+    nextModified =
+      h.toMysqlDate(existing.modified) ||
+      h.toMysqlDate(existing.date) ||
+      nowMysql;
+  } else if (
     !isDraft &&
     publishedForGrace &&
     !isEditorialUpdate(publishedForGrace, new Date())
-      ? nextDate || h.toMysqlDate(publishedForGrace) || nowMysql
-      : nowMysql;
+  ) {
+    // En ligne : pas de tampon « mise à jour » dans les 45 min après publication.
+    nextModified =
+      nextDate || h.toMysqlDate(publishedForGrace) || nowMysql;
+  }
 
   await pool.query(
     `UPDATE \`${table}\` SET
@@ -561,14 +620,10 @@ async function handleUpdate(req, res, ctx, existing, articleId) {
       authorUserId,
       h.asJson(cats),
       h.asJson(catNames),
-      h.asJson(
-        payload.tags != null ? payload.tags : parseJsonArray(existing.tags)
-      ),
+      h.asJson(tagsNext),
       h.asJson(iaKeywordsNext),
       accessNext,
-      payload.lang != null
-        ? String(payload.lang).toLowerCase()
-        : existing.lang,
+      langNext,
       draftVal,
       translationFr,
       translationEn,

@@ -114,19 +114,22 @@ export function normalizeKeywordList(list) {
 /**
  * Empreinte éditoriale : titre, corps, auteur, date, rubriques, accès, mots-clés IA.
  * @param {object} p
+ * @param {{ includeAccess?: boolean }} [opts]
  */
-export function editFingerprint(p = {}) {
+export function editFingerprint(p = {}, opts = {}) {
+  const includeAccess = opts.includeAccess !== false;
   const cats = [...(p.categories || [])].map(String).filter(Boolean).sort();
   const kws = normalizeKeywordList(p.ia_keywords);
-  return JSON.stringify({
+  const base = {
     title: String(p.title || "").trim(),
     body: cleanBody(p.body || ""),
     author: String(p.author || "").trim(),
     date: fingerprintDate(p.date),
     categories: cats,
-    access: normalizeAccess(p.access),
     ia_keywords: kws,
-  });
+  };
+  if (includeAccess) base.access = normalizeAccess(p.access);
+  return JSON.stringify(base);
 }
 
 export function editFingerprintFromArticle(article) {
@@ -199,6 +202,67 @@ export function isEditContentDirty() {
   return currentEditFingerprint() !== state.editBaseline;
 }
 
+/**
+ * Contenu éditorial dirty hors Accès (abonné/gratuit).
+ * Un seul changement d’accès ne compte pas comme « Mis à jour ».
+ */
+export function isEditorialContentDirty() {
+  if (!state.article || state.view !== "edit") return false;
+  if (!state.editBaseline) return false;
+  const a = state.article;
+  const d = a.data || {};
+  const baselineNoAccess = editFingerprint(
+    {
+      title: d.title,
+      body: a.body,
+      author: d.author,
+      date: d.date,
+      categories: d.categories,
+      ia_keywords: d.ia_keywords,
+    },
+    { includeAccess: false }
+  );
+  const titleEl = document.getElementById("f-title");
+  const authorEl = document.getElementById("f-author");
+  const dateEl = document.getElementById("f-date");
+  const iaEl = document.getElementById("f-ia");
+  const accessEl = document.getElementById("f-access");
+  const chipsRoot = document.getElementById("chips");
+  const cats = chipsRoot
+    ? [...chipsRoot.querySelectorAll(".chip.on")].map((el) => el.dataset.value)
+    : d.categories || [];
+  const access = accessEl?.value || d.access || "subscribers";
+  const accessChanged = normalizeAccess(access) !== normalizeAccess(d.access);
+  // Effet Accès → gratuit : mots-clés vidés — ne pas compter comme MAJ éditoriale.
+  const ia_keywords =
+    access === "granted"
+      ? accessChanged
+        ? d.ia_keywords || []
+        : []
+      : iaEl
+        ? iaEl.value
+            .split(",")
+            .map((t) => t.trim())
+            .filter(Boolean)
+        : d.ia_keywords || [];
+  let date = d.date;
+  if (!d.draft && dateEl && !dateEl.disabled && dateEl.value) {
+    date = fromDatetimeLocalValue(dateEl.value) || date;
+  }
+  const currentNoAccess = editFingerprint(
+    {
+      title: titleEl != null ? titleEl.value : d.title,
+      body: getBodyFromDom(),
+      author: authorEl != null ? authorEl.value : d.author,
+      date,
+      categories: cats,
+      ia_keywords,
+    },
+    { includeAccess: false }
+  );
+  return currentNoAccess !== baselineNoAccess;
+}
+
 export function refreshEditDirty() {
   if (!state.article || state.article.data.draft) {
     state.editDirty = false;
@@ -227,11 +291,12 @@ export function isPublishUpdateAction() {
   return Boolean(
     state.article &&
       !state.article.data.draft &&
-      isPastEditorialUpdateGrace(state.article.data.date)
+      isPastEditorialUpdateGrace(state.article.data.date) &&
+      isEditorialContentDirty()
   );
 }
 
-/** Libellé Publier : « Mis à jour » si en ligne, dirty, et ≥ 45 min après publication. */
+/** Libellé Publier : « Mis à jour » si en ligne, dirty éditorial, et ≥ 45 min après publication. */
 export function publishButtonLabel() {
   if (!state.article) return "Publier";
   if (state.article.data.draft) return "Publier";
