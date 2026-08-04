@@ -32,6 +32,9 @@ export function iosJwtConfigured(cfg = {}) {
 }
 
 /**
+ * Claim isSubscriber toujours présent (true|false), jamais omis.
+ * true = accès contenus abonnés + IA au moment de l’émission.
+ *
  * @param {number|string} userId
  * @param {{ secret: string, ttlDays?: number, iss?: string }} cfg
  * @param {{ isSubscriber?: boolean }} [opts]
@@ -42,7 +45,8 @@ export function issueIosJwt(userId, cfg, opts = {}) {
   const iss = String(cfg.iss || 'https://electronlibre.info').replace(/\/+$/, '');
   const iat = Math.floor(Date.now() / 1000);
   const exp = iat + ttlDays * 86400;
-  const isSubscriber = Boolean(opts.isSubscriber);
+  // Coercion stricte : toujours un booléen JSON (jamais undefined / null).
+  const isSubscriber = opts.isSubscriber === true;
   const header = b64urlJson({ alg: 'HS256', typ: 'JWT' });
   const body = b64urlJson({
     iss,
@@ -56,6 +60,11 @@ export function issueIosJwt(userId, cfg, opts = {}) {
     crypto.createHmac('sha256', secret).update(`${header}.${body}`).digest()
   );
   return `${header}.${body}.${sig}`;
+}
+
+/** Lit le claim isSubscriber (défaut false si absent — tokens legacy). */
+export function isSubscriberFromPayload(payload) {
+  return payload?.isSubscriber === true;
 }
 
 export function verifyIosJwt(token, cfg) {

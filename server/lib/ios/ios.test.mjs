@@ -5,8 +5,20 @@ import {
   verifyIosJwt,
   userIdFromPayload,
   iosJwtConfigured,
+  isSubscriberFromPayload,
 } from './jwt.mjs';
+import { canAccessPremium } from '../roles.mjs';
 import { toIosArticleDto, sanitizeHtmlForIos } from './articles.mjs';
+
+function decodeJwtPayload(token) {
+  const mid = String(token).split('.')[1];
+  const pad = mid.length % 4 === 0 ? '' : '='.repeat(4 - (mid.length % 4));
+  return JSON.parse(
+    Buffer.from(mid.replace(/-/g, '+').replace(/_/g, '/') + pad, 'base64').toString(
+      'utf8'
+    )
+  );
+}
 
 describe('ios jwt', () => {
   const cfg = {
@@ -24,17 +36,49 @@ describe('ios jwt', () => {
     assert.equal(payload.isSubscriber, false);
   });
 
+  it('always embeds isSubscriber as a boolean (never omitted)', () => {
+    for (const opts of [undefined, {}, { isSubscriber: false }, { isSubscriber: true }]) {
+      const token = opts === undefined ? issueIosJwt(1, cfg) : issueIosJwt(1, cfg, opts);
+      const raw = decodeJwtPayload(token);
+      assert.ok(Object.hasOwn(raw, 'isSubscriber'));
+      assert.equal(typeof raw.isSubscriber, 'boolean');
+      assert.equal(raw.isSubscriber, opts?.isSubscriber === true);
+    }
+  });
+
   it('embeds isSubscriber claim from current eligibility', () => {
     const yes = verifyIosJwt(
       issueIosJwt(42, cfg, { isSubscriber: true }),
       cfg
     );
     assert.equal(yes.isSubscriber, true);
+    assert.equal(isSubscriberFromPayload(yes), true);
     const no = verifyIosJwt(
       issueIosJwt(42, cfg, { isSubscriber: false }),
       cfg
     );
     assert.equal(no.isSubscriber, false);
+    assert.equal(isSubscriberFromPayload(no), false);
+  });
+
+  it('maps Pupitre subscriber → true and other → false (same as entitled)', () => {
+    const subscriber = { role: 'subscriber', status: 'active' };
+    const other = { role: 'other', status: 'active' };
+    assert.equal(canAccessPremium(subscriber), true);
+    assert.equal(canAccessPremium(other), false);
+    const tokSub = verifyIosJwt(
+      issueIosJwt(7, cfg, { isSubscriber: canAccessPremium(subscriber) === true }),
+      cfg
+    );
+    const tokOther = verifyIosJwt(
+      issueIosJwt(8, cfg, { isSubscriber: canAccessPremium(other) === true }),
+      cfg
+    );
+    assert.equal(tokSub.isSubscriber, true);
+    assert.equal(tokOther.isSubscriber, false);
+    // entitled === isSubscriber
+    assert.equal(canAccessPremium(subscriber), tokSub.isSubscriber);
+    assert.equal(canAccessPremium(other), tokOther.isSubscriber);
   });
 
   it('rejects bad signature', () => {

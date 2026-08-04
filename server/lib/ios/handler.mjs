@@ -150,9 +150,9 @@ export async function handleIos(req, res, parts, ctx) {
         data: { status: 403 },
       });
     }
-    const token = issueIosJwt(user.id, jwtCfg, {
-      isSubscriber: canAccessPremium(user),
-    });
+    // isSubscriber === canAccessPremium (Pupitre courant) — toujours true|false.
+    const isSubscriber = canAccessPremium(user) === true;
+    const token = issueIosJwt(user.id, jwtCfg, { isSubscriber });
     return sendJson(res, 200, {
       success: true,
       data: { token },
@@ -172,9 +172,9 @@ export async function handleIos(req, res, parts, ctx) {
     try {
       const access = await requireBearerAccess(pool, req, jwtCfg);
       // Recalcul Pupitre courant (pas le claim figé du token précédent).
-      const token = issueIosJwt(access.user.id, jwtCfg, {
-        isSubscriber: !!access.entitled,
-      });
+      // Même règle que /auth/token et /auth/me.entitled.
+      const isSubscriber = canAccessPremium(access.user) === true;
+      const token = issueIosJwt(access.user.id, jwtCfg, { isSubscriber });
       return sendJson(res, 200, { success: true, data: { token } });
     } catch (err) {
       return sendJson(res, err.status || 401, {
@@ -190,10 +190,12 @@ export async function handleIos(req, res, parts, ctx) {
     try {
       const access = await requireBearerAccess(pool, req, jwtCfg);
       const pub = publicUser(access.user);
+      // entitled === isSubscriber (même règle canAccessPremium).
+      const entitled = canAccessPremium(access.user) === true;
       return sendJson(res, 200, {
         authenticated: true,
-        entitled: !!pub.entitled,
-        user: pub,
+        entitled,
+        user: pub ? { ...pub, entitled } : pub,
       });
     } catch (err) {
       return sendJson(res, err.status || 401, {
