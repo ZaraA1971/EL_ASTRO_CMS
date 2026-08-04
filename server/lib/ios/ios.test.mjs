@@ -59,6 +59,7 @@ describe('ios article dto', () => {
     assert.equal(dto.content, '');
     assert.equal(dto.excerpt, 'E');
     assert.equal(dto.isPublic, false);
+    assert.equal(dto.access, 'subscribers');
     assert.equal(dto.id, 9);
   });
 
@@ -109,6 +110,23 @@ describe('ios article dto', () => {
     );
     assert.match(pub.content, /ok/);
     assert.equal(pub.isPublic, true);
+    assert.equal(pub.access, 'granted');
+  });
+
+  it('normalizes unknown access to subscribers (paywalled)', () => {
+    const dto = toIosArticleDto(
+      {
+        article_id: 3,
+        title: 'T',
+        body: '<p>secret</p>',
+        access: 'weird',
+        date: '2026-01-01T12:00:00.000Z',
+      },
+      { entitled: false }
+    );
+    assert.equal(dto.access, 'subscribers');
+    assert.equal(dto.isPublic, false);
+    assert.equal(dto.content, '');
   });
 
   it('strips script and event handlers from iOS HTML', () => {

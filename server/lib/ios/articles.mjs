@@ -5,15 +5,11 @@ import { chapo } from '../excerpt.mjs';
 import { cleanHtml } from '../html-clean.mjs';
 import { isEditorialUpdate } from '../editorial-update.mjs';
 import { escapeHtml } from '../escape-html.mjs';
-import { parseRowDate } from '../article-row.mjs';
+import { normalizeAccess, parseRowDate } from '../article-row.mjs';
 
 function normalizeLang(lang) {
   const l = String(lang || 'FR').toUpperCase();
   return l === 'EN' ? 'EN' : 'FR';
-}
-
-function isPublicAccess(row) {
-  return String(row?.access || '').toLowerCase() === 'granted';
 }
 
 /**
@@ -77,7 +73,8 @@ function rowUpdatedIso(row) {
 }
 
 export function toIosArticleDto(row, { entitled = false, lang = 'FR' } = {}) {
-  const pub = isPublicAccess(row);
+  const access = normalizeAccess(row?.access);
+  const pub = access === 'granted';
   const canSeeBody = pub || entitled;
   const content = canSeeBody ? sanitizeHtmlForIos(row?.body || '') : '';
   const dto = {
@@ -86,7 +83,13 @@ export function toIosArticleDto(row, { entitled = false, lang = 'FR' } = {}) {
     date: rowDateIso(row),
     excerpt: chapo(row, 'ios', { entitled: canSeeBody }),
     content,
+    /** true = gratuit ; false = réservé abonnés (miroir de access === 'granted'). */
     isPublic: pub,
+    /**
+     * Statut canonique pour l’app : `granted` (gratuit) | `subscribers` (abonné).
+     * Toujours présent — ne pas déduire uniquement de content vide.
+     */
+    access,
     lang: normalizeLang(lang),
   };
   const updated = rowUpdatedIso(row);
