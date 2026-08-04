@@ -21,6 +21,20 @@ describe('ios jwt', () => {
     const payload = verifyIosJwt(token, cfg);
     assert.equal(userIdFromPayload(payload), 42);
     assert.ok(payload.exp > payload.iat);
+    assert.equal(payload.isSubscriber, false);
+  });
+
+  it('embeds isSubscriber claim from current eligibility', () => {
+    const yes = verifyIosJwt(
+      issueIosJwt(42, cfg, { isSubscriber: true }),
+      cfg
+    );
+    assert.equal(yes.isSubscriber, true);
+    const no = verifyIosJwt(
+      issueIosJwt(42, cfg, { isSubscriber: false }),
+      cfg
+    );
+    assert.equal(no.isSubscriber, false);
   });
 
   it('rejects bad signature', () => {

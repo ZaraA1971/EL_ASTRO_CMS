@@ -1,6 +1,9 @@
 /**
  * JWT HS256 pour l’app iOS — payload compatible plugin WP
- * { iss, iat, nbf, exp, data: { user: { id } } }
+ * { iss, iat, nbf, exp, isSubscriber, data: { user: { id } } }
+ *
+ * isSubscriber = éligibilité lecture abonné au moment de l’émission / refresh
+ * (recalculée depuis le statut Pupitre courant ; pas un snapshot figé).
  */
 import crypto from 'node:crypto';
 
@@ -28,18 +31,25 @@ export function iosJwtConfigured(cfg = {}) {
   return Boolean(cfg.secret && String(cfg.secret).length >= 16);
 }
 
-export function issueIosJwt(userId, cfg) {
+/**
+ * @param {number|string} userId
+ * @param {{ secret: string, ttlDays?: number, iss?: string }} cfg
+ * @param {{ isSubscriber?: boolean }} [opts]
+ */
+export function issueIosJwt(userId, cfg, opts = {}) {
   const secret = cfg.secret;
   const ttlDays = Math.max(1, Number(cfg.ttlDays) || 30);
   const iss = String(cfg.iss || 'https://electronlibre.info').replace(/\/+$/, '');
   const iat = Math.floor(Date.now() / 1000);
   const exp = iat + ttlDays * 86400;
+  const isSubscriber = Boolean(opts.isSubscriber);
   const header = b64urlJson({ alg: 'HS256', typ: 'JWT' });
   const body = b64urlJson({
     iss,
     iat,
     nbf: iat,
     exp,
+    isSubscriber,
     data: { user: { id: Number(userId) } },
   });
   const sig = b64url(
