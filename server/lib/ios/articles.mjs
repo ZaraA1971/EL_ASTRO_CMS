@@ -73,9 +73,9 @@ function rowUpdatedIso(row) {
 }
 
 export function toIosArticleDto(row, { entitled = false, lang = 'FR' } = {}) {
-  const access = normalizeAccess(row?.access);
-  const pub = access === 'granted';
-  const canSeeBody = pub || entitled;
+  /** true = gratuit (`granted`) ; false = abonné (`subscribers`). */
+  const isPublic = normalizeAccess(row?.access) === 'granted';
+  const canSeeBody = isPublic || entitled;
   const content = canSeeBody ? sanitizeHtmlForIos(row?.body || '') : '';
   const dto = {
     id: Number(row.article_id),
@@ -83,13 +83,7 @@ export function toIosArticleDto(row, { entitled = false, lang = 'FR' } = {}) {
     date: rowDateIso(row),
     excerpt: chapo(row, 'ios', { entitled: canSeeBody }),
     content,
-    /** true = gratuit ; false = réservé abonnés (miroir de access === 'granted'). */
-    isPublic: pub,
-    /**
-     * Statut canonique pour l’app : `granted` (gratuit) | `subscribers` (abonné).
-     * Toujours présent — ne pas déduire uniquement de content vide.
-     */
-    access,
+    isPublic,
     lang: normalizeLang(lang),
   };
   const updated = rowUpdatedIso(row);

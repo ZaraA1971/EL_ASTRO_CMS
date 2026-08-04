@@ -59,7 +59,6 @@ describe('ios article dto', () => {
     assert.equal(dto.content, '');
     assert.equal(dto.excerpt, 'E');
     assert.equal(dto.isPublic, false);
-    assert.equal(dto.access, 'subscribers');
     assert.equal(dto.id, 9);
   });
 
@@ -110,10 +109,9 @@ describe('ios article dto', () => {
     );
     assert.match(pub.content, /ok/);
     assert.equal(pub.isPublic, true);
-    assert.equal(pub.access, 'granted');
   });
 
-  it('normalizes unknown access to subscribers (paywalled)', () => {
+  it('treats unknown access as paywalled (isPublic false)', () => {
     const dto = toIosArticleDto(
       {
         article_id: 3,
@@ -124,7 +122,6 @@ describe('ios article dto', () => {
       },
       { entitled: false }
     );
-    assert.equal(dto.access, 'subscribers');
     assert.equal(dto.isPublic, false);
     assert.equal(dto.content, '');
   });
