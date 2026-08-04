@@ -6,7 +6,7 @@
 import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
 import wordpressHash from 'wordpress-hash-node';
-import { publicUser, STATUSES } from '../roles.mjs';
+import { canAccessPremium, publicUser, STATUSES } from '../roles.mjs';
 import { rateLimit, clientIp } from '../rate-limit.mjs';
 import {
   AccessError,
@@ -150,7 +150,9 @@ export async function handleIos(req, res, parts, ctx) {
         data: { status: 403 },
       });
     }
-    const token = issueIosJwt(user.id, jwtCfg);
+    const token = issueIosJwt(user.id, jwtCfg, {
+      isSubscriber: canAccessPremium(user),
+    });
     return sendJson(res, 200, {
       success: true,
       data: { token },
@@ -169,7 +171,10 @@ export async function handleIos(req, res, parts, ctx) {
     }
     try {
       const access = await requireBearerAccess(pool, req, jwtCfg);
-      const token = issueIosJwt(access.user.id, jwtCfg);
+      // Recalcul Pupitre courant (pas le claim figé du token précédent).
+      const token = issueIosJwt(access.user.id, jwtCfg, {
+        isSubscriber: !!access.entitled,
+      });
       return sendJson(res, 200, { success: true, data: { token } });
     } catch (err) {
       return sendJson(res, err.status || 401, {
