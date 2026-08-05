@@ -6,6 +6,7 @@
  * - /api/desk/*    → pupitre rédactionnel (rôles admin/editor/author)
  * - /api/ios/v1/*  → app iOS (Bearer JWT) — unique surface app (/wp-json retiré)
  * - /api/billing/* → abonnement Stripe (checkout, portail, webhook)
+ * - /api/ops/follow/* → suivi Vigie (localhost only : audience, comptes)
  */
 import http from 'node:http';
 import crypto from 'node:crypto';
@@ -42,6 +43,7 @@ import { auditLog } from './lib/audit.mjs';
 import { loadBillingConfig } from './lib/billing/config.mjs';
 import { ensureBillingSchema } from './lib/billing/schema.mjs';
 import { handleBilling } from './lib/billing/handler.mjs';
+import { handleOpsFollow } from './lib/ops/follow.mjs';
 
 const checkPhpass = wordpressHash.CheckPassword || wordpressHash.checkPassword;
 
@@ -950,6 +952,13 @@ const server = http.createServer(async (req, res) => {
       });
     }
     if (parts[1] === 'rag') return handleRag(req, res, parts);
+    if (parts[1] === 'ops' && parts[2] === 'follow') {
+      return handleOpsFollow(req, res, parts, {
+        pool,
+        sendJson,
+        goatcounter: deskCtx.goatcounter,
+      });
+    }
 
     return sendJson(res, 404, { error: 'Not found' });
   } catch (err) {

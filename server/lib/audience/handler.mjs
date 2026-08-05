@@ -86,7 +86,7 @@ async function enrichHitsWithArticles(pool, hits) {
   });
 }
 
-async function buildAudiencePayload(pool, goatcounter) {
+export async function buildAudiencePayload(pool, goatcounter) {
   const start = utcYmdDaysAgo(30);
 
   const summary = await withAudienceCache('summary', () =>
