@@ -71,6 +71,13 @@ async function handleCollection(req, res, ctx) {
     const q = String(url.searchParams.get('q') || '').trim();
     const lang = String(url.searchParams.get('lang') || '').trim();
     const draftParam = url.searchParams.get('draft');
+    const category = String(url.searchParams.get('category') || '')
+      .trim()
+      .toLowerCase();
+    const author = String(url.searchParams.get('author') || '').trim();
+    const dateDay = String(url.searchParams.get('date') || '').trim();
+    const modifiedDay = String(url.searchParams.get('modified') || '').trim();
+    const dayRe = /^\d{4}-\d{2}-\d{2}$/;
     const page = Math.max(1, Number(url.searchParams.get('page') || 1));
     const limit = Math.min(
       50,
@@ -91,6 +98,24 @@ async function handleCollection(req, res, ctx) {
       where.push('draft = ?');
       params.push(Number(draftParam));
     }
+    if (category) {
+      // categories = JSON array de slugs (ex. ["ia","robotic"])
+      // MariaDB: JSON_CONTAINS(col, ?) avec un littéral JSON string — pas CAST(? AS JSON)
+      where.push('JSON_CONTAINS(categories, ?)');
+      params.push(JSON.stringify(category));
+    }
+    if (author) {
+      where.push('author = ?');
+      params.push(author);
+    }
+    if (dayRe.test(dateDay)) {
+      where.push('DATE(`date`) = ?');
+      params.push(dateDay);
+    }
+    if (dayRe.test(modifiedDay)) {
+      where.push('DATE(`modified`) = ?');
+      params.push(modifiedDay);
+    }
     if (q) {
       where.push('(title LIKE ? OR excerpt LIKE ? OR slug LIKE ?)');
       const like = `%${q}%`;
@@ -107,7 +132,7 @@ async function handleCollection(req, res, ctx) {
     const offsetClamped = (pageClamped - 1) * limit;
     const [rows] = await pool.query(
       `SELECT article_id, slug, title, date, modified, author, author_user_id,
-              access, lang, draft
+              categories, category_names, access, lang, draft
        FROM \`${table}\` ${whereSql}
        ORDER BY modified DESC, article_id DESC
        LIMIT ? OFFSET ?`,

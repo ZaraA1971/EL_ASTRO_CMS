@@ -27,6 +27,8 @@ WordPress **retiré** (runtime hors live) ; site + app iOS 100 % Astro/Node.
 Rôles : `admin` / `editor` · `author` · `subscriber` · `other`.  
 **Publier = immédiat** (MySQL) — pas de rebuild Astro à chaque article.
 
+**Sécurité / droits** : source de vérité = `el_users` + `canAccessPremium`. Cookie web = identité seule ; JWT iOS `isSubscriber` = hint UI (refresh au foreground — voir [`docs/ios-auth.md`](docs/ios-auth.md)). Articles abonnés : teaser SSR + corps via `/api/content` (`el-auth.js`).
+
 ## Architecture
 
 | Service | Rôle |

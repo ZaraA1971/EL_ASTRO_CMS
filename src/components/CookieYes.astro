@@ -1,0 +1,21 @@
+---
+/**
+ * CookieYes CMP (ex-plugin WP cookie-law-info).
+ * Clé : EL_COOKIEYES_WEBSITE_KEY (/etc/electronlibre/el-cookieyes.env).
+ * Doc : https://cdn-cookieyes.com/client_data/{key}/script.js
+ */
+const websiteKey = String(
+  process.env.EL_COOKIEYES_WEBSITE_KEY ||
+    import.meta.env.PUBLIC_COOKIEYES_WEBSITE_KEY ||
+    ""
+).trim();
+const src = websiteKey
+  ? `https://cdn-cookieyes.com/client_data/${encodeURIComponent(websiteKey)}/script.js`
+  : "";
+---
+
+{
+  src && (
+    <script is:inline id="cookieyes" type="text/javascript" src={src}></script>
+  )
+}

@@ -1,0 +1,11 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "LFR8RH8A7L.EL-Studio.ElectronLibre-Lecteur",
+        "paths": ["*"]
+      }
+    ]
+  }
+}

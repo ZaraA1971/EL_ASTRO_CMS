@@ -44,6 +44,7 @@ export function listDismissHtml({ dataAttr, id, title = "", ariaLabel = "Supprim
  *   dataAttrs: Record<string, string|number>,
  *   title: string,
  *   byline?: string|null,
+ *   bylineHtml?: string|null, // HTML déjà échappé — prioritaire sur byline
  *   metaHtml: string,
  *   metaClass?: string,
  *   topBadgeHtml: string,
@@ -56,6 +57,7 @@ export function listSplitCardHtml({
   dataAttrs,
   title,
   byline = null,
+  bylineHtml = null,
   metaHtml,
   metaClass = "",
   topBadgeHtml,
@@ -65,15 +67,17 @@ export function listSplitCardHtml({
   const attrs = Object.entries(dataAttrs || {})
     .map(([k, v]) => `data-${k}="${escapeHtml(String(v))}"`)
     .join(" ");
+  const bylineBlock =
+    bylineHtml != null && bylineHtml !== ""
+      ? `<p class="list-item-byline">${bylineHtml}</p>`
+      : byline != null && byline !== ""
+        ? `<p class="list-item-byline">${escapeHtml(byline)}</p>`
+        : "";
   const inner = `
       <div class="list-item-split">
         <div class="list-item-split__body">
           <h2>${escapeHtml(title)}</h2>
-          ${
-            byline != null && byline !== ""
-              ? `<p class="list-item-byline">${escapeHtml(byline)}</p>`
-              : ""
-          }
+          ${bylineBlock}
           <div class="list-item-meta${metaClass ? ` ${metaClass}` : ""}">${metaHtml}</div>
         </div>
         <aside class="list-item-split__aside" aria-label="Métadonnées">

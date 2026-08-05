@@ -53,6 +53,7 @@ const UPSTREAM = (process.env.EL_RAG_UPSTREAM || 'http://127.0.0.1:8080').replac
   ''
 );
 const ENV_FILE = process.env.EL_API_ENV_FILE || '/etc/electronlibre/el-astro-api.env';
+/** Cookie identité seule (14j). Les droits premium sont toujours relus en MySQL. */
 const SESSION_TTL_SEC = 60 * 60 * 24 * 14;
 const COOKIE_NAME = 'el_session';
 
@@ -236,11 +237,16 @@ function cookieSuffix(maxAge) {
   return s;
 }
 
+/**
+ * Cookie session = identité (uid) + hints UI (login/name/role).
+ * Ne jamais autoriser le premium depuis ce payload : resolveAccess → DB → canAccessPremium.
+ */
 function makeSessionCookie(user) {
   const payload = b64urlJson({
     uid: user.id,
     login: user.login,
     name: user.display_name,
+    // Hint cosmétique uniquement — le rôle réel est relu en DB à chaque gate.
     role: normalizeRole(user.role),
     exp: Math.floor(Date.now() / 1000) + SESSION_TTL_SEC,
   });
@@ -330,9 +336,13 @@ function verifyWpPassword(plain, hash) {
 
 function sendJson(res, status, obj, extraHeaders = {}) {
   const body = JSON.stringify(obj);
+  // API jamais cacheable (CF / proxies) : droits et corps varient par session/Bearer.
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
-    'Cache-Control': 'no-store',
+    'Cache-Control': 'private, no-store, no-cache, must-revalidate',
+    'CDN-Cache-Control': 'no-store',
+    'Cloudflare-CDN-Cache-Control': 'no-store',
+    Pragma: 'no-cache',
     ...extraHeaders,
   });
   res.end(body);
@@ -367,7 +377,7 @@ async function findUser(loginOrEmail) {
   const id = normalizeLoginId(loginOrEmail);
   if (!id) return null;
   const [rows] = await pool.query(
-    `SELECT id, login, email, display_name, password_hash, role, status, access_until, wp_role, source
+    `SELECT id, login, email, display_name, password_hash, role, status, access_until, wp_role, source, updated_at
      FROM el_users
      WHERE login = ? OR email = ?
      LIMIT 1`,
@@ -378,7 +388,7 @@ async function findUser(loginOrEmail) {
 
 async function findUserById(id) {
   const [rows] = await pool.query(
-    `SELECT id, login, email, display_name, password_hash, role, status, access_until, wp_role, source
+    `SELECT id, login, email, display_name, password_hash, role, status, access_until, wp_role, source, updated_at
      FROM el_users
      WHERE id = ?
      LIMIT 1`,
@@ -387,13 +397,24 @@ async function findUserById(id) {
   return rows[0] || null;
 }
 
+/** Horodatage ms des derniers changements compte (Pupitre / Stripe / profil). */
+function accessRevFromUser(user) {
+  if (!user?.updated_at) return null;
+  const t = new Date(user.updated_at).getTime();
+  return Number.isFinite(t) ? t : null;
+}
+
 function authPayload(user) {
   const pub = publicUser(user);
+  const accessRev = accessRevFromUser(user);
   return {
     authenticated: true,
     user: pub,
     desk: pub.desk,
-    entitled: pub.entitled,
+    // Contrat client : entitled top-level (pas user.entitled seul).
+    entitled: pub.entitled === true,
+    accessRev,
+    entitledAsOf: new Date().toISOString(),
   };
 }
 

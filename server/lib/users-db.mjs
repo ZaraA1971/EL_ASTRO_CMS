@@ -2,7 +2,7 @@
  * Lectures el_users partagées (web + iOS).
  */
 
-const USER_COLS = `id, login, email, display_name, password_hash, role, status, access_until, wp_role, source`;
+const USER_COLS = `id, login, email, display_name, password_hash, role, status, access_until, wp_role, source, updated_at`;
 
 export async function findUserById(pool, userId) {
   const id = Number(userId) || 0;

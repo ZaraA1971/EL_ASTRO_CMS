@@ -18,6 +18,17 @@ export const state = {
   pages: 1,
   q: "",
   filterDraft: "",
+  /** Filtre rubrique (slug) — vide = toutes. */
+  filterCategory: "",
+  filterCategoryName: "",
+  /** Filtre auteur (nom affiché) — vide = tous. */
+  filterAuthor: "",
+  /** Filtre jour publication (YYYY-MM-DD) — vide = tous. */
+  filterDate: "",
+  filterDateLabel: "",
+  /** Filtre jour mise à jour (YYYY-MM-DD) — vide = tous. */
+  filterModified: "",
+  filterModifiedLabel: "",
   article: null,
   /** Empreinte titre+corps après chargement / enregistrement / publish — pour griser Publier. */
   editBaseline: "",

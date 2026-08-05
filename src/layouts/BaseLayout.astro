@@ -1,6 +1,7 @@
 ---
 import Header from "../components/Header.astro";
 import Footer from "../components/Footer.astro";
+import CookieYes from "../components/CookieYes.astro";
 import OneSignalInit from "../components/OneSignalInit.astro";
 import GoogleAnalytics from "../components/GoogleAnalytics.astro";
 import GoatCounter from "../components/GoatCounter.astro";
@@ -64,6 +65,8 @@ const twitterCard = imageUrl ? "summary_large_image" : "summary";
     <meta name="twitter:description" content={description} />
     {imageUrl && <meta name="twitter:image" content={imageUrl} />}
     <title>{title}</title>
+    {/* CMP avant GA / OneSignal — blocage cookies jusqu’au consentement */}
+    <CookieYes />
     <link rel="stylesheet" href={`/css/el/el-tokens.css?v=${assetV}`} />
     <link rel="stylesheet" href={`/css/el/el-reset.css?v=${assetV}`} />
     <link rel="stylesheet" href={`/css/el/el-global.css?v=${assetV}`} />

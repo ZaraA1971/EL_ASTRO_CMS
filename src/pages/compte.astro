@@ -193,6 +193,15 @@ const rolesBootstrap = JSON.stringify({ staff: [...STAFF_ROLE_KEYS] });
       banner.textContent =
         "Paiement reçu — votre accès est ouvert. Vérifiez votre e-mail pour choisir un mot de passe et vous connecter.";
       banner.hidden = false;
+      try {
+        if (typeof window.elRefreshAccess === "function") {
+          window.elRefreshAccess();
+        } else if (typeof BroadcastChannel !== "undefined") {
+          var bcOk = new BroadcastChannel("el-access");
+          bcOk.postMessage({ type: "invalidate" });
+          bcOk.close();
+        }
+      } catch (_) {}
     }
 
     function showGuest() {
@@ -438,6 +447,15 @@ const rolesBootstrap = JSON.stringify({ staff: [...STAFF_ROLE_KEYS] });
           method: "POST",
           credentials: "same-origin",
         });
+        try {
+          if (typeof window.elNotifyAccessChanged === "function") {
+            window.elNotifyAccessChanged();
+          } else if (typeof BroadcastChannel !== "undefined") {
+            var bcOut = new BroadcastChannel("el-access");
+            bcOut.postMessage({ type: "invalidate" });
+            bcOut.close();
+          }
+        } catch (_) {}
         location.href = "/";
       });
 

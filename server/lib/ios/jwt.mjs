@@ -2,8 +2,10 @@
  * JWT HS256 pour l’app iOS — payload compatible plugin WP
  * { iss, iat, nbf, exp, isSubscriber, data: { user: { id } } }
  *
- * isSubscriber = éligibilité lecture abonné au moment de l’émission / refresh
- * (recalculée depuis le statut Pupitre courant ; pas un snapshot figé).
+ * isSubscriber = hint UI au moment de l’émission / refresh (Pupitre / MySQL).
+ * Les gates serveur (/articles, RAG) ignorent ce claim et recalculent via canAccessPremium.
+ * L’app DOIT appeler POST /auth/refresh au foreground, après achat, et après 403 contenu.
+ * Voir docs/ios-auth.md.
  */
 import crypto from 'node:crypto';
 

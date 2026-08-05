@@ -856,6 +856,28 @@ details.x-panel[open] {
   line-height: 1.35;
 }
 
+.list-item-byline .list-author {
+  color: inherit;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.list-item-byline .list-author:hover,
+.list-item-byline .list-author:focus-visible {
+  color: var(--accent, #2f6dfb);
+  outline: none;
+}
+
+.list-item-byline .list-author.is-active {
+  color: var(--accent, #2f6dfb);
+}
+
+.list-item-byline .list-author--empty {
+  color: #94a3b8;
+  font-weight: 500;
+  cursor: default;
+}
+
 .list-item-meta {
   display: grid;
   gap: 4px 12px;
@@ -871,6 +893,56 @@ details.x-panel[open] {
 /* Articles : dates Publication [| Mis à jour] sous la byline. */
 .list-item-meta--article.has-maj {
   grid-template-columns: 1fr 1fr;
+}
+
+/* Rubriques sous la date — style discret (aligné archives web). */
+.list-item-meta--article .list-item-cats {
+  grid-column: 1 / -1;
+  display: block;
+  margin: 2px 0 0;
+  font-size: 0.62rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  line-height: 1.45;
+  text-transform: uppercase;
+}
+
+.list-item-cats .list-cat {
+  display: inline;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: none;
+  color: #64748b;
+  cursor: pointer;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.list-item-cats .list-cat::after {
+  content: "·";
+  margin: 0 0.4em;
+  color: #cbd5e1;
+  font-weight: 400;
+}
+
+.list-item-cats .list-cat:last-child::after {
+  content: none;
+}
+
+.list-item-cats .list-cat:hover,
+.list-item-cats .list-cat:focus-visible {
+  color: var(--accent, #2f6dfb);
+  outline: none;
+}
+
+.list-item-cats .list-cat.is-active {
+  color: var(--accent, #2f6dfb);
+  font-weight: 600;
+}
+
+.filter-chips--meta {
+  margin-left: 4px;
 }
 
 @media (max-width: 520px) {
@@ -905,6 +977,23 @@ details.x-panel[open] {
   min-width: 0;
   color: var(--ink);
   overflow-wrap: anywhere;
+}
+
+.list-item-v .list-date {
+  color: inherit;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.list-item-v .list-date:hover,
+.list-item-v .list-date:focus-visible {
+  color: var(--accent, #2f6dfb);
+  outline: none;
+}
+
+.list-item-v .list-date.is-active {
+  color: var(--accent, #2f6dfb);
+  font-weight: 600;
 }
 
 .badge-role {

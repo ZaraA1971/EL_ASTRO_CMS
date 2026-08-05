@@ -199,7 +199,7 @@ function renderHomeToolCartouches(siteUrl, t) {
   html += `<p style="margin:0 0 8px;color:#059669;font-size:11px;line-height:1.4;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;">Veille IA</p>`;
   html += `<h2 style="margin:0 0 8px;color:#fafafa;font-size:22px;line-height:1.15;letter-spacing:-0.02em;font-weight:700;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;">GEO</h2>`;
   html += `<p style="margin:0 0 16px;color:#a1a1aa;font-size:14px;line-height:1.55;font-family:${t.fontUi};">Comment les IA citent et classent marques, médias, marchés.</p>`;
-  html += `<a href="https://geo.electronlibre.info/" target="_blank" style="${cta('#059669')}">Ouvrir GEO →</a>`;
+  html += `<a href="https://geo.electronlibre.info/fr#contact" target="_blank" style="${cta('#059669')}">Ouvrir GEO →</a>`;
   html += `</div></div>`;
 
   return html;

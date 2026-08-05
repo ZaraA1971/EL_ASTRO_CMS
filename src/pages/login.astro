@@ -96,6 +96,13 @@ import AuthLayout from "../layouts/AuthLayout.astro";
           btn.disabled = false;
           return;
         }
+        try {
+          if (typeof BroadcastChannel !== "undefined") {
+            var bc = new BroadcastChannel("el-access");
+            bc.postMessage({ type: "invalidate" });
+            bc.close();
+          }
+        } catch (_) {}
         var raw = new URLSearchParams(location.search).get("redirect") || "/";
         var next =
           raw.startsWith("/") && !raw.startsWith("//") && raw.indexOf("://") === -1

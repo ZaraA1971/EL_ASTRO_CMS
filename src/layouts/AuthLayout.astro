@@ -4,6 +4,7 @@
  * Pas de header Compagnon ni formulaire de recherche : Safari / gestionnaires
  * de mots de passe ne détectent sinon que le premier <form> de la page (le chat IA).
  */
+import CookieYes from "../components/CookieYes.astro";
 import GoatCounter from "../components/GoatCounter.astro";
 import { ASSET_V } from "../lib/assets";
 import "../styles/global.css";
@@ -33,6 +34,7 @@ const assetV = ASSET_V;
     <meta name="robots" content="noindex,nofollow" />
     <link rel="canonical" href={new URL(Astro.url.pathname, Astro.site || "https://electronlibre.info").href} />
     <title>{title}</title>
+    <CookieYes />
     <link rel="stylesheet" href={`/css/el/el-tokens.css?v=${assetV}`} />
     <link rel="stylesheet" href={`/css/el/el-reset.css?v=${assetV}`} />
     <link rel="stylesheet" href={`/css/el/el-global.css?v=${assetV}`} />

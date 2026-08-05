@@ -15,6 +15,27 @@ export function listMetaRow(label, value) {
   )}</span><span class="list-item-v">${escapeHtml(value)}</span></div>`;
 }
 
+/** Comme listMetaRow, mais valueHtml est déjà échappé / enrichi. */
+export function listMetaRowHtml(label, valueHtml) {
+  if (valueHtml == null || valueHtml === "") return "";
+  return `<div class="list-item-kv"><span class="list-item-k">${escapeHtml(
+    label
+  )}</span><span class="list-item-v">${valueHtml}</span></div>`;
+}
+
+/**
+ * Jour calendaire YYYY-MM-DD aligné sur DATE(col) MySQL
+ * (datetime stocké / sérialisé avec les mêmes chiffres).
+ */
+export function calendarDayKey(d) {
+  if (d == null || d === "") return "";
+  const m = String(d).match(/^(\d{4}-\d{2}-\d{2})/);
+  if (m) return m[1];
+  const dt = d instanceof Date ? d : new Date(d);
+  if (Number.isNaN(dt.getTime())) return "";
+  return dt.toISOString().slice(0, 10);
+}
+
 /** Groupe de boutons filtre (remplace les <select>). */
 export function filterChips(ariaLabel, options, activeValue, dataAttr) {
   const buttons = options

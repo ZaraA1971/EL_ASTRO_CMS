@@ -2,6 +2,7 @@
  * API iOS /api/ios/v1/*
  * Seule surface app (pont /wp-json WP retiré).
  * Accès / RAG : modules partagés (access.mjs, rag-upstream.mjs, users-db.mjs).
+ * Contrat JWT / refresh : docs/ios-auth.md
  */
 import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
@@ -94,8 +95,14 @@ async function requireBearerAccess(pool, req, jwtCfg) {
  * parts: ['api','ios','v1', ...]
  */
 export async function handleIos(req, res, parts, ctx) {
-  const { pool, sendJson, readBody, jwt, siteUrl, rag } = ctx;
+  const { pool, readBody, jwt, siteUrl, rag } = ctx;
   const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+  // Droits / corps varient par Bearer — Vary + no-store (Bypass CF /api/ en prod).
+  const sendJson = (res, status, obj, extra = {}) =>
+    ctx.sendJson(res, status, obj, {
+      Vary: 'Authorization',
+      ...extra,
+    });
 
   if (parts[2] !== 'v1') {
     return sendJson(res, 404, { error: 'Not found' });
@@ -150,13 +157,9 @@ export async function handleIos(req, res, parts, ctx) {
         data: { status: 403 },
       });
     }
-    // isSubscriber === canAccessPremium (Pupitre courant) — toujours true|false.
     const isSubscriber = canAccessPremium(user) === true;
     const token = issueIosJwt(user.id, jwtCfg, { isSubscriber });
-    return sendJson(res, 200, {
-      success: true,
-      data: { token },
-    });
+    return sendJson(res, 200, { success: true, data: { token } });
   }
 
   // POST /api/ios/v1/auth/refresh
@@ -171,8 +174,6 @@ export async function handleIos(req, res, parts, ctx) {
     }
     try {
       const access = await requireBearerAccess(pool, req, jwtCfg);
-      // Recalcul Pupitre courant (pas le claim figé du token précédent).
-      // Même règle que /auth/token et /auth/me.entitled.
       const isSubscriber = canAccessPremium(access.user) === true;
       const token = issueIosJwt(access.user.id, jwtCfg, { isSubscriber });
       return sendJson(res, 200, { success: true, data: { token } });
@@ -190,17 +191,18 @@ export async function handleIos(req, res, parts, ctx) {
     try {
       const access = await requireBearerAccess(pool, req, jwtCfg);
       const pub = publicUser(access.user);
-      // entitled === isSubscriber (même règle canAccessPremium).
       const entitled = canAccessPremium(access.user) === true;
       return sendJson(res, 200, {
         authenticated: true,
         entitled,
+        isSubscriber: entitled,
         user: pub ? { ...pub, entitled } : pub,
       });
     } catch (err) {
       return sendJson(res, err.status || 401, {
         authenticated: false,
         entitled: false,
+        isSubscriber: false,
         code: err.code || 'JWT_INVALID',
         message: err.message || 'Invalid token',
       });
