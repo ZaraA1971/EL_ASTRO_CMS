@@ -99,7 +99,7 @@ function articleCatsHtml(d) {
       });
     })
     .filter(Boolean)
-    .join("");
+    .join('<span class="list-cat-sep" aria-hidden="true">·</span>');
   if (!links) return "";
   return `<div class="list-item-cats" role="group" aria-label="Rubriques">${links}</div>`;
 }

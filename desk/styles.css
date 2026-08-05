@@ -856,22 +856,6 @@ details.x-panel[open] {
   line-height: 1.35;
 }
 
-.list-item-byline .list-author {
-  color: inherit;
-  cursor: pointer;
-  transition: color 0.15s ease;
-}
-
-.list-item-byline .list-author:hover,
-.list-item-byline .list-author:focus-visible {
-  color: var(--accent, #2f6dfb);
-  outline: none;
-}
-
-.list-item-byline .list-author.is-active {
-  color: var(--accent, #2f6dfb);
-}
-
 .list-item-byline .list-author--empty {
   color: #94a3b8;
   font-weight: 500;
@@ -907,38 +891,48 @@ details.x-panel[open] {
   text-transform: uppercase;
 }
 
-.list-item-cats .list-cat {
+/* Filtres liste : fond derrière le texte + outline (pas de ::before opaque, pas de décalage). */
+.list-item-byline .list-author,
+.list-item-cats .list-cat,
+.list-item-v .list-date {
   display: inline;
-  padding: 0;
   margin: 0;
+  padding: 0;
   border: 0;
-  background: none;
-  color: #64748b;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
   cursor: pointer;
   text-decoration: none;
-  transition: color 0.15s ease;
+  outline: 1px solid transparent;
+  outline-offset: 2px;
+  transition:
+    background-color 0.15s ease,
+    outline-color 0.15s ease;
 }
 
-.list-item-cats .list-cat::after {
-  content: "·";
+.list-item-cats .list-cat {
+  color: #64748b;
+}
+
+.list-item-cats .list-cat-sep {
   margin: 0 0.4em;
   color: #cbd5e1;
   font-weight: 400;
+  pointer-events: none;
 }
 
-.list-item-cats .list-cat:last-child::after {
-  content: none;
-}
-
+.list-item-byline .list-author:hover,
+.list-item-byline .list-author:focus-visible,
 .list-item-cats .list-cat:hover,
-.list-item-cats .list-cat:focus-visible {
-  color: var(--accent, #2f6dfb);
-  outline: none;
-}
-
-.list-item-cats .list-cat.is-active {
-  color: var(--accent, #2f6dfb);
-  font-weight: 600;
+.list-item-cats .list-cat:focus-visible,
+.list-item-v .list-date:hover,
+.list-item-v .list-date:focus-visible,
+.list-item-byline .list-author.is-active,
+.list-item-cats .list-cat.is-active,
+.list-item-v .list-date.is-active {
+  background: #f1f5f9;
+  outline-color: var(--line-strong, #c5d0e0);
 }
 
 .filter-chips--meta {
@@ -977,23 +971,6 @@ details.x-panel[open] {
   min-width: 0;
   color: var(--ink);
   overflow-wrap: anywhere;
-}
-
-.list-item-v .list-date {
-  color: inherit;
-  cursor: pointer;
-  transition: color 0.15s ease;
-}
-
-.list-item-v .list-date:hover,
-.list-item-v .list-date:focus-visible {
-  color: var(--accent, #2f6dfb);
-  outline: none;
-}
-
-.list-item-v .list-date.is-active {
-  color: var(--accent, #2f6dfb);
-  font-weight: 600;
 }
 
 .badge-role {
