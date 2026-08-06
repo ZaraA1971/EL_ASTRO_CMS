@@ -128,6 +128,11 @@ const GOATCOUNTER_API_KEY =
 /** Qualif Admin → brouillons Desk (POST /api/desk/articles). */
 const DESK_INGEST_API_KEY =
   process.env.DESK_INGEST_API_KEY || fileEnv.DESK_INGEST_API_KEY || '';
+/** Vigie ops → gestion articles Desk (localhost, header X-Desk-Ops-Key). */
+const DESK_OPS_API_KEY =
+  process.env.DESK_OPS_API_KEY ||
+  fileEnv.DESK_OPS_API_KEY ||
+  DESK_INGEST_API_KEY;
 
 /** X / Twitter — post depuis le Pupitre (OAuth 1.0a par compte). */
 const X_DRY_RUN =
@@ -839,6 +844,7 @@ const deskCtx = {
   clientIp,
   mediaRoot: MEDIA_ROOT,
   deskIngestApiKey: DESK_INGEST_API_KEY,
+  deskOpsApiKey: DESK_OPS_API_KEY,
   deeplApiKey: DEEPL_API_KEY,
   siteUrl: SITE_URL,
   ragUpstream: UPSTREAM,

@@ -97,6 +97,18 @@ const DESK_INGEST_SESSION = Object.freeze({
   ingest: true,
 });
 
+/** Vigie / ops — gestion articles (list/get/update/publish/draft) + lecture catégories. */
+const DESK_OPS_SESSION = Object.freeze({
+  uid: null,
+  login: 'vigie',
+  name: 'Vigie',
+  role: 'editor',
+  ingest: true,
+  ops: true,
+});
+
+const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1', 'localhost']);
+
 function safeEqualStr(a, b) {
   const ba = Buffer.from(String(a || ''));
   const bb = Buffer.from(String(b || ''));
@@ -113,6 +125,22 @@ function readDeskIngestKey(req) {
     if (m) return m[1].trim();
   }
   return '';
+}
+
+function readDeskOpsKey(req) {
+  const header = req.headers['x-desk-ops-key'];
+  if (typeof header === 'string' && header.trim()) return header.trim();
+  return '';
+}
+
+function isLoopbackReq(req, clientIpFn) {
+  const addr =
+    (typeof clientIpFn === 'function' ? clientIpFn(req) : '') ||
+    req.socket?.remoteAddress ||
+    req.connection?.remoteAddress ||
+    '';
+  const norm = String(addr).replace(/^::ffff:/, '');
+  return LOOPBACK.has(norm) || LOOPBACK.has(addr);
 }
 
 /**
@@ -133,11 +161,60 @@ function resolveDeskIngestSession(req, parts, apiKey) {
   return DESK_INGEST_SESSION;
 }
 
+/**
+ * Auth Vigie → Desk (clé ops, localhost only).
+ * Articles : GET list/get, PUT update, POST publish|draft|create.
+ * Catégories : GET list. Pas de DELETE article / pas de médias / users.
+ */
+function resolveDeskOpsSession(req, parts, apiKey, clientIpFn) {
+  if (!apiKey) return null;
+  const provided = readDeskOpsKey(req);
+  if (!provided || !safeEqualStr(provided, apiKey)) return null;
+  if (!isLoopbackReq(req, clientIpFn)) {
+    const err = new Error('Ops Desk : localhost uniquement');
+    err.status = 403;
+    throw err;
+  }
+  const res = parts[2];
+  const id = parts[3];
+  const sub = parts[4];
+  const method = req.method;
+
+  if (res === 'categories' && !id && method === 'GET') {
+    return DESK_OPS_SESSION;
+  }
+  if (res === 'me' && method === 'GET') {
+    return DESK_OPS_SESSION;
+  }
+  if (res === 'articles') {
+    if (!id && (method === 'GET' || method === 'POST')) return DESK_OPS_SESSION;
+    if (id && !sub && (method === 'GET' || method === 'PUT')) {
+      return DESK_OPS_SESSION;
+    }
+    if (id && (sub === 'publish' || sub === 'draft') && method === 'POST') {
+      return DESK_OPS_SESSION;
+    }
+  }
+  const err = new Error(
+    'Ops Desk : gestion articles uniquement (list/get/update/publish/draft)'
+  );
+  err.status = 403;
+  throw err;
+}
+
 export async function handleDesk(req, res, parts, ctx) {
   const { sendJson, resolveDeskSession, clientIp } = ctx;
   let session = null;
   try {
-    session = resolveDeskIngestSession(req, parts, ctx.deskIngestApiKey);
+    session = resolveDeskOpsSession(
+      req,
+      parts,
+      ctx.deskOpsApiKey || ctx.deskIngestApiKey,
+      clientIp
+    );
+    if (!session) {
+      session = resolveDeskIngestSession(req, parts, ctx.deskIngestApiKey);
+    }
   } catch (err) {
     return sendJson(res, err.status || 403, {
       error: err.message || 'Accès pupitre refusé',
