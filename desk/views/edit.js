@@ -1,5 +1,6 @@
 import { stripLeadingChapoHtml, chapo } from "../excerpt.js";
 import { articlePath } from "../article-path.js";
+import { hrefFrom } from "../paste-link.js";
 import { state } from "../core/state.js";
 import { api } from "../core/api.js";
 import {
@@ -22,7 +23,7 @@ import {
   getHtmlEditor,
   getBodyFromDom,
   applyBodyClean,
-  onVisualPaste,
+  bindVisualEditorClipboard,
   setEditBaselineFromArticle,
   isEditContentDirty,
   confirmLeaveEdit,
@@ -938,7 +939,7 @@ export function renderEdit() {
                     <button type="button" class="btn" data-cmd="italic">Italique</button>
                     <button type="button" class="btn" data-cmd="ul">Liste</button>
                     <button type="button" class="btn" data-cmd="quote" title="Citation">Citation</button>
-                    <button type="button" class="btn" data-cmd="link">Lien</button>
+                    <button type="button" class="btn" data-cmd="link" title="Ou coller une URL sur le texte sélectionné">Lien</button>
                     <button type="button" class="btn" data-cmd="image">Document</button>
                   </div>
                   <div class="toolbar-group toolbar-group--align" role="group" aria-label="Alignement">
@@ -1240,8 +1241,7 @@ export function renderEdit() {
   if (state.mode === "visual") {
     const ed = getVisualEditor();
     ed.innerHTML = body || "<p><br></p>";
-    ed.addEventListener("input", () => syncPublishButton());
-    ed.addEventListener("paste", onVisualPaste);
+    bindVisualEditorClipboard(ed);
     app.querySelectorAll("[data-cmd]").forEach((btn) => {
       btn.onmousedown = (e) => {
         e.preventDefault();
@@ -1260,8 +1260,9 @@ export function renderEdit() {
         else if (cmd === "alignCenter") exec("justifyCenter");
         else if (cmd === "alignRight") exec("justifyRight");
         else if (cmd === "link") {
-          const url = prompt("URL du lien");
-          if (url) exec("createLink", url);
+          const raw = prompt("URL du lien");
+          const href = hrefFrom(raw, "prompt");
+          if (href) exec("createLink", href);
         } else if (cmd === "image") {
           openMediaPicker();
         }

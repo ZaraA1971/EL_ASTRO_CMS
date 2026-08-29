@@ -1,5 +1,6 @@
 import { cleanHtml as cleanArticleHtml } from "../html-clean.js";
 import { stripLeadingChapoHtml } from "../excerpt.js";
+import { hrefFrom } from "../paste-link.js";
 import { state } from "./state.js";
 import {
   escapeHtml,
@@ -68,18 +69,121 @@ export function applyBodyClean() {
   syncPublishButton();
 }
 
+/** Dernière sélection dans l’éditeur — Safari/Chrome Mac peuvent la perdre au Cmd+V. */
+let lastVisualRange = null;
+/** Évite un 2e collage si beforeinput a déjà posé le lien. */
+let pasteLinkJustApplied = false;
+
+function nodeInEditor(ed, node) {
+  return Boolean(ed && node && (node === ed || ed.contains(node)));
+}
+
+/** Sélection de texte dans l’éditeur visuel (pas un curseur seul). */
+function hasVisualTextSelection() {
+  const ed = getVisualEditor();
+  const sel = window.getSelection();
+  if (!ed || !sel || !sel.rangeCount || sel.isCollapsed) return false;
+  if (!nodeInEditor(ed, sel.anchorNode)) return false;
+  if (sel.focusNode && !nodeInEditor(ed, sel.focusNode)) return false;
+  return Boolean(sel.toString());
+}
+
+function rememberVisualSelection() {
+  const ed = getVisualEditor();
+  const sel = window.getSelection();
+  if (!ed || !sel || !sel.rangeCount || sel.isCollapsed) return;
+  if (!nodeInEditor(ed, sel.anchorNode)) return;
+  try {
+    lastVisualRange = sel.getRangeAt(0).cloneRange();
+  } catch {
+    lastVisualRange = null;
+  }
+}
+
+function restoreVisualSelectionIfNeeded() {
+  if (hasVisualTextSelection()) return true;
+  const ed = getVisualEditor();
+  if (!ed || !lastVisualRange || lastVisualRange.collapsed) return false;
+  try {
+    if (!nodeInEditor(ed, lastVisualRange.commonAncestorContainer)) return false;
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(lastVisualRange);
+    return hasVisualTextSelection();
+  } catch {
+    return false;
+  }
+}
+
+function readClipboardPayload(e) {
+  const dt = e?.clipboardData || e?.dataTransfer;
+  const uriList = dt?.getData?.("text/uri-list") || "";
+  return {
+    plain: dt?.getData?.("text/plain") || e?.data || "",
+    html: dt?.getData?.("text/html") || "",
+    uriList,
+  };
+}
+
+/**
+ * URL + sélection → pose le lien, sans remplacer le mot.
+ * @param {Event} e
+ * @param {{ plain?: string, html?: string, uriList?: string }} payload
+ */
+function applyPasteLink(e, payload) {
+  restoreVisualSelectionIfNeeded();
+  if (!hasVisualTextSelection()) return false;
+  const href = hrefFrom(payload, "clipboard");
+  if (!href) return false;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  const ed = getVisualEditor();
+  ed?.focus();
+  exec("createLink", href);
+  if (state.article && ed) state.article.body = cleanBody(ed.innerHTML);
+  syncPublishButton();
+  pasteLinkJustApplied = true;
+  setTimeout(() => {
+    pasteLinkJustApplied = false;
+  }, 50);
+  return true;
+}
+
+/**
+ * Safari / Chrome Mac : le collage peut remplacer la sélection *avant* `paste`.
+ * On pose le lien ici, ou on bloque le remplacement si une URL arrive ensuite.
+ * @param {InputEvent} e
+ */
+function onVisualBeforeInput(e) {
+  if (e.inputType !== "insertFromPaste" && e.inputType !== "insertFromDrop") {
+    return;
+  }
+  rememberVisualSelection();
+  const payload = readClipboardPayload(e);
+  if (applyPasteLink(e, payload)) return;
+  // Ne pas laisser Safari/Chrome remplacer le mot avant l’événement paste.
+  if (hasVisualTextSelection() || lastVisualRange) {
+    e.preventDefault();
+  }
+}
+
 /**
  * Colle du HTML / texte déjà nettoyé (évite color:rgb noir-sur-noir).
+ * URL (ou un seul lien copié) + sélection → applique le lien, sans remplacer le texte.
  * @param {ClipboardEvent} e
  */
-export function onVisualPaste(e) {
+function onVisualPaste(e) {
   const ed = getVisualEditor();
   if (!ed) return;
-  const clip = e.clipboardData;
-  if (!clip) return;
+  if (pasteLinkJustApplied) {
+    e.preventDefault();
+    pasteLinkJustApplied = false;
+    return;
+  }
+  const payload = readClipboardPayload(e);
+  if (applyPasteLink(e, payload)) return;
   e.preventDefault();
-  const html = clip.getData("text/html");
-  const plain = clip.getData("text/plain");
+  const { html, plain } = payload;
   let insert = "";
   if (html && /<[a-z][\s\S]*>/i.test(html)) {
     insert = cleanBody(html);
@@ -90,9 +194,22 @@ export function onVisualPaste(e) {
       .join("");
   }
   if (!insert) return;
+  restoreVisualSelectionIfNeeded();
   exec("insertHTML", insert);
   if (state.article) state.article.body = cleanBody(ed.innerHTML);
   syncPublishButton();
+}
+
+/** Écouteurs collage / sélection — à brancher à chaque render visuel. */
+export function bindVisualEditorClipboard(ed) {
+  if (!ed) return;
+  ed.addEventListener("input", () => syncPublishButton());
+  ed.addEventListener("beforeinput", onVisualBeforeInput, true);
+  ed.addEventListener("paste", onVisualPaste, true);
+}
+
+if (typeof document !== "undefined") {
+  document.addEventListener("selectionchange", rememberVisualSelection);
 }
 
 /** Date comparable (datetime-local local, à la minute). */

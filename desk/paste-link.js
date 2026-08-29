@@ -1,0 +1,1 @@
+../shared/paste-link.mjs
