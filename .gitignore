@@ -31,6 +31,9 @@ pnpm-debug.log*
 # Archive MD d’import (SoT = MySQL el_articles) — garder hors dépôt
 src/content/articles/
 
+# XML générés (scripts/build-sitemaps.mjs)
+var/
+
 # OS / editor
 *.swp
 *~

@@ -2,7 +2,7 @@ import { getPool } from './db';
 import { absoluteArticleUrl } from '@el/article-path';
 
 export const SITE = 'https://electronlibre.info';
-/** Aligné sur le chunking WP (~2000 URLs / fichier). */
+/** Chunks ~2000 URLs (limite pratique Google / WP). */
 export const SITEMAP_PAGE_SIZE = 2000;
 /** Google News : articles des N derniers jours. */
 export const NEWS_SITEMAP_DAYS = 2;
@@ -19,7 +19,8 @@ export function xmlEscape(value: string): string {
 export function isoDate(d: Date | string | null | undefined): string {
   const dt = d instanceof Date ? d : new Date(String(d || ''));
   if (Number.isNaN(dt.getTime())) return new Date().toISOString();
-  return dt.toISOString();
+  // W3C Datetime sans millisecondes (plus toléré par GSC)
+  return dt.toISOString().replace(/\.\d{3}Z$/, 'Z');
 }
 
 export function articleLoc(articleId: number, slug: string): string {
@@ -32,10 +33,23 @@ export function xmlResponse(body: string, { maxAge = 300 } = {}): Response {
     headers: {
       'Content-Type': 'application/xml; charset=utf-8',
       'Cache-Control': `public, max-age=${maxAge}`,
-      'X-Robots-Tag': 'noindex, follow',
     },
   });
 }
+
+/** Pages statiques / hub (hors articles). */
+export const STATIC_URLS: {
+  loc: string;
+  changefreq?: string;
+  priority?: string;
+}[] = [
+  { loc: `${SITE}/`, changefreq: 'hourly', priority: '1.0' },
+  { loc: `${SITE}/en/`, changefreq: 'hourly', priority: '0.9' },
+  { loc: `${SITE}/abonnement/`, changefreq: 'monthly', priority: '0.6' },
+  { loc: `${SITE}/a-propos/`, changefreq: 'yearly', priority: '0.3' },
+  { loc: `${SITE}/mentions-legales/`, changefreq: 'yearly', priority: '0.2' },
+  { loc: `${SITE}/search/`, changefreq: 'monthly', priority: '0.4' },
+];
 
 export async function countPublishedArticles(): Promise<number> {
   const pool = getPool();
@@ -89,17 +103,6 @@ export async function listNewsArticles(): Promise<
   }[];
 }
 
-/** Pages statiques / hub (hors articles). */
-export const STATIC_URLS: { loc: string; changefreq?: string; priority?: string }[] =
-  [
-    { loc: `${SITE}/`, changefreq: 'hourly', priority: '1.0' },
-    { loc: `${SITE}/en/`, changefreq: 'hourly', priority: '0.9' },
-    { loc: `${SITE}/abonnement/`, changefreq: 'monthly', priority: '0.6' },
-    { loc: `${SITE}/a-propos/`, changefreq: 'yearly', priority: '0.3' },
-    { loc: `${SITE}/mentions-legales/`, changefreq: 'yearly', priority: '0.2' },
-    { loc: `${SITE}/search/`, changefreq: 'monthly', priority: '0.4' },
-  ];
-
 export function buildSitemapIndex(locs: string[]): string {
   let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
   xml +=
@@ -124,6 +127,7 @@ export function buildUrlset(
   let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
   xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
   for (const u of urls) {
+    if (!u.loc) continue;
     xml += '  <url>\n';
     xml += `    <loc>${xmlEscape(u.loc)}</loc>\n`;
     if (u.lastmod) xml += `    <lastmod>${xmlEscape(u.lastmod)}</lastmod>\n`;
@@ -136,16 +140,50 @@ export function buildUrlset(
   return xml;
 }
 
-export function buildNewsSitemap(
-  rows: { article_id: number; slug: string; title: string; date: Date; lang: string }[]
-): string {
+/** Index général — seul fichier à soumettre à Google (hors News). */
+export async function buildGeneralSitemapIndexXml(): Promise<string> {
+  const total = await countPublishedArticles();
+  const pages = Math.max(1, Math.ceil(total / SITEMAP_PAGE_SIZE));
+  const locs = [`${SITE}/sitemap-pages.xml`];
+  for (let i = 1; i <= pages; i += 1) {
+    locs.push(`${SITE}/sitemap-posts-${i}.xml`);
+  }
+  return buildSitemapIndex(locs);
+}
+
+export function buildPagesSitemapXml(): string {
+  return buildUrlset(STATIC_URLS);
+}
+
+export async function buildPostsSitemapXml(page: number): Promise<string | null> {
+  if (!Number.isFinite(page) || page < 1) return null;
+  const rows = await listPublishedArticlesPage(page);
+  if (!rows.length && page > 1) return null;
+  const urls = rows
+    .map((r) => {
+      const loc = articleLoc(Number(r.article_id), String(r.slug));
+      if (!loc) return null;
+      return {
+        loc,
+        lastmod: isoDate(r.modified || r.date),
+      };
+    })
+    .filter((u): u is { loc: string; lastmod: string } => Boolean(u));
+  return buildUrlset(urls);
+}
+
+/** Sitemap Google News. */
+export async function buildNewsSitemapXml(): Promise<string> {
+  const rows = await listNewsArticles();
   let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
   xml +=
     '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:news="http://www.google.com/schemas/sitemap-news/0.9">\n';
   for (const row of rows) {
+    const loc = articleLoc(row.article_id, row.slug);
+    if (!loc) continue;
     const lang = (row.lang || 'fr').toLowerCase().startsWith('en') ? 'en' : 'fr';
     xml += '  <url>\n';
-    xml += `    <loc>${xmlEscape(articleLoc(row.article_id, row.slug))}</loc>\n`;
+    xml += `    <loc>${xmlEscape(loc)}</loc>\n`;
     xml += '    <news:news>\n';
     xml += '      <news:publication>\n';
     xml += '        <news:name>ElectronLibre</news:name>\n';

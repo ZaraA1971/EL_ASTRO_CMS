@@ -139,8 +139,9 @@ Sans ces clés, le checkout affiche un message « bientôt » et renvoie `BILLIN
 
 ## Sitemaps / SEO
 
-- `/wp-sitemap.xml` (+ chunks posts)
-- `/news-sitemap.xml` · `/news-sitemap.xml.php`
+- `/wp-sitemap.xml` — index général (statique, à soumettre GSC)
+- `/news-sitemap.xml` — Google News
+- Génération : `node scripts/build-sitemaps.mjs` (cron */30)
 - GA4 : `G-Q3W21V1KB5`
 
 ## Ops

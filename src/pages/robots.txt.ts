@@ -2,6 +2,7 @@ import type { APIRoute } from 'astro';
 
 export const prerender = false;
 
+/** URL historique WP — Google la crawlait déjà avec succès. */
 const BODY = `User-agent: *
 Allow: /
 
@@ -11,7 +12,6 @@ Disallow: /login/
 
 Sitemap: https://electronlibre.info/wp-sitemap.xml
 Sitemap: https://electronlibre.info/news-sitemap.xml
-Sitemap: https://electronlibre.info/news-sitemap.xml.php
 `;
 
 export const GET: APIRoute = async () =>
