@@ -35,7 +35,7 @@ export async function ensureAuditTable(pool) {
 export async function auditLog(pool, evt) {
   try {
     await ensureAuditTable(pool);
-    await pool.query(
+    const [result] = await pool.query(
       `INSERT INTO el_audit_log (at, actor_id, actor_login, action, target_type, target_id, meta, ip)
        VALUES (?,?,?,?,?,?,?,?)`,
       [
@@ -49,6 +49,10 @@ export async function auditLog(pool, evt) {
         evt.ip || null,
       ]
     );
+    const insertId = result?.insertId;
+    void import('./ops/vigie-ingress.mjs')
+      .then((m) => m.pushVigieAccount(evt, insertId))
+      .catch((err) => console.error('[audit] vigie', err.message));
   } catch (err) {
     console.error('[audit]', err.message);
   }

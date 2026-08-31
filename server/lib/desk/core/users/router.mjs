@@ -279,7 +279,14 @@ export async function handleCoreUsers(req, res, parts, ctx) {
         action: 'user.create',
         targetType: 'user',
         targetId: id,
-        meta: { role, status, emailSent, adminEmailSent },
+        meta: {
+          login: created?.login || payload?.login,
+          email: created?.email || payload?.email,
+          role,
+          status,
+          emailSent,
+          adminEmailSent,
+        },
         ip,
       });
     }
@@ -519,6 +526,8 @@ export async function handleCoreUsers(req, res, parts, ctx) {
         targetType: 'user',
         targetId: userId,
         meta: {
+          login,
+          email,
           role,
           status,
           passwordChanged: Boolean(payload.password),

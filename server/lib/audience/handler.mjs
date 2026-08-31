@@ -184,6 +184,9 @@ export async function handleDeskAudience(req, res, parts, ctx) {
       ip,
       meta: { ok: payload.ok },
     });
+    void import('../ops/vigie-ingress.mjs')
+      .then((m) => m.pushVigieEvent(m.audiencePayload(payload)))
+      .catch((err) => console.error('[audience] vigie', err.message));
     return sendJson(res, payload.ok ? 200 : 502, payload);
   }
 
