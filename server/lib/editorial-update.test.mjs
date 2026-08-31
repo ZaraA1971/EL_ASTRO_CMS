@@ -28,7 +28,7 @@ describe('editorial-update', () => {
     );
   });
 
-  it('access-only (and keyword cascade) does not bump modified', () => {
+  it('only content otherFieldsChanged bumps modified', () => {
     assert.equal(
       shouldBumpEditorialModified({
         accessChanged: true,
@@ -37,24 +37,21 @@ describe('editorial-update', () => {
       }),
       false
     );
-    assert.equal(
-      shouldBumpEditorialModified({
-        accessChanged: true,
-        iaKeywordsChanged: false,
-        otherFieldsChanged: false,
-      }),
-      false
-    );
-  });
-
-  it('keyword-only or content change does bump modified', () => {
     assert.equal(
       shouldBumpEditorialModified({
         accessChanged: false,
         iaKeywordsChanged: true,
         otherFieldsChanged: false,
       }),
-      true
+      false
+    );
+    assert.equal(
+      shouldBumpEditorialModified({
+        accessChanged: false,
+        iaKeywordsChanged: false,
+        otherFieldsChanged: false,
+      }),
+      false
     );
     assert.equal(
       shouldBumpEditorialModified({

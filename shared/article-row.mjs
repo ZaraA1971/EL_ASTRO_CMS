@@ -7,6 +7,11 @@ export function normalizeAccess(v) {
   return v === 'granted' ? 'granted' : 'subscribers';
 }
 
+/** Épinglé en Une (sticky WP). */
+export function normalizePinned(v) {
+  return v === true || v === 1 || v === '1';
+}
+
 export function parseJsonArray(v) {
   if (v == null) return [];
   if (Array.isArray(v)) return v.map(String);
@@ -60,6 +65,7 @@ export function rowToArticle(row, { includeBody = true } = {}) {
       source_url: row.source_url ? String(row.source_url) : undefined,
       excerpt: String(row.excerpt || ''),
       draft: Boolean(row.draft),
+      pinned: normalizePinned(row.pinned),
     },
     body: includeBody ? String(row.body || '') : '',
   };

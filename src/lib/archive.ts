@@ -1,9 +1,11 @@
-import type { Article, LangCode } from './articles';
+import type { LangCode } from './articles';
 import {
   countArticlesByCategory,
   countPublishedArticles,
   getArticlesByCategory,
+  getHeroArticle,
   getPublishedArticles,
+  hydrateArticleBody,
   hydrateFeaturedBody,
 } from './articles';
 
@@ -27,14 +29,28 @@ export async function getArchivePage(lang: LangCode, page: number) {
   const totalPages = Math.max(1, Math.ceil(total / ARCHIVE_PAGE_SIZE));
   const safePage = Math.min(Math.max(1, page), totalPages);
   const start = (safePage - 1) * ARCHIVE_PAGE_SIZE;
-  const slice = await hydrateFeaturedBody(
-    await getPublishedArticles(lang, {
-      includeBody: false,
-      limit: ARCHIVE_PAGE_SIZE,
-      offset: start,
-    })
-  );
-  return { ...paginateSlice(slice, safePage, total), lang };
+  const slice = await getPublishedArticles(lang, {
+    includeBody: false,
+    limit: ARCHIVE_PAGE_SIZE,
+    offset: start,
+  });
+  if (safePage === 1) {
+    const featured = await hydrateArticleBody(await getHeroArticle(lang));
+    const heroId = featured?.data.article_id;
+    const rest = heroId
+      ? slice.filter((a) => a.data.article_id !== heroId)
+      : slice;
+    return {
+      articles: slice,
+      featured,
+      rest,
+      page: safePage,
+      totalPages,
+      total,
+      lang,
+    };
+  }
+  return { ...paginateSlice(await hydrateFeaturedBody(slice), safePage, total), lang };
 }
 
 export async function getCategoryArchivePage(

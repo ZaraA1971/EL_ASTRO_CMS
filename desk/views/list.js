@@ -173,9 +173,11 @@ function articlesItemsHtml(articles) {
           articleCatsHtml(d),
         ].join(""),
         topBadgeHtml: roleBadgeHtml(String(d.lang || "fr").toUpperCase()),
-        statusBadgeHtml: d.draft
-          ? statusBadgeHtml("draft", "Brouillon")
-          : statusBadgeHtml("live", "En ligne"),
+        statusBadgeHtml: `<span class="list-item-status">${
+          d.draft
+            ? statusBadgeHtml("draft", "Brouillon")
+            : statusBadgeHtml("live", "En ligne")
+        }${d.pinned ? statusBadgeHtml("pinned", "Épinglé") : ""}</span>`,
         actionsHtml: canDelete
           ? listDismissHtml({
               dataAttr: "delete-article",

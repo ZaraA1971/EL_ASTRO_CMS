@@ -15,4 +15,16 @@ describe('createElDeskRegistry', () => {
     const reg = createElDeskRegistry('');
     assert.deepEqual(reg.ids(), []);
   });
+
+  it('routes GET onesignal segments on the push plugin', () => {
+    const push = EL_DESK_PLUGINS.find((p) => p.id === 'push');
+    assert.ok(push.match(['api', 'desk', 'onesignal', 'segments'], { method: 'GET' }));
+    assert.equal(
+      push.match(['api', 'desk', 'onesignal', 'segments'], { method: 'POST' }),
+      false
+    );
+    assert.ok(
+      push.matchArticle(['api', 'desk', 'articles', '1', 'push'], { method: 'POST' })
+    );
+  });
 });

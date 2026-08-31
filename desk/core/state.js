@@ -77,6 +77,13 @@ export const state = {
     loading: false,
     busy: "", // generate
   },
+  push: {
+    segments: [],
+    selected: ["All"],
+    loading: false,
+    loaded: false,
+    error: "",
+  },
   mediaPicker: {
     open: false,
     q: "",

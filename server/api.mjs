@@ -87,7 +87,7 @@ const ONESIGNAL_SITE_URL = (
   'https://electronlibre.info'
 ).replace(/\/+$/, '');
 const ONESIGNAL_DRY_RUN =
-  String(process.env.ONESIGNAL_DRY_RUN || fileEnv.ONESIGNAL_DRY_RUN || '1') ===
+  String(process.env.ONESIGNAL_DRY_RUN || fileEnv.ONESIGNAL_DRY_RUN || '0') ===
   '1';
 const brevoEnv = loadEnvFile('/etc/electronlibre/brevo-smtp.env');
 const BREVO_API_KEY =

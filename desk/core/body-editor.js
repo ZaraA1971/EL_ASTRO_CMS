@@ -18,17 +18,71 @@ export function cleanBody(html) {
   return cleanArticleHtml(html, "desk");
 }
 
+let editorCmdsReady = false;
+
+function ensureEditorCommands() {
+  if (editorCmdsReady) return;
+  try {
+    document.execCommand("styleWithCSS", false, false);
+    document.execCommand("defaultParagraphSeparator", false, "p");
+  } catch {
+    /* older engines */
+  }
+  editorCmdsReady = true;
+}
+
 export function exec(cmd, value) {
+  ensureEditorCommands();
   document.execCommand(cmd, false, value);
+}
+
+function unwrapElement(el) {
+  const parent = el.parentNode;
+  if (!parent) return;
+  while (el.firstChild) parent.insertBefore(el.firstChild, el);
+  parent.removeChild(el);
+}
+
+/** Déplie spans vides / gras dans gras — sans réécrire tout le HTML (curseur conservé). */
+export function tidyVisualInline(ed = getVisualEditor()) {
+  if (!ed) return;
+  for (const span of [...ed.querySelectorAll("span")]) {
+    if (span.hasAttributes()) continue;
+    unwrapElement(span);
+  }
+  for (const inner of [...ed.querySelectorAll("b b, strong strong, i i, em em")]) {
+    unwrapElement(inner);
+  }
+}
+
+/** Gras / italique / liste / alignement — puis rangement léger. */
+export function runEditorCommand(cmd, value) {
+  exec(cmd, value);
+  if (cmd !== "undo" && cmd !== "redo") tidyVisualInline();
 }
 
 /** formatBlock cross-browser (Chrome préfère `<h2>`). */
 export function execFormatBlock(tag) {
   const t = String(tag || "p").toLowerCase().replace(/[^a-z0-9]/g, "");
   if (!t) return;
+  ensureEditorCommands();
   if (!document.execCommand("formatBlock", false, `<${t}>`)) {
     document.execCommand("formatBlock", false, t);
   }
+  tidyVisualInline();
+}
+
+/** Bouton Lien : le prompt vole la sélection — on la restitue. */
+export function applyLinkFromPrompt() {
+  rememberVisualSelection();
+  const raw = prompt("URL du lien");
+  restoreVisualSelectionIfNeeded();
+  const href = hrefFrom(raw, "prompt");
+  if (!href) return;
+  const ed = getVisualEditor();
+  ed?.focus();
+  exec("createLink", href);
+  tidyVisualInline(ed);
 }
 
 export function getVisualEditor() {
@@ -203,6 +257,7 @@ function onVisualPaste(e) {
 /** Écouteurs collage / sélection — à brancher à chaque render visuel. */
 export function bindVisualEditorClipboard(ed) {
   if (!ed) return;
+  ensureEditorCommands();
   ed.addEventListener("input", () => syncPublishButton());
   ed.addEventListener("beforeinput", onVisualBeforeInput, true);
   ed.addEventListener("paste", onVisualPaste, true);
@@ -231,21 +286,30 @@ export function normalizeKeywordList(list) {
 /**
  * Empreinte éditoriale : titre, corps, auteur, date, rubriques, accès, mots-clés IA.
  * @param {object} p
- * @param {{ includeAccess?: boolean }} [opts]
+ * @param {{
+ *   includeAccess?: boolean,
+ *   includeCategories?: boolean,
+ *   includeAuthor?: boolean,
+ *   includeIaKeywords?: boolean,
+ * }} [opts]
  */
 export function editFingerprint(p = {}, opts = {}) {
   const includeAccess = opts.includeAccess !== false;
+  const includeCategories = opts.includeCategories !== false;
+  const includeAuthor = opts.includeAuthor !== false;
+  const includeIaKeywords = opts.includeIaKeywords !== false;
   const cats = [...(p.categories || [])].map(String).filter(Boolean).sort();
   const kws = normalizeKeywordList(p.ia_keywords);
   const base = {
     title: String(p.title || "").trim(),
     body: cleanBody(p.body || ""),
-    author: String(p.author || "").trim(),
     date: fingerprintDate(p.date),
-    categories: cats,
-    ia_keywords: kws,
   };
+  if (includeIaKeywords) base.ia_keywords = kws;
+  if (includeAuthor) base.author = String(p.author || "").trim();
+  if (includeCategories) base.categories = cats;
   if (includeAccess) base.access = normalizeAccess(p.access);
+  base.pinned = Boolean(p.pinned);
   return JSON.stringify(base);
 }
 
@@ -260,6 +324,7 @@ export function editFingerprintFromArticle(article) {
     categories: d.categories,
     access: d.access,
     ia_keywords: d.ia_keywords,
+    pinned: d.pinned,
   });
 }
 
@@ -287,6 +352,9 @@ export function currentEditFingerprint() {
     ? [...chipsRoot.querySelectorAll(".chip.on")].map((el) => el.dataset.value)
     : a.data.categories || [];
   const access = accessEl?.value || a.data.access || "subscribers";
+  const pinEl = document.getElementById("f-pinned");
+  const pinned =
+    access === "granted" ? false : pinEl ? pinEl.checked : Boolean(a.data.pinned);
   const ia_keywords =
     access === "granted"
       ? []
@@ -309,6 +377,7 @@ export function currentEditFingerprint() {
     categories: cats,
     access,
     ia_keywords,
+    pinned,
   });
 }
 
@@ -320,64 +389,43 @@ export function isEditContentDirty() {
 }
 
 /**
- * Contenu éditorial dirty hors Accès (abonné/gratuit).
- * Un seul changement d’accès ne compte pas comme « Mis à jour ».
+ * Contenu éditorial dirty (titre / corps / date).
+ * Accès, rubriques, auteur, mots-clés IA : ne comptent pas comme « Mis à jour ».
  */
 export function isEditorialContentDirty() {
   if (!state.article || state.view !== "edit") return false;
   if (!state.editBaseline) return false;
   const a = state.article;
   const d = a.data || {};
-  const baselineNoAccess = editFingerprint(
+  const fpOpts = {
+    includeAccess: false,
+    includeCategories: false,
+    includeAuthor: false,
+    includeIaKeywords: false,
+  };
+  const baselineEditorial = editFingerprint(
     {
       title: d.title,
       body: a.body,
-      author: d.author,
       date: d.date,
-      categories: d.categories,
-      ia_keywords: d.ia_keywords,
     },
-    { includeAccess: false }
+    fpOpts
   );
   const titleEl = document.getElementById("f-title");
-  const authorEl = document.getElementById("f-author");
   const dateEl = document.getElementById("f-date");
-  const iaEl = document.getElementById("f-ia");
-  const accessEl = document.getElementById("f-access");
-  const chipsRoot = document.getElementById("chips");
-  const cats = chipsRoot
-    ? [...chipsRoot.querySelectorAll(".chip.on")].map((el) => el.dataset.value)
-    : d.categories || [];
-  const access = accessEl?.value || d.access || "subscribers";
-  const accessChanged = normalizeAccess(access) !== normalizeAccess(d.access);
-  // Effet Accès → gratuit : mots-clés vidés — ne pas compter comme MAJ éditoriale.
-  const ia_keywords =
-    access === "granted"
-      ? accessChanged
-        ? d.ia_keywords || []
-        : []
-      : iaEl
-        ? iaEl.value
-            .split(",")
-            .map((t) => t.trim())
-            .filter(Boolean)
-        : d.ia_keywords || [];
   let date = d.date;
   if (!d.draft && dateEl && !dateEl.disabled && dateEl.value) {
     date = fromDatetimeLocalValue(dateEl.value) || date;
   }
-  const currentNoAccess = editFingerprint(
+  const currentEditorial = editFingerprint(
     {
       title: titleEl != null ? titleEl.value : d.title,
       body: getBodyFromDom(),
-      author: authorEl != null ? authorEl.value : d.author,
       date,
-      categories: cats,
-      ia_keywords,
     },
-    { includeAccess: false }
+    fpOpts
   );
-  return currentNoAccess !== baselineNoAccess;
+  return currentEditorial !== baselineEditorial;
 }
 
 export function refreshEditDirty() {
@@ -466,7 +514,12 @@ export function setEditBusy(busy) {
   ];
   for (const id of ids) {
     const el = document.getElementById(id);
-    if (el) el.disabled = busy;
+    if (!el) continue;
+    if (id === "btn-push-now" && state.article?.data?.draft) {
+      el.disabled = true;
+      continue;
+    }
+    el.disabled = busy;
   }
   document.querySelectorAll("[data-assist]").forEach((btn) => {
     btn.disabled = busy || state.assisting;

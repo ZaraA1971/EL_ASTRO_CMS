@@ -47,6 +47,7 @@ export function createArticleHelpers({
   }
   const table = assertSafeTableName(tableName);
   let dateNullableEnsured = false;
+  let pinnedEnsured = false;
 
   function canEditArticle(session, row) {
     if (!session || !canAccessDesk(session.role)) return false;
@@ -66,6 +67,19 @@ export function createArticleHelpers({
       );
     }
     dateNullableEnsured = true;
+  }
+
+  async function ensureArticlePinnedColumn(pool) {
+    if (pinnedEnsured) return;
+    const [cols] = await pool.query(
+      `SHOW COLUMNS FROM \`${table}\` LIKE 'pinned'`
+    );
+    if (!cols.length) {
+      await pool.query(
+        `ALTER TABLE \`${table}\` ADD COLUMN pinned TINYINT(1) NOT NULL DEFAULT 0`
+      );
+    }
+    pinnedEnsured = true;
   }
 
   async function nextArticleId(pool) {
@@ -111,6 +125,7 @@ export function createArticleHelpers({
     tableName: table,
     canEditArticle,
     ensureArticleDateNullable,
+    ensureArticlePinnedColumn,
     nextArticleId,
     uniqueSlug,
     resolveArticleSlug,

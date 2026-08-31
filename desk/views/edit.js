@@ -1,6 +1,5 @@
 import { stripLeadingChapoHtml, chapo } from "../excerpt.js";
 import { articlePath } from "../article-path.js";
-import { hrefFrom } from "../paste-link.js";
 import { state } from "../core/state.js";
 import { api } from "../core/api.js";
 import {
@@ -17,13 +16,14 @@ import { createAutocomplete } from "../core/autocomplete.js";
 import { ctx } from "../core/ctx.js";
 import {
   cleanBody,
-  exec,
   execFormatBlock,
   getVisualEditor,
   getHtmlEditor,
   getBodyFromDom,
   applyBodyClean,
   bindVisualEditorClipboard,
+  runEditorCommand,
+  applyLinkFromPrompt,
   setEditBaselineFromArticle,
   isEditContentDirty,
   confirmLeaveEdit,
@@ -44,6 +44,15 @@ import {
 } from "../core/body-editor.js";
 import { loadList } from "./list.js";
 import { closeMediaPicker, openMediaPicker } from "./media.js";
+import {
+  bindPushSegments,
+  loadPushSegments,
+  paintPushSegments,
+  pushSegmentsHtml,
+  pushTargetsPhrase,
+  resetPushPanel,
+  selectedPushSegments,
+} from "../plugins/push.js";
 import {
   loadXPanel,
   xGenerate,
@@ -278,6 +287,10 @@ function collectForm() {
     // Langue gérée via le panneau Version UK (pas de sélecteur ici)
     lang: a.data.lang || "fr",
     access,
+    pinned:
+      access === "granted"
+        ? false
+        : Boolean(document.getElementById("f-pinned")?.checked),
     // Brouillon géré par le bouton dédié (effet immédiat) — pas via Enregistrer
   };
 }
@@ -429,6 +442,7 @@ export async function openArticle(articleId) {
   state.authorPick = null;
   authorAc.reset();
   resetXPanel();
+  resetPushPanel();
   await loadRubrics();
   const data = await api(`/api/desk/articles/${articleId}`);
   state.article = data.article;
@@ -437,6 +451,7 @@ export async function openArticle(articleId) {
   state.mode = "visual";
   await loadXPanel("el");
   ctx.render();
+  paintPushSegments();
 }
 
 export async function createArticle() {
@@ -459,8 +474,10 @@ export async function createArticle() {
     state.mode = "visual";
     state.status = "";
     resetXPanel();
+    resetPushPanel();
     await loadXPanel("el");
     ctx.render();
+    paintPushSegments();
   } catch (err) {
     state.error = err.message;
     state.status = "";
@@ -484,6 +501,7 @@ function flushFormToState() {
     ia_keywords: payload.ia_keywords,
     access: payload.access,
     lang: payload.lang,
+    pinned: payload.pinned,
   });
   if (payload.author_slug !== undefined) {
     state.article.data.author_slug = payload.author_slug;
@@ -494,14 +512,12 @@ function flushFormToState() {
 }
 
 /**
- * @param {{ publish?: boolean, skipPublishConfirm?: boolean, allowPush?: boolean }} [opts]
- *   allowPush=false : remise en ligne via Brouillon (pas de push).
+ * @param {{ publish?: boolean, skipPublishConfirm?: boolean }} [opts]
  *   skipPublishConfirm : confirm déjà géré (ex. undraft dirty).
  */
 async function saveArticle({
   publish = false,
   skipPublishConfirm = false,
-  allowPush = true,
 } = {}) {
   const payload = collectForm();
   if (!payload || !state.article) return;
@@ -512,20 +528,26 @@ async function saveArticle({
       return;
     }
     payload.draft = false;
+    // Filet : publier sans rubrique → rappel (on peut forcer).
+    const cats = (payload.categories || []).map(String).filter(Boolean);
+    if (!cats.length) {
+      const ok = confirm(
+        "Aucune rubrique n’est cochée.\n\nPublier quand même ?"
+      );
+      if (!ok) {
+        document.getElementById("chips")?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+        return;
+      }
+    }
   }
-  const wantPush =
-    Boolean(allowPush) &&
-    Boolean(state.caps.publish) &&
-    Boolean(document.getElementById("f-push")?.checked);
   if (publish && !skipPublishConfirm) {
     const isUpdate = isPublishUpdateAction();
-    const msg = wantPush
-      ? isUpdate
-        ? "Mettre à jour maintenant et envoyer un push OneSignal ?"
-        : "Publier maintenant et envoyer un push OneSignal ?"
-      : isUpdate
-        ? "Mettre à jour maintenant ?"
-        : "Publier maintenant ?";
+    const msg = isUpdate
+      ? "Mettre à jour maintenant ?"
+      : "Publier maintenant ?";
     if (!confirm(msg)) return;
   }
   const hadKw = (payload.ia_keywords || []).length > 0;
@@ -541,9 +563,7 @@ async function saveArticle({
         ? `${pubVerb} + mots-clés IA…`
         : "Enregistrement + mots-clés IA…"
       : publish
-        ? wantPush
-          ? `${pubVerb} + push…`
-          : `${pubVerb}…`
+        ? `${pubVerb}…`
         : "Enregistrement…";
   setEditBusy(true);
   try {
@@ -555,20 +575,11 @@ async function saveArticle({
     if (publish) {
       const pub = await api(`/api/desk/articles/${articleId}/publish`, {
         method: "POST",
-        body: JSON.stringify({ push: wantPush }),
+        body: JSON.stringify({}),
       });
       state.article = pub.article;
       setEditBaselineFromArticle(pub.article);
-      if (wantPush && pub.push?.ok) {
-        state.status = pub.push.dryRun
-          ? "Publié — push DRY-RUN (aucun envoi réel)"
-          : `Publié + push (${pub.push.recipients ?? "?"} dest.)`;
-      } else if (wantPush && pub.push && pub.push.ok === false) {
-        state.status = "Publié — push échoué";
-        state.error = pub.push.error || "Erreur OneSignal";
-      } else {
-        state.status = "Publié — en ligne sans rebuild";
-      }
+      state.status = "Publié — en ligne sans rebuild";
     } else {
       state.article = data.article;
       setEditBaselineFromArticle(data.article);
@@ -720,7 +731,6 @@ async function toggleDraft() {
     await saveArticle({
       publish: true,
       skipPublishConfirm: true,
-      allowPush: false,
     });
     return;
   }
@@ -760,8 +770,8 @@ async function toggleDraft() {
     state.saving = false;
     if (state.view === "edit" && state.article) {
       paintEditAfterMutation();
-      // Retirer « push maintenant » si présent (article hors ligne).
-      document.getElementById("btn-push-now")?.remove();
+      const btnPush = document.getElementById("btn-push-now");
+      if (btnPush) btnPush.disabled = true;
     } else {
       ctx.render();
     }
@@ -775,9 +785,8 @@ async function pushNow() {
     ctx.render();
     return;
   }
-  const ok = confirm(
-    "Envoyer une notification OneSignal maintenant aux abonnés ?"
-  );
+  const targets = pushTargetsPhrase();
+  const ok = confirm(`Envoyer une notification maintenant à ${targets} ?`);
   if (!ok) return;
   state.saving = true;
   state.error = "";
@@ -787,7 +796,7 @@ async function pushNow() {
     const articleId = state.article.data.article_id;
     const data = await api(`/api/desk/articles/${articleId}/push`, {
       method: "POST",
-      body: JSON.stringify({}),
+      body: JSON.stringify({ segments: selectedPushSegments() }),
     });
     state.status = data.push?.dryRun
       ? "Push DRY-RUN — aucun envoi réel"
@@ -1026,6 +1035,17 @@ export function renderEdit() {
               <select id="f-access"><option value="subscribers" ${d.access !== "granted" ? "selected" : ""}>Abonnés</option><option value="granted" ${d.access === "granted" ? "selected" : ""}>Gratuit</option></select>
             </div>
             ${
+              state.caps.publish && d.access !== "granted"
+                ? `<label class="row" style="min-height:var(--tap)">
+                <input type="checkbox" id="f-pinned" ${d.pinned ? "checked" : ""} />
+                Épingler en Une
+              </label>
+              <p class="uk-help">Remplace le dernier article abonnés. Un seul épinglé par langue.</p>`
+                : d.pinned
+                  ? `<p class="uk-help">Épinglé en Une.</p>`
+                  : ""
+            }
+            ${
               d.access !== "granted"
                 ? `<div class="field field--keywords">
               <label for="f-ia">Mots-clés IA</label>
@@ -1048,14 +1068,13 @@ export function renderEdit() {
                   window.matchMedia("(min-width: 960px)").matches;
                 const openAttr = foldOpen ? " open" : "";
                 const pushInner = state.caps.publish
-                  ? `<label class="row" style="min-height:var(--tap)">
-                <input type="checkbox" id="f-push" />
-                Envoyer un push à la publication
-              </label>
-              <p class="uk-help">Décoché par défaut. Staging : mode DRY-RUN (pas d’envoi réel) tant que <code>ONESIGNAL_DRY_RUN=1</code>.</p>
+                  ? `<div id="push-segments-wrap">${pushSegmentsHtml()}</div>
+              <button class="btn" type="button" id="btn-push-now" ${
+                d.draft || state.saving || state.translating ? "disabled" : ""
+              }>Envoyer un push maintenant</button>
               ${
-                !d.draft
-                  ? `<button class="btn" type="button" id="btn-push-now" ${state.saving || state.translating ? "disabled" : ""}>Envoyer un push maintenant</button>`
+                d.draft
+                  ? `<p class="uk-help">Publiez d’abord, puis envoyez le push.</p>`
                   : ""
               }`
                   : `<p class="uk-help">Publication et push réservés aux éditeurs / admins. Vous pouvez enregistrer en brouillon.</p>`;
@@ -1143,7 +1162,7 @@ export function renderEdit() {
   const btnPublish = document.getElementById("btn-publish");
   if (btnPublish) {
     btnPublish.onclick = () =>
-      saveArticle({ publish: true, skipPublishConfirm: false, allowPush: true });
+      saveArticle({ publish: true, skipPublishConfirm: false });
   }
   const onEditDirty = () => syncPublishButton();
   document.getElementById("f-title")?.addEventListener("input", onEditDirty);
@@ -1154,6 +1173,12 @@ export function renderEdit() {
   if (btnDraft) btnDraft.onclick = () => toggleDraft();
   const btnPushNow = document.getElementById("btn-push-now");
   if (btnPushNow) btnPushNow.onclick = () => pushNow();
+  bindPushSegments();
+  if (state.caps.publish) {
+    void loadPushSegments().then(() => {
+      if (state.view === "edit") paintPushSegments();
+    });
+  }
   const xText = document.getElementById("f-x-text");
   if (xText) {
     xText.oninput = () => {
@@ -1184,6 +1209,22 @@ export function renderEdit() {
   const accessSel = document.getElementById("f-access");
   if (accessSel) {
     accessSel.onchange = () => onAccessChange();
+  }
+  const pinBox = document.getElementById("f-pinned");
+  if (pinBox) {
+    pinBox.onchange = () => {
+      if (pinBox.checked) {
+        const ok = confirm(
+          "Épingler en Une ? Un autre article épinglé sera retiré."
+        );
+        if (!ok) {
+          pinBox.checked = false;
+          return;
+        }
+      }
+      if (state.article) state.article.data.pinned = pinBox.checked;
+      onEditDirty();
+    };
   }
   app.querySelectorAll("[data-assist]").forEach((btn) => {
     btn.onclick = () => runEditorialAssist(btn.dataset.assist);
@@ -1250,19 +1291,17 @@ export function renderEdit() {
           applyBodyClean();
           return;
         }
-        if (cmd === "bold") exec("bold");
-        else if (cmd === "italic") exec("italic");
-        else if (cmd === "ul") exec("insertUnorderedList");
+        if (cmd === "bold") runEditorCommand("bold");
+        else if (cmd === "italic") runEditorCommand("italic");
+        else if (cmd === "ul") runEditorCommand("insertUnorderedList");
         else if (cmd === "quote") execFormatBlock("blockquote");
-        else if (cmd === "undo") exec("undo");
-        else if (cmd === "redo") exec("redo");
-        else if (cmd === "alignLeft") exec("justifyLeft");
-        else if (cmd === "alignCenter") exec("justifyCenter");
-        else if (cmd === "alignRight") exec("justifyRight");
+        else if (cmd === "undo") runEditorCommand("undo");
+        else if (cmd === "redo") runEditorCommand("redo");
+        else if (cmd === "alignLeft") runEditorCommand("justifyLeft");
+        else if (cmd === "alignCenter") runEditorCommand("justifyCenter");
+        else if (cmd === "alignRight") runEditorCommand("justifyRight");
         else if (cmd === "link") {
-          const raw = prompt("URL du lien");
-          const href = hrefFrom(raw, "prompt");
-          if (href) exec("createLink", href);
+          applyLinkFromPrompt();
         } else if (cmd === "image") {
           openMediaPicker();
         }

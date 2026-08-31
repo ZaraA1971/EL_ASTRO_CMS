@@ -16,7 +16,10 @@ import {
 import { handleDeskAssist } from './plugins/assist.mjs';
 import { handleDeskContentGen } from './plugins/content-gen.mjs';
 import { handleDeskArticleKeywords } from './plugins/keywords.mjs';
-import { handleDeskArticlePush } from './plugins/push.mjs';
+import {
+  handleDeskArticlePush,
+  handleDeskPushSegments,
+} from './plugins/push.mjs';
 import { handleDeskArticleTranslateUk } from './plugins/translate.mjs';
 import { frontCachePlugin } from './plugins/front-cache.mjs';
 
@@ -82,6 +85,16 @@ export const EL_DESK_PLUGINS = [
         ),
         onesignalDryRun: Boolean(ctx.onesignal?.dryRun),
       };
+    },
+    match(parts, req) {
+      return (
+        parts[2] === 'onesignal' &&
+        parts[3] === 'segments' &&
+        req.method === 'GET'
+      );
+    },
+    handle(req, res, parts, ctx) {
+      return handleDeskPushSegments(req, res, parts, ctx);
     },
     matchArticle(parts, req) {
       return parts[4] === 'push' && req.method === 'POST';

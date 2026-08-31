@@ -27,6 +27,7 @@ describe('article-row', () => {
         lang: 'FR',
         excerpt: 'E',
         draft: 0,
+        pinned: 1,
         body: '<p>x</p>',
       },
       { includeBody: true }
@@ -34,6 +35,11 @@ describe('article-row', () => {
     assert.equal(a.id, 'db-9');
     assert.equal(a.data.article_id, 9);
     assert.equal(a.data.access, 'granted');
+    assert.equal(a.data.pinned, true);
+    assert.equal(
+      rowToArticle({ article_id: 2, title: 'U', slug: 'u' }).data.pinned,
+      false
+    );
     assert.deepEqual(a.data.categories, ['gaming']);
     assert.deepEqual(a.data.ia_keywords, ['Meta']);
     assert.equal(a.body, '<p>x</p>');

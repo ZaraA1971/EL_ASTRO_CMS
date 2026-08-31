@@ -35,6 +35,7 @@ export type ArticleData = {
   source_url?: string;
   excerpt: string;
   draft: boolean;
+  pinned: boolean;
 };
 
 export type Article = {
@@ -47,7 +48,7 @@ export type Article = {
 export const ARTICLE_LIST_COLUMNS = `
   article_id, slug, title, excerpt, date, modified, author, author_slug,
   categories, category_names, tags, ia_keywords,
-  translation_fr, translation_en, access, lang, source_url, draft
+  translation_fr, translation_en, access, lang, source_url, draft, pinned
 `.replace(/\s+/g, ' ').trim();
 
 function rowToArticle(
@@ -155,6 +156,24 @@ export function isFreeArticle(article: Article): boolean {
   return article.data.access === 'granted';
 }
 
+/** Une : article épinglé abonnés, sinon le dernier publié abonnés (jamais un gratuit). */
+export async function getHeroArticle(
+  lang: LangCode | 'all' = 'fr'
+): Promise<Article | null> {
+  const pool = getPool();
+  const params: unknown[] = [];
+  let sql = `SELECT ${ARTICLE_LIST_COLUMNS} FROM el_articles
+    WHERE draft = 0 AND access <> 'granted'`;
+  if (lang !== 'all') {
+    sql += ` AND lang = ?`;
+    params.push(lang);
+  }
+  sql += ` ORDER BY pinned DESC, date DESC LIMIT 1`;
+  const [rows] = await pool.query(sql, params);
+  const row = (rows as Record<string, unknown>[])[0];
+  return row ? rowToArticle(row, { includeBody: false }) : null;
+}
+
 export function formatArchiveDate(date: Date): string {
   return formatDateFrLong(date);
 }
@@ -217,25 +236,30 @@ export function tagPath(slug: string): string {
   return `/articles/tag/${encodeURIComponent(String(slug || '').trim())}/`;
 }
 
-/** Charge le body uniquement pour l’article à la une (évite LONGTEXT sur toute la liste). */
-export async function hydrateFeaturedBody(
-  articles: Article[]
-): Promise<Article[]> {
-  if (!articles.length) return articles;
-  const articleId = Number(articles[0]?.data?.article_id) || 0;
-  if (!articleId) return articles;
+/** Charge le body d’un article (chapô hero) sans relire toute la liste. */
+export async function hydrateArticleBody(
+  article: Article | null | undefined
+): Promise<Article | undefined> {
+  if (!article) return undefined;
+  const articleId = Number(article.data?.article_id) || 0;
+  if (!articleId) return article;
   const pool = getPool();
   const [rows] = await pool.query(
     `SELECT body FROM el_articles WHERE article_id = ? AND draft = 0 LIMIT 1`,
     [articleId]
   );
   const body = String((rows as { body?: string }[])[0]?.body || '');
-  if (!body) return articles;
-  // body au top-level Article (listes ont body:'' — chapo lit via || / articleField)
-  const first = {
-    ...articles[0],
-    body,
-  };
+  if (!body) return article;
+  return { ...article, body };
+}
+
+/** Charge le body uniquement pour l’article à la une (évite LONGTEXT sur toute la liste). */
+export async function hydrateFeaturedBody(
+  articles: Article[]
+): Promise<Article[]> {
+  if (!articles.length) return articles;
+  const first = await hydrateArticleBody(articles[0]);
+  if (!first) return articles;
   return [first, ...articles.slice(1)];
 }
 

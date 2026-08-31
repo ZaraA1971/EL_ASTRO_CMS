@@ -269,7 +269,9 @@ export async function handleDesk(req, res, parts, ctx) {
       plugins.tryHandleArticle(req2, res2, parts2, c, existing),
     afterPublish: async ({ row, payload }, c) => {
       if (!payload?.push) return null;
-      return pushPublishedArticle(row, c, { segment: payload.segment });
+      return pushPublishedArticle(row, c, {
+        segments: payload.segments ?? payload.segment,
+      });
     },
   };
 

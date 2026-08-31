@@ -20,7 +20,7 @@ import {
   isEditorialUpdate,
   shouldBumpEditorialModified,
 } from '../../../editorial-update.mjs';
-import { normalizeAccess } from '../../../article-row.mjs';
+import { normalizePinned } from '../../../article-row.mjs';
 
 function tableOf(ctx) {
   return assertSafeSqlIdent(
@@ -35,6 +35,21 @@ function helpersOf(ctx) {
     throw new Error('ctx.articleHelpers incomplet');
   }
   return h;
+}
+
+async function applyExclusivePin(pool, table, articleId, lang, pinned) {
+  const on = pinned ? 1 : 0;
+  if (on) {
+    await pool.query(
+      `UPDATE \`${table}\` SET pinned = 0
+       WHERE lang = ? AND article_id != ? AND pinned = 1`,
+      [lang, articleId]
+    );
+  }
+  await pool.query(
+    `UPDATE \`${table}\` SET pinned = ? WHERE article_id = ?`,
+    [on, articleId]
+  );
 }
 
 function normKeywords(ctx, raw) {
@@ -67,6 +82,7 @@ async function handleCollection(req, res, ctx) {
   const table = tableOf(ctx);
 
   if (req.method === 'GET') {
+    await h.ensureArticlePinnedColumn(pool);
     const url = new URL(req.url || '/', `http://${req.headers.host}`);
     const q = String(url.searchParams.get('q') || '').trim();
     const lang = String(url.searchParams.get('lang') || '').trim();
@@ -132,7 +148,7 @@ async function handleCollection(req, res, ctx) {
     const offsetClamped = (pageClamped - 1) * limit;
     const [rows] = await pool.query(
       `SELECT article_id, slug, title, date, modified, author, author_user_id,
-              categories, category_names, access, lang, draft
+              categories, category_names, access, lang, draft, pinned
        FROM \`${table}\` ${whereSql}
        ORDER BY modified DESC, article_id DESC
        LIMIT ? OFFSET ?`,
@@ -161,6 +177,7 @@ async function handleCollection(req, res, ctx) {
     const articleId = await h.nextArticleId(pool);
     const now = h.nowMysql();
     await h.ensureArticleDateNullable(pool);
+    await h.ensureArticlePinnedColumn(pool);
     const draft = session.ingest
       ? 1
       : canPublish(session.role)
@@ -212,6 +229,14 @@ async function handleCollection(req, res, ctx) {
         sourceUrl,
       ]
     );
+    const createLang = String(payload.lang || 'fr').toLowerCase();
+    const createPinned =
+      canPublish(session.role) &&
+      payload.access !== 'granted' &&
+      (payload.pinned === true || payload.pinned === 1);
+    if (createPinned) {
+      await applyExclusivePin(pool, table, articleId, createLang, true);
+    }
     const [rows] = await pool.query(
       `SELECT * FROM \`${table}\` WHERE article_id = ?`,
       [articleId]
@@ -443,6 +468,13 @@ async function handleUpdate(req, res, ctx, existing, articleId) {
     payload.title != null
       ? String(payload.title).trim() || existing.title
       : existing.title;
+  // Avoid ER_DATA_TOO_LONG / process crash when body lands in title.
+  if (String(title || '').length > 200) {
+    return sendJson(res, 400, {
+      error: 'Titre trop long (max 200 caractères) — le corps va dans body, pas title',
+      code: 'TITLE_TOO_LONG',
+    });
+  }
   const slug = await h.resolveArticleSlug(pool, existing, title, payload.slug);
   const cats =
     payload.categories != null
@@ -483,6 +515,13 @@ async function handleUpdate(req, res, ctx, existing, articleId) {
       : payload.access === 'subscribers'
         ? 'subscribers'
         : existing.access;
+
+  let pinnedNext = normalizePinned(existing.pinned) ? 1 : 0;
+  if (accessNext === 'granted') {
+    pinnedNext = 0;
+  } else if (canPublish(session.role) && payload.pinned !== undefined) {
+    pinnedNext = payload.pinned === true || payload.pinned === 1 ? 1 : 0;
+  }
 
   let iaKeywordsNext =
     accessNext === 'granted'
@@ -554,6 +593,7 @@ async function handleUpdate(req, res, ctx, existing, articleId) {
   }
 
   await h.ensureArticleDateNullable(pool);
+  await h.ensureArticlePinnedColumn(pool);
   const isDraft = Number(draftVal) === 1;
   const nextDate = isDraft
     ? h.toMysqlDate(existing.date) || h.toMysqlDate(payload.date) || null
@@ -561,10 +601,6 @@ async function handleUpdate(req, res, ctx, existing, articleId) {
       h.toMysqlDate(existing.date) ||
       h.nowMysql();
 
-  const accessPrev = normalizeAccess(existing.access);
-  const accessChanged = accessPrev !== accessNext;
-  const iaPrev = parseJsonArray(existing.ia_keywords);
-  const iaChanged = h.asJson(iaKeywordsNext) !== h.asJson(iaPrev);
   const tagsNext =
     payload.tags != null ? payload.tags : parseJsonArray(existing.tags);
   const langNext =
@@ -576,18 +612,12 @@ async function handleUpdate(req, res, ctx, existing, articleId) {
     const s = h.toMysqlDate(v);
     return s ? s.slice(0, 16) : null;
   };
+  // Contenu seul (titre/corps/slug/date/draft/lang/trad) → remonte `modified`.
+  // Accès, rubriques, auteur, tags, mots-clés IA : non.
   const otherFieldsChanged =
     title !== String(existing.title || '') ||
     slug !== String(existing.slug || '') ||
     bodyHtml !== String(existing.body || '') ||
-    authorName !== String(existing.author || '') ||
-    String(authorSlug || '') !== String(existing.author_slug || '') ||
-    (authorUserId == null ? null : Number(authorUserId)) !==
-      (existing.author_user_id == null
-        ? null
-        : Number(existing.author_user_id)) ||
-    h.asJson(cats) !== h.asJson(parseJsonArray(existing.categories)) ||
-    h.asJson(tagsNext) !== h.asJson(parseJsonArray(existing.tags)) ||
     Number(draftVal) !== Number(existing.draft) ||
     String(langNext || '') !== String(existing.lang || '') ||
     (translationFr == null ? null : Number(translationFr)) !==
@@ -603,14 +633,8 @@ async function handleUpdate(req, res, ctx, existing, articleId) {
   const nowMysql = h.nowMysql();
   const publishedForGrace = existing.date || nextDate;
   let nextModified = nowMysql;
-  if (
-    !shouldBumpEditorialModified({
-      accessChanged,
-      iaKeywordsChanged: iaChanged,
-      otherFieldsChanged,
-    })
-  ) {
-    // Accès seul (ou no-op) : garder modified / date de pub.
+  if (!shouldBumpEditorialModified({ otherFieldsChanged })) {
+    // Métas seules / no-op : garder modified / date de pub.
     nextModified =
       h.toMysqlDate(existing.modified) ||
       h.toMysqlDate(existing.date) ||
@@ -625,66 +649,88 @@ async function handleUpdate(req, res, ctx, existing, articleId) {
       nextDate || h.toMysqlDate(publishedForGrace) || nowMysql;
   }
 
-  await pool.query(
-    `UPDATE \`${table}\` SET
+  try {
+    await pool.query(
+      `UPDATE \`${table}\` SET
       slug=?, title=?, excerpt=?, body=?, date=?, modified=?,
       author=?, author_slug=?, author_user_id=?,
       categories=?, category_names=?, tags=?, ia_keywords=?,
-      access=?, lang=?, draft=?,
+      access=?, lang=?, draft=?, pinned=?,
       translation_fr=?, translation_en=?
      WHERE article_id=?`,
-    [
-      slug,
-      title,
-      excerpt,
-      bodyHtml,
-      nextDate,
-      nextModified,
-      authorName,
-      authorSlug,
-      authorUserId,
-      h.asJson(cats),
-      h.asJson(catNames),
-      h.asJson(tagsNext),
-      h.asJson(iaKeywordsNext),
-      accessNext,
-      langNext,
-      draftVal,
-      translationFr,
-      translationEn,
-      articleId,
-    ]
-  );
-
-  if (
-    typeof syncKeywordsToTwin === 'function' &&
-    accessNext !== 'granted' &&
-    (autoKeywords || payload.ia_keywords != null)
-  ) {
-    await syncKeywordsToTwin(
-      pool,
-      session,
-      {
-        ...existing,
-        translation_fr: translationFr,
-        translation_en: translationEn,
-      },
-      iaKeywordsNext
+      [
+        slug,
+        title,
+        excerpt,
+        bodyHtml,
+        nextDate,
+        nextModified,
+        authorName,
+        authorSlug,
+        authorUserId,
+        h.asJson(cats),
+        h.asJson(catNames),
+        h.asJson(tagsNext),
+        h.asJson(iaKeywordsNext),
+        accessNext,
+        langNext,
+        draftVal,
+        pinnedNext,
+        translationFr,
+        translationEn,
+        articleId,
+      ]
     );
-  }
 
-  const [rows] = await pool.query(
-    `SELECT * FROM \`${table}\` WHERE article_id = ?`,
-    [articleId]
-  );
-  const article = rowToArticle(rows[0]);
-  const contentGen = await emitDeskLifecycle(
-    plugins,
-    'onMutate',
-    { article, action: 'update' },
-    ctx
-  );
-  return sendJson(res, 200, { article, contentGen });
+    if (pinnedNext) {
+      await pool.query(
+        `UPDATE \`${table}\` SET pinned = 0
+         WHERE lang = ? AND article_id != ? AND pinned = 1`,
+        [langNext, articleId]
+      );
+    }
+
+    if (
+      typeof syncKeywordsToTwin === 'function' &&
+      accessNext !== 'granted' &&
+      (autoKeywords || payload.ia_keywords != null)
+    ) {
+      await syncKeywordsToTwin(
+        pool,
+        session,
+        {
+          ...existing,
+          translation_fr: translationFr,
+          translation_en: translationEn,
+        },
+        iaKeywordsNext
+      );
+    }
+
+    const [rows] = await pool.query(
+      `SELECT * FROM \`${table}\` WHERE article_id = ?`,
+      [articleId]
+    );
+    const article = rowToArticle(rows[0]);
+    const contentGen = await emitDeskLifecycle(
+      plugins,
+      'onMutate',
+      { article, action: 'update' },
+      ctx
+    );
+    return sendJson(res, 200, { article, contentGen });
+  } catch (err) {
+    const sqlMsg = err && (err.sqlMessage || err.message);
+    const code = err && err.code;
+    const status =
+      code === 'ER_DATA_TOO_LONG' || code === 'ER_TRUNCATED_WRONG_VALUE'
+        ? 400
+        : 500;
+    return sendJson(res, status, {
+      error: sqlMsg || 'Erreur mise à jour article',
+      code: code || 'UPDATE_FAILED',
+    });
+  }
 }
 
 async function handleDelete(req, res, ctx, _existing, articleId) {

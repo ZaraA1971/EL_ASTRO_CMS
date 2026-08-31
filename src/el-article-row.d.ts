@@ -26,6 +26,7 @@ declare module '@el/article-row' {
       source_url?: string;
       excerpt: string;
       draft: boolean;
+      pinned: boolean;
     };
     body: string;
   } | null;

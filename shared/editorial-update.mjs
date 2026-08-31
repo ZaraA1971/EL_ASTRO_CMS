@@ -32,8 +32,9 @@ export function isPastEditorialUpdateGrace(published, now = Date.now()) {
 
 /**
  * Faut-il remonter `modified` (affichage « Mis à jour ») ?
- * Un seul changement Accès abonné ↔ gratuit (et effets mots-clés liés)
- * ne doit pas compter comme mise à jour éditoriale.
+ * Seul le contenu éditorial (`otherFieldsChanged` : titre, corps, slug,
+ * brouillon/lang/traductions, date de pub) remonte la date.
+ * Accès, rubriques, auteur, tags, mots-clés IA : non.
  *
  * @param {{
  *   accessChanged?: boolean,
@@ -42,7 +43,5 @@ export function isPastEditorialUpdateGrace(published, now = Date.now()) {
  * }} flags
  */
 export function shouldBumpEditorialModified(flags = {}) {
-  if (flags.otherFieldsChanged) return true;
-  if (!flags.accessChanged && flags.iaKeywordsChanged) return true;
-  return false;
+  return Boolean(flags.otherFieldsChanged);
 }

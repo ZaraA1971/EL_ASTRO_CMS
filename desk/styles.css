@@ -248,6 +248,18 @@ details.x-panel[open] {
   margin: 0;
 }
 
+.push-panel .push-segments,
+.push-panel .filter-chips {
+  justify-content: flex-start;
+  flex: 0 1 auto;
+}
+
+#push-segments-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .uk-bar {
   display: flex;
   flex-wrap: wrap;
@@ -842,6 +854,13 @@ details.x-panel[open] {
   padding: 2px 0;
 }
 
+.list-item-status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
 .list-item--user h2,
 .list-item--article h2 {
   margin: 0 0 8px;
@@ -1000,6 +1019,11 @@ details.x-panel[open] {
 .badge.live {
   background: var(--ok-soft);
   color: var(--ok);
+}
+
+.badge.pinned {
+  background: var(--accent-soft);
+  color: var(--accent-hover);
 }
 
 .badge.warn {
@@ -1204,7 +1228,7 @@ details.x-panel[open] {
   background: #fbfdff;
   font-family: var(--font);
   font-size: 1.15rem;
-  line-height: 1.75;
+  line-height: 1.8;
   outline: none;
   overflow: auto;
   overscroll-behavior: contain;
@@ -1305,8 +1329,16 @@ details.x-panel[open] {
   }
 }
 
-.visual-editor p {
-  margin: 0 0 1em;
+.visual-editor > p,
+.visual-editor > div {
+  margin: 0 0 1.35em;
+}
+
+/* Entrée / Maj+Entrée : un vrai blanc entre les lignes, pas seulement l’interligne. */
+.visual-editor br {
+  content: "";
+  display: block;
+  margin-top: 0.85em;
 }
 
 .visual-editor img {

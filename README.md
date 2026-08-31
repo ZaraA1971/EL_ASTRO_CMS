@@ -157,7 +157,7 @@ cd /var/www/el-astro
 Ne **jamais** supprimer les dossiers `/var/cache/nginx/el-astro-*` (uniquement
 `find … -type f -delete`). Ne jamais redémarrer `el-astro-web` pendant un build.
 
-OneSignal : `ONESIGNAL_DRY_RUN=1` jusqu’au premier push contrôlé.
+OneSignal : envoi réel. `ONESIGNAL_DRY_RUN=1` seulement pour un essai sans notif.
 
 ### X (Twitter) — studio Pupitre
 

@@ -6,5 +6,7 @@ export {
   normalizeInlineStyles,
   extractClipboardFragment,
   stripFontJunk,
+  promoteInlineStyles,
+  normalizeInlineMarkup,
   cleanHtml,
 } from '../../shared/html-clean.mjs';

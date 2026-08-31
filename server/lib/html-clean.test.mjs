@@ -78,4 +78,42 @@ describe('html-clean', () => {
   it('rejects unknown context', () => {
     assert.throws(() => cleanHtml('<p>x</p>', 'hero'), /contexte inconnu/);
   });
+
+  it('promotes span font-weight/italic to b/i', () => {
+    assert.equal(
+      cleanHtml(
+        '<p><span style="font-weight: bold; color: rgb(0, 0, 0)">x</span></p>',
+        'desk'
+      ),
+      '<p><b>x</b></p>'
+    );
+    assert.equal(
+      cleanHtml(
+        '<p><span style="font-weight:700"><span style="font-style:italic">y</span></span></p>',
+        'store'
+      ),
+      '<p><b><i>y</i></b></p>'
+    );
+  });
+
+  it('unwraps nested and adjacent identical phrasing', () => {
+    assert.equal(cleanHtml('<p><b><b>z</b></b></p>', 'desk'), '<p><b>z</b></p>');
+    assert.equal(
+      cleanHtml('<p><b>a</b><b>b</b></p>', 'store'),
+      '<p><b>ab</b></p>'
+    );
+    assert.equal(
+      cleanHtml('<p><span>nu</span></p>', 'desk'),
+      '<p>nu</p>'
+    );
+  });
+
+  it('normalize inline markup is idempotent', () => {
+    const once = cleanHtml(
+      '<p><span style="font-weight:bold">a</span><span style="font-weight:700">b</span></p>',
+      'desk'
+    );
+    assert.equal(once, '<p><b>ab</b></p>');
+    assert.equal(cleanHtml(once, 'desk'), once);
+  });
 });

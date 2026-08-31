@@ -13,7 +13,7 @@ export const STYLE_ALLOWLIST = new Set(['text-align']);
 
 /**
  * Règles par contexte — source de vérité pour les call-sites.
- * @type {Record<string, { stripPmData?: boolean, normalizeStyles?: boolean, stripEmptyP?: boolean, stripFontJunk?: boolean }>}
+ * @type {Record<string, { stripPmData?: boolean, normalizeStyles?: boolean, stripEmptyP?: boolean, stripFontJunk?: boolean, normalizeInline?: boolean }>}
  */
 export const HTML_CLEAN_CONTEXTS = {
   /** Enregistrement BDD (desk create/update). */
@@ -23,6 +23,7 @@ export const HTML_CLEAN_CONTEXTS = {
     normalizeStyles: true,
     stripEmptyP: true,
     stripFontJunk: true,
+    normalizeInline: true,
   },
   /** Éditeur pupitre (même règles que store). */
   desk: {
@@ -31,6 +32,7 @@ export const HTML_CLEAN_CONTEXTS = {
     normalizeStyles: true,
     stripEmptyP: true,
     stripFontJunk: true,
+    normalizeInline: true,
   },
   /** Serveur iOS — styles collés même sur archives non ré-enregistrées. */
   ios: {
@@ -39,6 +41,7 @@ export const HTML_CLEAN_CONTEXTS = {
     normalizeStyles: true,
     stripEmptyP: false,
     stripFontJunk: true,
+    normalizeInline: true,
   },
 };
 
@@ -128,6 +131,86 @@ export function stripFontJunk(html) {
 }
 
 /**
+ * contenteditable (Chrome) pose souvent font-weight/font-style en span.
+ * On les remonte en <b>/<i> avant de jeter les styles — sinon le formatage disparaît.
+ * @param {string} html
+ */
+export function promoteInlineStyles(html) {
+  let h = String(html || '');
+  let prev = '';
+  while (h !== prev) {
+    prev = h;
+    h = h.replace(
+      /<span\b([^>]*)>((?:(?!<span\b)[\s\S])*?)<\/span>/gi,
+      (_m, attrs, inner) => promoteSpan(attrs, inner)
+    );
+  }
+  return h;
+}
+
+/**
+ * Déplie spans vides, <b><b>, voisins identiques — le pupitre s’y perd sinon.
+ * @param {string} html
+ */
+export function normalizeInlineMarkup(html) {
+  let h = String(html || '');
+  let prev = '';
+  while (h !== prev) {
+    prev = h;
+    h = h.replace(/<span>([\s\S]*?)<\/span>/gi, '$1');
+    h = unwrapNestedSame(h, 'b');
+    h = unwrapNestedSame(h, 'strong');
+    h = unwrapNestedSame(h, 'i');
+    h = unwrapNestedSame(h, 'em');
+    h = h.replace(
+      /<(strong|b)>\s*<(b|strong)>([\s\S]*?)<\/\2>\s*<\/\1>/gi,
+      '<strong>$3</strong>'
+    );
+    h = h.replace(
+      /<(em|i)>\s*<(i|em)>([\s\S]*?)<\/\2>\s*<\/\1>/gi,
+      '<em>$3</em>'
+    );
+    h = h.replace(/<\/b>\s*<b>/gi, '');
+    h = h.replace(/<\/strong>\s*<strong>/gi, '');
+    h = h.replace(/<\/i>\s*<i>/gi, '');
+    h = h.replace(/<\/em>\s*<em>/gi, '');
+    h = h.replace(
+      /<(span|strong|b|em|i)(?:\s[^>]*)?>\s*(?:&nbsp;|\u00a0|\s)*<\/\1>/gi,
+      ' '
+    );
+  }
+  return h;
+}
+
+function promoteSpan(attrs, inner) {
+  const rawAttrs = String(attrs || '');
+  const quoted = rawAttrs.match(/\sstyle\s*=\s*(["'])([\s\S]*?)\1/i);
+  const unquoted = !quoted && rawAttrs.match(/\sstyle\s*=\s*([^\s>]+)/i);
+  const style = quoted ? quoted[2] : unquoted ? unquoted[1] : '';
+  const bold = /font-weight\s*:\s*(bold|[6-9]00)/i.test(style);
+  const italic = /font-style\s*:\s*italic/i.test(style);
+  let out = inner;
+  const trimmed = String(out || '').trim();
+  if (italic && !/^<(?:i|em)\b/i.test(trimmed)) out = `<i>${out}</i>`;
+  if (bold && !/^<(?:b|strong)\b/i.test(trimmed)) out = `<b>${out}</b>`;
+  const rest = filterStyleDeclarations(style);
+  const other = rawAttrs
+    .replace(/\sstyle\s*=\s*(["'])[\s\S]*?\1/i, '')
+    .replace(/\sstyle\s*=\s*[^\s>]+/i, '');
+  if (rest) return `<span${other} style="${rest}">${out}</span>`;
+  if (other.trim()) return `<span${other}>${out}</span>`;
+  return out;
+}
+
+function unwrapNestedSame(html, tag) {
+  const re = new RegExp(
+    `<${tag}(?:\\s[^>]*)?>\\s*<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)</${tag}>\\s*</${tag}>`,
+    'gi'
+  );
+  return String(html || '').replace(re, `<${tag}>$1</${tag}>`);
+}
+
+/**
  * @param {string} html
  * @param {'store'|'desk'|'ios'|string} [context='store']
  */
@@ -152,11 +235,17 @@ export function cleanHtml(html, context = 'store') {
       ''
     );
   }
+  if (rules.normalizeInline) {
+    h = promoteInlineStyles(h);
+  }
   if (rules.stripFontJunk) {
     h = stripFontJunk(h);
   }
   if (rules.normalizeStyles) {
     h = normalizeInlineStyles(h);
+  }
+  if (rules.normalizeInline) {
+    h = normalizeInlineMarkup(h);
   }
   if (rules.stripEmptyP) {
     h = h.replace(/<p(?:\s[^>]*)?>\s*<\/p>/gi, '');
