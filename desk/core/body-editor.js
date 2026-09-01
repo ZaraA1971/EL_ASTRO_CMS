@@ -18,6 +18,11 @@ export function cleanBody(html) {
   return cleanArticleHtml(html, "desk");
 }
 
+/** Collage extérieur — contexte paste (plus strict que desk). */
+export function cleanPaste(html) {
+  return cleanArticleHtml(html, "paste");
+}
+
 let editorCmdsReady = false;
 
 function ensureEditorCommands() {
@@ -44,7 +49,7 @@ function unwrapElement(el) {
 }
 
 /** Déplie spans vides / gras dans gras — sans réécrire tout le HTML (curseur conservé). */
-export function tidyVisualInline(ed = getVisualEditor()) {
+function tidyVisualInline(ed = getVisualEditor()) {
   if (!ed) return;
   for (const span of [...ed.querySelectorAll("span")]) {
     if (span.hasAttributes()) continue;
@@ -145,8 +150,14 @@ function hasVisualTextSelection() {
 function rememberVisualSelection() {
   const ed = getVisualEditor();
   const sel = window.getSelection();
-  if (!ed || !sel || !sel.rangeCount || sel.isCollapsed) return;
-  if (!nodeInEditor(ed, sel.anchorNode)) return;
+  if (!ed || !sel || !sel.rangeCount || sel.isCollapsed) {
+    lastVisualRange = null;
+    return;
+  }
+  if (!nodeInEditor(ed, sel.anchorNode)) {
+    lastVisualRange = null;
+    return;
+  }
   try {
     lastVisualRange = sel.getRangeAt(0).cloneRange();
   } catch {
@@ -215,8 +226,9 @@ function onVisualBeforeInput(e) {
   rememberVisualSelection();
   const payload = readClipboardPayload(e);
   if (applyPasteLink(e, payload)) return;
-  // Ne pas laisser Safari/Chrome remplacer le mot avant l’événement paste.
-  if (hasVisualTextSelection() || lastVisualRange) {
+  // Bloquer le collage natif seulement s’il y a une sélection vivante
+  // (pas une ancienne plage : sinon le curseur recolle au mauvais endroit).
+  if (hasVisualTextSelection()) {
     e.preventDefault();
   }
 }
@@ -240,7 +252,7 @@ function onVisualPaste(e) {
   const { html, plain } = payload;
   let insert = "";
   if (html && /<[a-z][\s\S]*>/i.test(html)) {
-    insert = cleanBody(html);
+    insert = cleanPaste(html);
   } else if (plain) {
     insert = plain
       .split(/\n{2,}/)
@@ -248,7 +260,7 @@ function onVisualPaste(e) {
       .join("");
   }
   if (!insert) return;
-  restoreVisualSelectionIfNeeded();
+  if (hasVisualTextSelection()) restoreVisualSelectionIfNeeded();
   exec("insertHTML", insert);
   if (state.article) state.article.body = cleanBody(ed.innerHTML);
   syncPublishButton();
@@ -309,7 +321,6 @@ export function editFingerprint(p = {}, opts = {}) {
   if (includeAuthor) base.author = String(p.author || "").trim();
   if (includeCategories) base.categories = cats;
   if (includeAccess) base.access = normalizeAccess(p.access);
-  base.pinned = Boolean(p.pinned);
   return JSON.stringify(base);
 }
 
@@ -324,7 +335,6 @@ export function editFingerprintFromArticle(article) {
     categories: d.categories,
     access: d.access,
     ia_keywords: d.ia_keywords,
-    pinned: d.pinned,
   });
 }
 
@@ -352,9 +362,6 @@ export function currentEditFingerprint() {
     ? [...chipsRoot.querySelectorAll(".chip.on")].map((el) => el.dataset.value)
     : a.data.categories || [];
   const access = accessEl?.value || a.data.access || "subscribers";
-  const pinEl = document.getElementById("f-pinned");
-  const pinned =
-    access === "granted" ? false : pinEl ? pinEl.checked : Boolean(a.data.pinned);
   const ia_keywords =
     access === "granted"
       ? []
@@ -377,7 +384,6 @@ export function currentEditFingerprint() {
     categories: cats,
     access,
     ia_keywords,
-    pinned,
   });
 }
 
@@ -390,7 +396,8 @@ export function isEditContentDirty() {
 
 /**
  * Contenu éditorial dirty (titre / corps / date).
- * Accès, rubriques, auteur, mots-clés IA : ne comptent pas comme « Mis à jour ».
+ * Accès, rubriques, auteur, mots-clés IA, épingle : ne comptent pas
+ * comme « Mis à jour ».
  */
 export function isEditorialContentDirty() {
   if (!state.article || state.view !== "edit") return false;

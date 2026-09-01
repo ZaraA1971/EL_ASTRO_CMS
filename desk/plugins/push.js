@@ -15,7 +15,7 @@ export function selectedPushSegments() {
   return resolvePushSegments(state.push.selected);
 }
 
-export function selectedPushLabels() {
+function selectedPushLabels() {
   const names = selectedPushSegments();
   const list = state.push.segments || [];
   return names.map((n) => {
@@ -32,7 +32,7 @@ export function pushTargetsPhrase() {
   return labels.join(" + ");
 }
 
-export function togglePushSegment(name) {
+function togglePushSegment(name) {
   state.push.selected = togglePushSelection(state.push.selected, name);
 }
 

@@ -34,7 +34,7 @@ export function isPastEditorialUpdateGrace(published, now = Date.now()) {
  * Faut-il remonter `modified` (affichage « Mis à jour ») ?
  * Seul le contenu éditorial (`otherFieldsChanged` : titre, corps, slug,
  * brouillon/lang/traductions, date de pub) remonte la date.
- * Accès, rubriques, auteur, tags, mots-clés IA : non.
+ * Accès, rubriques, auteur, tags, mots-clés IA, épingle Une : non.
  *
  * @param {{
  *   accessChanged?: boolean,

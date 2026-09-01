@@ -108,6 +108,38 @@ describe('html-clean', () => {
     );
   });
 
+  it('strips embedded style blocks from clipboard', () => {
+    const dirty =
+      '<style>p{color:red;font-family:Comic Sans}</style><p>Hello</p>';
+    assert.equal(cleanHtml(dirty, 'paste'), '<p>Hello</p>');
+  });
+
+  it('unwraps Google Docs fake-bold wrapper', () => {
+    const dirty =
+      '<b style="font-weight:normal;" id="docs-internal-guid-abc"><span style="color:#000;font-family:Arial">Hello</span></b>';
+    assert.equal(cleanHtml(dirty, 'paste'), 'Hello');
+  });
+
+  it('keeps real bold inside a Docs wrapper', () => {
+    const dirty =
+      '<b id="docs-internal-guid-abc" style="font-weight:normal"><p>a <span style="font-weight:700">b</span></p></b>';
+    assert.equal(cleanHtml(dirty, 'paste'), '<p>a <b>b</b></p>');
+  });
+
+  it('drops class/id/align from pasted tags', () => {
+    const dirty =
+      '<p class="MsoNormal" id="x" align="left" style="color:#000">texte</p>';
+    assert.equal(cleanHtml(dirty, 'desk'), '<p>texte</p>');
+  });
+
+  it('flattens pasted headings only in paste context', () => {
+    assert.equal(
+      cleanHtml('<h2 style="color:red">Titre</h2>', 'paste'),
+      '<p>Titre</p>'
+    );
+    assert.equal(cleanHtml('<h2>Titre</h2>', 'desk'), '<h2>Titre</h2>');
+  });
+
   it('normalize inline markup is idempotent', () => {
     const once = cleanHtml(
       '<p><span style="font-weight:bold">a</span><span style="font-weight:700">b</span></p>',

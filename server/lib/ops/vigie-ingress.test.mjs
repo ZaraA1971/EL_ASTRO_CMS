@@ -1,6 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { accountPayload, audiencePayload, shouldPushAccount } from './vigie-ingress.mjs';
+import {
+  accountPayload,
+  audiencePayload,
+  newsletterPayload,
+  shouldPushAccount,
+  shouldPushNewsletter,
+} from './vigie-ingress.mjs';
 
 test('pousse les actions compte', () => {
   assert.equal(shouldPushAccount('user.create'), true);
@@ -38,4 +44,69 @@ test('audience payload', () => {
   assert.equal(p.kind, 'watch');
   assert.match(p.title, /10/);
   assert.match(p.body, /Page A/);
+});
+
+test('pousse l’envoi newsletter', () => {
+  assert.equal(shouldPushNewsletter('newsletter.send'), true);
+  assert.equal(shouldPushNewsletter('user.create'), false);
+});
+
+test('payload newsletter = chiffres seulement', () => {
+  const p = newsletterPayload(
+    {
+      action: 'newsletter.send',
+      actor: { login: 'admin' },
+      targetId: 7,
+      meta: {
+        subject: 'Le matin du 31 août',
+        date: '2026-08-31',
+        total: 12,
+        sent: 11,
+        skipped: 0,
+        errors: 1,
+        dryRun: false,
+      },
+    },
+    44
+  );
+  assert.equal(p.source, 'pupitre');
+  assert.equal(p.kind, 'watch');
+  assert.match(p.title, /11\/12/);
+  assert.match(p.body, /Destinataires : 12/);
+  assert.match(p.body, /Envoyés : 11/);
+  assert.match(p.body, /Sautés : 0/);
+  assert.match(p.body, /Erreurs : 1/);
+  assert.equal(p.facts.status, 'sent');
+  assert.equal(p.facts.sent, 11);
+  assert.equal(p.facts.total, 12);
+  assert.equal(p.fingerprint, 'pupitre:newsletter.send:44');
+});
+
+test('newsletter échouée = alerte', () => {
+  const p = newsletterPayload(
+    {
+      action: 'newsletter.send',
+      actor: { login: 'admin' },
+      targetId: 8,
+      meta: { subject: 'X', total: 3, sent: 0, skipped: 0, errors: 3 },
+    },
+    45
+  );
+  assert.equal(p.kind, 'alert');
+  assert.equal(p.facts.status, 'failed');
+});
+
+test('newsletter essai à sec', () => {
+  const p = newsletterPayload(
+    {
+      action: 'newsletter.send',
+      actor: { login: 'admin' },
+      targetId: 9,
+      meta: { subject: 'X', total: 3, sent: 0, skipped: 3, errors: 0, dryRun: true },
+    },
+    46
+  );
+  assert.equal(p.kind, 'watch');
+  assert.equal(p.facts.status, 'dry-run');
+  assert.match(p.title, /essai/);
 });

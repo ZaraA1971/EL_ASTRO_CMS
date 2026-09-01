@@ -363,7 +363,13 @@ export async function handleDeskNewsletter(req, res, parts, ctx) {
       action: 'newsletter.send',
       targetType: 'newsletter',
       targetId: id,
-      meta: stats,
+      meta: {
+        ...stats,
+        subject: camp.subject || '',
+        date: camp.editorial_date
+          ? String(camp.editorial_date).slice(0, 10)
+          : '',
+      },
       ip,
     });
 

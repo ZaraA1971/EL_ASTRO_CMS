@@ -20,7 +20,6 @@ import {
   isEditorialUpdate,
   shouldBumpEditorialModified,
 } from '../../../editorial-update.mjs';
-import { normalizePinned } from '../../../article-row.mjs';
 
 function tableOf(ctx) {
   return assertSafeSqlIdent(
@@ -229,14 +228,6 @@ async function handleCollection(req, res, ctx) {
         sourceUrl,
       ]
     );
-    const createLang = String(payload.lang || 'fr').toLowerCase();
-    const createPinned =
-      canPublish(session.role) &&
-      payload.access !== 'granted' &&
-      (payload.pinned === true || payload.pinned === 1);
-    if (createPinned) {
-      await applyExclusivePin(pool, table, articleId, createLang, true);
-    }
     const [rows] = await pool.query(
       `SELECT * FROM \`${table}\` WHERE article_id = ?`,
       [articleId]
@@ -464,6 +455,35 @@ async function handleUpdate(req, res, ctx, existing, articleId) {
     return sendJson(res, 400, { error: 'JSON invalide' });
   }
   const payload = parsed.value;
+  const payloadKeys = Object.keys(payload).filter((k) => payload[k] !== undefined);
+  if (
+    payloadKeys.length === 1 &&
+    payloadKeys[0] === 'pinned' &&
+    canPublish(session.role)
+  ) {
+    await h.ensureArticlePinnedColumn(pool);
+    const access = String(existing.access || 'subscribers');
+    const pinnedNext =
+      access === 'granted'
+        ? 0
+        : payload.pinned === true || payload.pinned === 1
+          ? 1
+          : 0;
+    const lang = String(existing.lang || 'fr').toLowerCase();
+    await applyExclusivePin(pool, table, articleId, lang, pinnedNext);
+    const [pinRows] = await pool.query(
+      `SELECT * FROM \`${table}\` WHERE article_id = ?`,
+      [articleId]
+    );
+    const article = rowToArticle(pinRows[0]);
+    const contentGen = await emitDeskLifecycle(
+      plugins,
+      'onMutate',
+      { article, action: 'pin' },
+      ctx
+    );
+    return sendJson(res, 200, { article, contentGen });
+  }
   const title =
     payload.title != null
       ? String(payload.title).trim() || existing.title
@@ -515,13 +535,6 @@ async function handleUpdate(req, res, ctx, existing, articleId) {
       : payload.access === 'subscribers'
         ? 'subscribers'
         : existing.access;
-
-  let pinnedNext = normalizePinned(existing.pinned) ? 1 : 0;
-  if (accessNext === 'granted') {
-    pinnedNext = 0;
-  } else if (canPublish(session.role) && payload.pinned !== undefined) {
-    pinnedNext = payload.pinned === true || payload.pinned === 1 ? 1 : 0;
-  }
 
   let iaKeywordsNext =
     accessNext === 'granted'
@@ -613,7 +626,7 @@ async function handleUpdate(req, res, ctx, existing, articleId) {
     return s ? s.slice(0, 16) : null;
   };
   // Contenu seul (titre/corps/slug/date/draft/lang/trad) → remonte `modified`.
-  // Accès, rubriques, auteur, tags, mots-clés IA : non.
+  // Accès, rubriques, auteur, tags, mots-clés IA, épingle Une : non.
   const otherFieldsChanged =
     title !== String(existing.title || '') ||
     slug !== String(existing.slug || '') ||
@@ -655,7 +668,7 @@ async function handleUpdate(req, res, ctx, existing, articleId) {
       slug=?, title=?, excerpt=?, body=?, date=?, modified=?,
       author=?, author_slug=?, author_user_id=?,
       categories=?, category_names=?, tags=?, ia_keywords=?,
-      access=?, lang=?, draft=?, pinned=?,
+      access=?, lang=?, draft=?,
       translation_fr=?, translation_en=?
      WHERE article_id=?`,
       [
@@ -675,19 +688,14 @@ async function handleUpdate(req, res, ctx, existing, articleId) {
         accessNext,
         langNext,
         draftVal,
-        pinnedNext,
         translationFr,
         translationEn,
         articleId,
       ]
     );
 
-    if (pinnedNext) {
-      await pool.query(
-        `UPDATE \`${table}\` SET pinned = 0
-         WHERE lang = ? AND article_id != ? AND pinned = 1`,
-        [langNext, articleId]
-      );
+    if (accessNext === 'granted' && Number(existing.pinned) === 1) {
+      await applyExclusivePin(pool, table, articleId, langNext, false);
     }
 
     if (

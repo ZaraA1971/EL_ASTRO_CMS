@@ -84,6 +84,63 @@ export function shouldPushAccount(action) {
   return ACCOUNT_ACTIONS.has(String(action || ''));
 }
 
+export function shouldPushNewsletter(action) {
+  return String(action || '') === 'newsletter.send';
+}
+
+function boolish(v) {
+  return v === true || v === 'true' || v === 1 || v === '1';
+}
+
+export function newsletterPayload(evt, insertId) {
+  const meta = cleanMeta(evt?.meta);
+  const actor = evt?.actor?.login || 'système';
+  const nid = evt?.targetId != null ? String(evt.targetId) : '';
+  const subject = String(meta.subject || '').trim() || 'sans sujet';
+  const sent = Number(meta.sent || 0);
+  const skipped = Number(meta.skipped || 0);
+  const errors = Number(meta.errors || 0);
+  const total = Number(meta.total || sent + skipped + errors);
+  const dry = boolish(meta.dryRun);
+  const failed = errors > 0 && sent === 0 && skipped === 0 && !dry;
+  const status = dry ? 'dry-run' : failed ? 'failed' : 'sent';
+  const kind = failed ? 'alert' : 'watch';
+  const date = String(meta.date || '').trim();
+  const title = dry
+    ? `Newsletter — essai (${total})`
+    : failed
+      ? `Newsletter — envoi échoué`
+      : `Newsletter — envoyée (${sent}/${total})`;
+  const body = [
+    `« ${subject} ».`,
+    `Destinataires : ${total}. Envoyés : ${sent}. Sautés : ${skipped}. Erreurs : ${errors}.`,
+  ].join(' ');
+  const facts = {
+    actor,
+    id: nid,
+    status,
+    theme: 'newsletter',
+    label: subject.slice(0, 80),
+    sent,
+    skipped,
+    errors,
+    total,
+  };
+  if (date) facts.date = date;
+  return {
+    source: 'pupitre',
+    kind,
+    title: title.slice(0, 240),
+    body: body.slice(0, 6000),
+    facts,
+    fingerprint: `pupitre:newsletter.send:${insertId || nid || Date.now()}`.slice(
+      0,
+      200
+    ),
+    drain: true,
+  };
+}
+
 export async function pushVigieEvent(payload) {
   try {
     const res = await fetch(INGRESS, {
@@ -106,6 +163,16 @@ export async function pushVigieEvent(payload) {
 export async function pushVigieAccount(evt, insertId) {
   if (!shouldPushAccount(evt?.action)) return { skipped: true };
   return pushVigieEvent(accountPayload(evt, insertId));
+}
+
+export async function pushVigieFromAudit(evt, insertId) {
+  if (shouldPushAccount(evt?.action)) {
+    return pushVigieEvent(accountPayload(evt, insertId));
+  }
+  if (shouldPushNewsletter(evt?.action)) {
+    return pushVigieEvent(newsletterPayload(evt, insertId));
+  }
+  return { skipped: true };
 }
 
 export function audiencePayload(data) {

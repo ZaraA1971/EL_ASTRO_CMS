@@ -1,27 +1,17 @@
 import { getPool } from './db';
 import { absoluteArticleUrl } from '@el/article-path';
+import {
+  NEWS_SITEMAP_DAYS,
+  NEWS_SITEMAP_FALLBACK,
+  newsSitemapXml,
+  xmlEscape,
+  isoDate,
+} from '@el/sitemap-news';
 
 export const SITE = 'https://electronlibre.info';
 /** Chunks ~2000 URLs (limite pratique Google / WP). */
 export const SITEMAP_PAGE_SIZE = 2000;
-/** Google News : articles des N derniers jours. */
-export const NEWS_SITEMAP_DAYS = 2;
-
-export function xmlEscape(value: string): string {
-  return String(value || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
-}
-
-export function isoDate(d: Date | string | null | undefined): string {
-  const dt = d instanceof Date ? d : new Date(String(d || ''));
-  if (Number.isNaN(dt.getTime())) return new Date().toISOString();
-  // W3C Datetime sans millisecondes (plus toléré par GSC)
-  return dt.toISOString().replace(/\.\d{3}Z$/, 'Z');
-}
+export { NEWS_SITEMAP_DAYS, xmlEscape, isoDate };
 
 export function articleLoc(articleId: number, slug: string): string {
   return absoluteArticleUrl(SITE, articleId, slug);
@@ -94,13 +84,23 @@ export async function listNewsArticles(): Promise<
      LIMIT 1000`,
     [NEWS_SITEMAP_DAYS]
   );
-  return rows as {
+  const recent = rows as {
     article_id: number;
     slug: string;
     title: string;
     date: Date;
     lang: string;
   }[];
+  if (recent.length) return recent;
+  const [fallback] = await pool.query(
+    `SELECT article_id, slug, title, date, lang
+     FROM el_articles
+     WHERE draft = 0
+     ORDER BY date DESC
+     LIMIT ?`,
+    [NEWS_SITEMAP_FALLBACK]
+  );
+  return fallback as typeof recent;
 }
 
 export function buildSitemapIndex(locs: string[]): string {
@@ -175,25 +175,8 @@ export async function buildPostsSitemapXml(page: number): Promise<string | null>
 /** Sitemap Google News. */
 export async function buildNewsSitemapXml(): Promise<string> {
   const rows = await listNewsArticles();
-  let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
-  xml +=
-    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:news="http://www.google.com/schemas/sitemap-news/0.9">\n';
-  for (const row of rows) {
-    const loc = articleLoc(row.article_id, row.slug);
-    if (!loc) continue;
-    const lang = (row.lang || 'fr').toLowerCase().startsWith('en') ? 'en' : 'fr';
-    xml += '  <url>\n';
-    xml += `    <loc>${xmlEscape(loc)}</loc>\n`;
-    xml += '    <news:news>\n';
-    xml += '      <news:publication>\n';
-    xml += '        <news:name>ElectronLibre</news:name>\n';
-    xml += `        <news:language>${lang}</news:language>\n`;
-    xml += '      </news:publication>\n';
-    xml += `      <news:publication_date>${xmlEscape(isoDate(row.date))}</news:publication_date>\n`;
-    xml += `      <news:title>${xmlEscape(row.title)}</news:title>\n`;
-    xml += '    </news:news>\n';
-    xml += '  </url>\n';
-  }
-  xml += '</urlset>\n';
-  return xml;
+  return newsSitemapXml(rows, {
+    locOf: (row) =>
+      articleLoc(Number(row.article_id), String(row.slug || '')),
+  });
 }

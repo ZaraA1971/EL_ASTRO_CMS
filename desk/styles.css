@@ -1185,6 +1185,15 @@ details.x-panel[open] {
   border-radius: var(--btn-toolAlign-radius);
 }
 
+.editor-toolbar .btn-face-bold {
+  font-weight: var(--face-bold-weight);
+}
+
+.editor-toolbar .btn-face-italic {
+  font-style: var(--face-italic-style);
+  font-weight: var(--face-italic-weight);
+}
+
 .editor-tabs {
   display: inline-flex;
   flex: 0 0 auto;
@@ -1332,6 +1341,13 @@ details.x-panel[open] {
 .visual-editor > p,
 .visual-editor > div {
   margin: 0 0 1.35em;
+}
+
+/* Collage : la typo de l’éditeur l’emporte sur Word / Docs / le web. */
+.visual-editor :where(p, div, span, li, td) {
+  font-family: inherit;
+  color: inherit;
+  background-color: transparent;
 }
 
 /* Entrée / Maj+Entrée : un vrai blanc entre les lignes, pas seulement l’interligne. */
@@ -1706,6 +1722,7 @@ details.x-panel[open] {
     top: 76px;
     max-height: calc(100dvh - 168px);
     overflow: auto;
+    overflow-anchor: none;
     overscroll-behavior: contain;
     /* sticky opaque sans blur */
     transform: translateZ(0);

@@ -51,7 +51,7 @@ export async function auditLog(pool, evt) {
     );
     const insertId = result?.insertId;
     void import('./ops/vigie-ingress.mjs')
-      .then((m) => m.pushVigieAccount(evt, insertId))
+      .then((m) => m.pushVigieFromAudit(evt, insertId))
       .catch((err) => console.error('[audit] vigie', err.message));
   } catch (err) {
     console.error('[audit]', err.message);

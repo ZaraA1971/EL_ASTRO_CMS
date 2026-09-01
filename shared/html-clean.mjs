@@ -11,38 +11,43 @@
 /** Propriétés CSS conservées dans style="" (le reste = collages). */
 export const STYLE_ALLOWLIST = new Set(['text-align']);
 
+/** Attributs conservés sur les balises (le reste = scories Word / Docs / web). */
+export const ATTR_ALLOWLIST = new Set([
+  'href',
+  'src',
+  'alt',
+  'title',
+  'target',
+  'rel',
+  'colspan',
+  'rowspan',
+  'style',
+]);
+
 /**
  * Règles par contexte — source de vérité pour les call-sites.
- * @type {Record<string, { stripPmData?: boolean, normalizeStyles?: boolean, stripEmptyP?: boolean, stripFontJunk?: boolean, normalizeInline?: boolean }>}
+ * @type {Record<string, { extractClipboard?: boolean, normalizeStyles?: boolean, stripEmptyP?: boolean, stripFontJunk?: boolean, normalizeInline?: boolean, stripEmbeddedCss?: boolean, unwrapPasteWrappers?: boolean, filterAttrs?: boolean, flattenHeadings?: boolean }>}
  */
+const CLEAN_FULL = {
+  extractClipboard: true,
+  normalizeStyles: true,
+  stripEmptyP: true,
+  stripFontJunk: true,
+  normalizeInline: true,
+  stripEmbeddedCss: true,
+  unwrapPasteWrappers: true,
+  filterAttrs: true,
+};
+
 export const HTML_CLEAN_CONTEXTS = {
   /** Enregistrement BDD (desk create/update). */
-  store: {
-    extractClipboard: true,
-    stripPmData: true,
-    normalizeStyles: true,
-    stripEmptyP: true,
-    stripFontJunk: true,
-    normalizeInline: true,
-  },
+  store: { ...CLEAN_FULL },
   /** Éditeur pupitre (même règles que store). */
-  desk: {
-    extractClipboard: true,
-    stripPmData: true,
-    normalizeStyles: true,
-    stripEmptyP: true,
-    stripFontJunk: true,
-    normalizeInline: true,
-  },
+  desk: { ...CLEAN_FULL },
+  /** Collage extérieur : plus strict (titres web → paragraphes). */
+  paste: { ...CLEAN_FULL, flattenHeadings: true },
   /** Serveur iOS — styles collés même sur archives non ré-enregistrées. */
-  ios: {
-    extractClipboard: false,
-    stripPmData: true,
-    normalizeStyles: true,
-    stripEmptyP: false,
-    stripFontJunk: true,
-    normalizeInline: true,
-  },
+  ios: { ...CLEAN_FULL, extractClipboard: false, stripEmptyP: false },
 };
 
 /**
@@ -202,6 +207,116 @@ function promoteSpan(attrs, inner) {
   return out;
 }
 
+export function stripEmbeddedCss(html) {
+  return String(html || '')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
+}
+
+function styleFromAttrs(attrs) {
+  const raw = String(attrs || '');
+  const quoted = raw.match(/\sstyle\s*=\s*(["'])([\s\S]*?)\1/i);
+  if (quoted) return quoted[2];
+  const unquoted = raw.match(/\sstyle\s*=\s*([^\s>]+)/i);
+  return unquoted ? unquoted[1] : '';
+}
+
+function findMatchingClose(html, tag, from) {
+  const openRe = new RegExp(`<${tag}\\b[^>]*>`, 'gi');
+  const closeRe = new RegExp(`</${tag}>`, 'gi');
+  let depth = 1;
+  let i = from;
+  while (i < html.length) {
+    openRe.lastIndex = i;
+    closeRe.lastIndex = i;
+    const open = openRe.exec(html);
+    const close = closeRe.exec(html);
+    if (!close) return -1;
+    if (open && open.index < close.index) {
+      depth += 1;
+      i = open.index + open[0].length;
+    } else {
+      depth -= 1;
+      if (depth === 0) return close.index;
+      i = close.index + close[0].length;
+    }
+  }
+  return -1;
+}
+
+function unwrapMatching(html, tag, pred) {
+  let h = String(html || '');
+  const openRe = new RegExp(`<${tag}\\b([^>]*)>`, 'gi');
+  const hits = [];
+  let m;
+  while ((m = openRe.exec(h))) {
+    if (pred(m[1] || '')) hits.push({ index: m.index, len: m[0].length });
+  }
+  const closeLen = `</${tag}>`.length;
+  for (let k = hits.length - 1; k >= 0; k -= 1) {
+    const hit = hits[k];
+    const closeAt = findMatchingClose(h, tag, hit.index + hit.len);
+    if (closeAt < 0) continue;
+    h =
+      h.slice(0, hit.index) +
+      h.slice(hit.index + hit.len, closeAt) +
+      h.slice(closeAt + closeLen);
+  }
+  return h;
+}
+
+function isFakeBoldWrapper(attrs) {
+  const a = String(attrs || '');
+  if (/\bid\s*=\s*["']?docs-internal-guid/i.test(a)) return true;
+  return /font-weight\s*:\s*(normal|400)\b/i.test(styleFromAttrs(a));
+}
+
+/** Google Docs enveloppe tout dans <b id="docs-internal-guid" style="font-weight:normal">. */
+export function unwrapPasteWrappers(html) {
+  let h = String(html || '');
+  h = unwrapMatching(h, 'b', isFakeBoldWrapper);
+  h = unwrapMatching(h, 'strong', isFakeBoldWrapper);
+  h = unwrapMatching(h, 'span', (attrs) =>
+    /\bid\s*=\s*["']?docs-internal-guid/i.test(attrs)
+  );
+  h = h.replace(/<\/?o:p\b[^>]*>/gi, '');
+  h = h.replace(/<\/?[a-z]+:[a-z][^>]*>/gi, '');
+  return h;
+}
+
+export function filterTagAttributes(html) {
+  return String(html || '').replace(
+    /<([a-z][a-z0-9]*)\b([^>]*?)>/gi,
+    (_full, tag, attrs) => {
+      if (!String(attrs || '').trim()) return `<${tag}>`;
+      const kept = [];
+      const re =
+        /([^\s=/>]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g;
+      let am;
+      while ((am = re.exec(attrs))) {
+        const name = String(am[1] || '').toLowerCase();
+        if (!ATTR_ALLOWLIST.has(name)) continue;
+        const val = am[2] ?? am[3] ?? am[4];
+        if (val == null) continue;
+        if (name === 'style') {
+          const next = filterStyleDeclarations(val);
+          if (next) kept.push(`style="${next}"`);
+          continue;
+        }
+        const q = am[2] != null ? '"' : am[3] != null ? "'" : '"';
+        kept.push(`${name}=${q}${val}${q}`);
+      }
+      return kept.length ? `<${tag} ${kept.join(' ')}>` : `<${tag}>`;
+    }
+  );
+}
+
+export function flattenPastedHeadings(html) {
+  return String(html || '')
+    .replace(/<h[1-6]\b([^>]*)>/gi, '<p$1>')
+    .replace(/<\/h[1-6]>/gi, '</p>');
+}
+
 function unwrapNestedSame(html, tag) {
   const re = new RegExp(
     `<${tag}(?:\\s[^>]*)?>\\s*<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)</${tag}>\\s*</${tag}>`,
@@ -212,7 +327,7 @@ function unwrapNestedSame(html, tag) {
 
 /**
  * @param {string} html
- * @param {'store'|'desk'|'ios'|string} [context='store']
+ * @param {'store'|'desk'|'paste'|'ios'|string} [context='store']
  */
 export function cleanHtml(html, context = 'store') {
   const key = String(context || 'store').toLowerCase();
@@ -229,11 +344,11 @@ export function cleanHtml(html, context = 'store') {
   if (rules.extractClipboard) {
     h = extractClipboardFragment(h);
   }
-  if (rules.stripPmData) {
-    h = h.replace(
-      /\s*data-(?:start|end|pm-slice|pm-paste)=["'][^"']*["']/gi,
-      ''
-    );
+  if (rules.stripEmbeddedCss) {
+    h = stripEmbeddedCss(h);
+  }
+  if (rules.unwrapPasteWrappers) {
+    h = unwrapPasteWrappers(h);
   }
   if (rules.normalizeInline) {
     h = promoteInlineStyles(h);
@@ -241,8 +356,14 @@ export function cleanHtml(html, context = 'store') {
   if (rules.stripFontJunk) {
     h = stripFontJunk(h);
   }
+  if (rules.filterAttrs) {
+    h = filterTagAttributes(h);
+  }
   if (rules.normalizeStyles) {
     h = normalizeInlineStyles(h);
+  }
+  if (rules.flattenHeadings) {
+    h = flattenPastedHeadings(h);
   }
   if (rules.normalizeInline) {
     h = normalizeInlineMarkup(h);

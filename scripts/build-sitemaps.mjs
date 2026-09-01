@@ -7,13 +7,19 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import mysql from 'mysql2/promise';
+import {
+  NEWS_SITEMAP_DAYS,
+  NEWS_SITEMAP_FALLBACK,
+  newsSitemapXml,
+  xmlEscape,
+  isoDate,
+} from '../shared/sitemap-news.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
 const OUT = path.join(ROOT, 'var/sitemaps');
 const SITE = 'https://electronlibre.info';
 const PAGE_SIZE = 2000;
-const NEWS_DAYS = 2;
 const ENV_FILE = process.env.EL_API_ENV_FILE || '/etc/electronlibre/el-astro-api.env';
 
 function loadEnv(file) {
@@ -32,21 +38,6 @@ function loadEnv(file) {
     out[m[1]] = v;
   }
   return out;
-}
-
-function esc(s) {
-  return String(s || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
-}
-
-function iso(d) {
-  const dt = d instanceof Date ? d : new Date(d);
-  if (Number.isNaN(dt.getTime())) return new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
-  return dt.toISOString().replace(/\.\d{3}Z$/, 'Z');
 }
 
 function articleLoc(id, slug) {
@@ -76,7 +67,7 @@ function buildIndex(locs) {
     '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
   for (const loc of locs) {
     xml += '  <sitemap>\n';
-    xml += `    <loc>${esc(loc)}</loc>\n`;
+    xml += `    <loc>${xmlEscape(loc)}</loc>\n`;
     xml += '  </sitemap>\n';
   }
   xml += '</sitemapindex>\n';
@@ -89,10 +80,10 @@ function buildUrlset(urls) {
   for (const u of urls) {
     if (!u.loc) continue;
     xml += '  <url>\n';
-    xml += `    <loc>${esc(u.loc)}</loc>\n`;
-    if (u.lastmod) xml += `    <lastmod>${esc(u.lastmod)}</lastmod>\n`;
-    if (u.changefreq) xml += `    <changefreq>${esc(u.changefreq)}</changefreq>\n`;
-    if (u.priority) xml += `    <priority>${esc(u.priority)}</priority>\n`;
+    xml += `    <loc>${xmlEscape(u.loc)}</loc>\n`;
+    if (u.lastmod) xml += `    <lastmod>${xmlEscape(u.lastmod)}</lastmod>\n`;
+    if (u.changefreq) xml += `    <changefreq>${xmlEscape(u.changefreq)}</changefreq>\n`;
+    if (u.priority) xml += `    <priority>${xmlEscape(u.priority)}</priority>\n`;
     xml += '  </url>\n';
   }
   xml += '</urlset>\n';
@@ -145,7 +136,7 @@ async function main() {
       .map((r) => {
         const loc = articleLoc(r.article_id, r.slug);
         if (!loc) return null;
-        return { loc, lastmod: iso(r.modified || r.date) };
+        return { loc, lastmod: isoDate(r.modified || r.date) };
       })
       .filter(Boolean);
     const xml = buildUrlset(urls);
@@ -168,32 +159,23 @@ async function main() {
        AND date >= (UTC_TIMESTAMP() - INTERVAL ? DAY)
      ORDER BY date DESC
      LIMIT 1000`,
-    [NEWS_DAYS]
+    [NEWS_SITEMAP_DAYS]
   );
-  let news =
-    '<?xml version="1.0" encoding="UTF-8"?>\n' +
-    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:news="http://www.google.com/schemas/sitemap-news/0.9">\n';
-  for (const row of newsRows) {
-    const loc = articleLoc(row.article_id, row.slug);
-    if (!loc) continue;
-    const lang = String(row.lang || 'fr')
-      .toLowerCase()
-      .startsWith('en')
-      ? 'en'
-      : 'fr';
-    news += '  <url>\n';
-    news += `    <loc>${esc(loc)}</loc>\n`;
-    news += '    <news:news>\n';
-    news += '      <news:publication>\n';
-    news += '        <news:name>ElectronLibre</news:name>\n';
-    news += `        <news:language>${lang}</news:language>\n`;
-    news += '      </news:publication>\n';
-    news += `      <news:publication_date>${esc(iso(row.date))}</news:publication_date>\n`;
-    news += `      <news:title>${esc(row.title)}</news:title>\n`;
-    news += '    </news:news>\n';
-    news += '  </url>\n';
+  let rows = newsRows;
+  if (!rows.length) {
+    const [fallback] = await pool.query(
+      `SELECT article_id, slug, title, date, lang
+       FROM el_articles
+       WHERE draft = 0
+       ORDER BY date DESC
+       LIMIT ?`,
+      [NEWS_SITEMAP_FALLBACK]
+    );
+    rows = fallback;
   }
-  news += '</urlset>\n';
+  const news = newsSitemapXml(rows, {
+    locOf: (row) => articleLoc(row.article_id, row.slug),
+  });
   writeAtomic(path.join(OUT, 'news-sitemap.xml'), news);
 
   await pool.end();

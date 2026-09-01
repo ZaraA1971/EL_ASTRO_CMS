@@ -5,7 +5,6 @@ import { api } from "../core/api.js";
 import {
   escapeHtml,
   formatDate,
-  formatDateTime,
   toDatetimeLocalValue,
   fromDatetimeLocalValue,
   updateDateLabel,
@@ -63,6 +62,63 @@ import {
 } from "../plugins/x-editor.js";
 
 const app = document.getElementById("app");
+
+/** Article dont le scroll de la colonne méta a déjà été peint. */
+let paintedMetaArticleId = null;
+
+function metaColScrollToKeep() {
+  const id = state.article?.data?.article_id;
+  const col = document.querySelector(".edit-col-meta");
+  if (!col || paintedMetaArticleId == null || paintedMetaArticleId !== id) {
+    return 0;
+  }
+  return col.scrollTop;
+}
+
+function restoreMetaColScroll(top) {
+  paintedMetaArticleId = state.article?.data?.article_id ?? null;
+  const col = document.querySelector(".edit-col-meta");
+  if (col && top > 0) col.scrollTop = top;
+}
+
+/** Clic dans un champ / bouton : le navigateur ne remonte plus la colonne. */
+function bindMetaColScrollLock() {
+  if (!app || app.dataset.metaScrollLock === "1") return;
+  app.dataset.metaScrollLock = "1";
+  let pending = null;
+  app.addEventListener(
+    "pointerdown",
+    (e) => {
+      const col = e.target.closest?.(".edit-col-meta");
+      pending = col ? { col, top: col.scrollTop } : null;
+    },
+    true
+  );
+  app.addEventListener(
+    "focusin",
+    (e) => {
+      if (!pending) return;
+      const col = e.target.closest?.(".edit-col-meta");
+      if (col !== pending.col) {
+        pending = null;
+        return;
+      }
+      const top = pending.top;
+      pending = null;
+      const apply = () => {
+        if (col.scrollTop !== top) col.scrollTop = top;
+      };
+      apply();
+      requestAnimationFrame(() => {
+        apply();
+        requestAnimationFrame(apply);
+      });
+    },
+    true
+  );
+}
+
+bindMetaColScrollLock();
 
 function purifyHtml(html) {
   const raw = String(html || "");
@@ -287,11 +343,8 @@ function collectForm() {
     // Langue gérée via le panneau Version UK (pas de sélecteur ici)
     lang: a.data.lang || "fr",
     access,
-    pinned:
-      access === "granted"
-        ? false
-        : Boolean(document.getElementById("f-pinned")?.checked),
     // Brouillon géré par le bouton dédié (effet immédiat) — pas via Enregistrer
+    // Épingle Une : savePinnedNow, pas via Enregistrer
   };
 }
 
@@ -451,7 +504,6 @@ export async function openArticle(articleId) {
   state.mode = "visual";
   await loadXPanel("el");
   ctx.render();
-  paintPushSegments();
 }
 
 export async function createArticle() {
@@ -477,7 +529,6 @@ export async function createArticle() {
     resetPushPanel();
     await loadXPanel("el");
     ctx.render();
-    paintPushSegments();
   } catch (err) {
     state.error = err.message;
     state.status = "";
@@ -501,7 +552,6 @@ function flushFormToState() {
     ia_keywords: payload.ia_keywords,
     access: payload.access,
     lang: payload.lang,
-    pinned: payload.pinned,
   });
   if (payload.author_slug !== undefined) {
     state.article.data.author_slug = payload.author_slug;
@@ -810,6 +860,36 @@ async function pushNow() {
   }
 }
 
+/** Épingle Une : enregistre tout de suite, sans toucher « Mis à jour ». */
+async function savePinnedNow(pinBox) {
+  if (!state.article || !state.caps.publish) return;
+  const next = Boolean(pinBox.checked);
+  const prev = Boolean(state.article.data.pinned);
+  pinBox.disabled = true;
+  state.error = "";
+  state.status = next ? "Épinglage…" : "Retrait de la Une…";
+  paintEditMessages();
+  try {
+    const articleId = state.article.data.article_id;
+    const data = await api(`/api/desk/articles/${articleId}`, {
+      method: "PUT",
+      body: JSON.stringify({ pinned: next }),
+    });
+    const pinned = Boolean(data.article?.data?.pinned);
+    state.article.data.pinned = pinned;
+    pinBox.checked = pinned;
+    state.status = pinned ? "Épinglé en Une" : "Retiré de la Une";
+  } catch (err) {
+    pinBox.checked = prev;
+    if (state.article) state.article.data.pinned = prev;
+    state.error = err.message || "Épinglage impossible";
+    state.status = "";
+  } finally {
+    pinBox.disabled = false;
+    paintEditMessages();
+  }
+}
+
 /**
  * Traduction UK via DeepL EN-GB.
  * Enregistre d’abord le FR, crée/écrase le brouillon EN, ouvre l’EN.
@@ -867,6 +947,7 @@ async function translateUk({ overwrite = true } = {}) {
 
 export function renderEdit() {
   closeMediaPicker();
+  const metaScroll = metaColScrollToKeep();
   const a = state.article;
   const d = a.data;
   const dateVal =
@@ -944,8 +1025,8 @@ export function renderEdit() {
                     <button type="button" class="btn" data-cmd="clean" title="Retire couleurs/polices collées (Word, Docs) — conserve le centrage">Nettoyer</button>
                   </div>
                   <div class="toolbar-group toolbar-group--format" role="group" aria-label="Mise en forme">
-                    <button type="button" class="btn" data-cmd="bold">Gras</button>
-                    <button type="button" class="btn" data-cmd="italic">Italique</button>
+                    <button type="button" class="btn btn-face-bold" data-cmd="bold">Gras</button>
+                    <button type="button" class="btn btn-face-italic" data-cmd="italic">Italique</button>
                     <button type="button" class="btn" data-cmd="ul">Liste</button>
                     <button type="button" class="btn" data-cmd="quote" title="Citation">Citation</button>
                     <button type="button" class="btn" data-cmd="link" title="Ou coller une URL sur le texte sélectionné">Lien</button>
@@ -1040,7 +1121,7 @@ export function renderEdit() {
                 <input type="checkbox" id="f-pinned" ${d.pinned ? "checked" : ""} />
                 Épingler en Une
               </label>
-              <p class="uk-help">Remplace le dernier article abonnés. Un seul épinglé par langue.</p>`
+              <p class="uk-help">Pris en compte tout de suite. Ne compte pas comme une mise à jour.</p>`
                 : d.pinned
                   ? `<p class="uk-help">Épinglé en Une.</p>`
                   : ""
@@ -1197,7 +1278,16 @@ export function renderEdit() {
       const v = state.x.variants[i];
       if (v == null) return;
       state.x.text = v;
-      ctx.render();
+      if (xText) xText.value = v;
+      const counter = app.querySelector(".x-count");
+      if (counter) {
+        const n = xWeightedLength(v);
+        counter.textContent = `${n} / 280`;
+        counter.classList.toggle("is-over", n > 280);
+      }
+      app.querySelectorAll("[data-x-variant]").forEach((b) => {
+        b.classList.toggle("is-active", Number(b.dataset.xVariant) === i);
+      });
     };
   });
   const btnXGen = document.getElementById("btn-x-generate");
@@ -1212,19 +1302,7 @@ export function renderEdit() {
   }
   const pinBox = document.getElementById("f-pinned");
   if (pinBox) {
-    pinBox.onchange = () => {
-      if (pinBox.checked) {
-        const ok = confirm(
-          "Épingler en Une ? Un autre article épinglé sera retiré."
-        );
-        if (!ok) {
-          pinBox.checked = false;
-          return;
-        }
-      }
-      if (state.article) state.article.data.pinned = pinBox.checked;
-      onEditDirty();
-    };
+    pinBox.onchange = () => savePinnedNow(pinBox);
   }
   app.querySelectorAll("[data-assist]").forEach((btn) => {
     btn.onclick = () => runEditorialAssist(btn.dataset.assist);
@@ -1334,4 +1412,5 @@ export function renderEdit() {
     });
   }
   syncPublishButton();
+  restoreMetaColScroll(metaScroll);
 }

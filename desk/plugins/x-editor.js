@@ -1,6 +1,7 @@
 import { state } from "../core/state.js";
 import { api } from "../core/api.js";
 import { ctx } from "../core/ctx.js";
+import { paintEditMessages } from "../core/body-editor.js";
 
 export function xWeightedLength(text) {
   const s = String(text || "");
@@ -79,7 +80,7 @@ export async function xCopyText() {
   const text = String(state.x.text || "").trim();
   if (!text) {
     state.error = "Texte X vide";
-    ctx.render();
+    paintEditMessages();
     return;
   }
   try {
@@ -90,14 +91,14 @@ export async function xCopyText() {
     state.error = "Copie impossible — sélectionnez le texte manuellement";
     state.status = "";
   }
-  ctx.render();
+  paintEditMessages();
 }
 
 export function xOpenIntent() {
   const text = String(state.x.text || "").trim();
   if (!text) {
     state.error = "Texte X vide";
-    ctx.render();
+    paintEditMessages();
     return;
   }
   const url =
@@ -105,5 +106,5 @@ export function xOpenIntent() {
   window.open(url, "_blank", "noopener,noreferrer");
   state.error = "";
   state.status = "Composer X ouvert";
-  ctx.render();
+  paintEditMessages();
 }

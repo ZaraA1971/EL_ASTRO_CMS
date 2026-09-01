@@ -4,17 +4,20 @@
  * API principale :
  *   button(context)  → dims d’un bouton
  *   family(context)  → teinte d’un groupe d’outils
+ *   face(context)    → graisse / italique d’un libellé d’outil
  *   color(context)   → palette de surface / sémantique
  *   deskUiCss()      → bloc :root CSS (injecté au boot desk)
  *
  * Contextes boutons : 'action' | 'chip' | 'chipAdd' | 'filter' | 'tool' |
  *                     'toolAlign' | 'tab' | 'compact' | 'field' | 'xAction'
  * Contextes familles : 'history' | 'clean' | 'format' | 'align' | 'assist'
+ * Contextes visage   : 'bold' | 'italic'
  * Contextes couleur  : 'surface' | 'accent' | 'danger' | 'ok' | 'warn' | 'bar'
  */
 
 /** @typedef {{ h: number, px: number, radius: number|string, fontRem: number|null, weight: number, shape?: string, bg?: string, bgHover?: string, ref?: string }} ButtonCtx */
 /** @typedef {{ bg: string, border: string }} FamilyCtx */
+/** @typedef {{ weight: number, style: string }} FaceCtx */
 
 /**
  * Dimensions / style bouton par surface.
@@ -78,6 +81,15 @@ export const FAMILY_CONTEXTS = {
     bg: 'rgba(185, 28, 28, 0.09)',
     border: 'rgba(185, 28, 28, 0.2)',
   },
+};
+
+/**
+ * Forme du libellé — Gras / Italique reconnaissables d’un coup d’œil.
+ * @type {Record<string, FaceCtx>}
+ */
+export const FACE_CONTEXTS = {
+  bold: { weight: 700, style: 'normal' },
+  italic: { weight: 500, style: 'italic' },
 };
 
 /**
@@ -155,6 +167,18 @@ export function color(context) {
   return { ...c };
 }
 
+/**
+ * @param {string} context
+ * @returns {FaceCtx}
+ */
+export function face(context) {
+  const f = FACE_CONTEXTS[context];
+  if (!f) {
+    throw new Error(`desk-ui: visage contexte inconnu « ${context} »`);
+  }
+  return { ...f };
+}
+
 function px(n) {
   return `${Number(n)}px`;
 }
@@ -188,6 +212,11 @@ export function deskUiCss() {
   for (const [key, f] of Object.entries(FAMILY_CONTEXTS)) {
     lines.push(`  --family-${key}-bg: ${f.bg};`);
     lines.push(`  --family-${key}-border: ${f.border};`);
+  }
+
+  for (const [key, f] of Object.entries(FACE_CONTEXTS)) {
+    lines.push(`  --face-${key}-weight: ${f.weight};`);
+    lines.push(`  --face-${key}-style: ${f.style};`);
   }
 
   const surface = COLOR_CONTEXTS.surface;

@@ -35,6 +35,7 @@ export default defineConfig({
         '@el/humanize': path.join(root, 'shared/humanize.mjs'),
         '@el/format-date-fr': path.join(root, 'shared/format-date-fr.mjs'),
         '@el/keyword-policy': path.join(root, 'shared/keyword-policy.mjs'),
+        '@el/sitemap-news': path.join(root, 'shared/sitemap-news.mjs'),
       },
     },
     server: {
