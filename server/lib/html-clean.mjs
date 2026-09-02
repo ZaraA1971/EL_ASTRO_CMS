@@ -5,6 +5,7 @@ export {
   ATTR_ALLOWLIST,
   filterStyleDeclarations,
   normalizeInlineStyles,
+  liftInlineTextAlign,
   extractClipboardFragment,
   stripFontJunk,
   promoteInlineStyles,

@@ -1,4 +1,10 @@
-import { cleanHtml as cleanArticleHtml } from "../html-clean.js";
+import {
+  cleanHtml as cleanArticleHtml,
+  ALIGN_CONTEXTS,
+  ALIGN_BLOCK_TAGS,
+  ALIGN_INLINE_TAGS,
+  normalizeTextAlign,
+} from "../html-clean.js";
 import { stripLeadingChapoHtml } from "../excerpt.js";
 import { hrefFrom } from "../paste-link.js";
 import { state } from "./state.js";
@@ -48,9 +54,159 @@ function unwrapElement(el) {
   parent.removeChild(el);
 }
 
+const ALIGN_BLOCK_SELECTOR = [...ALIGN_BLOCK_TAGS].join(",");
+const ALIGN_INLINE_SELECTOR = [...ALIGN_INLINE_TAGS].join(",");
+
+function renameBToStrong(ed) {
+  for (const b of [...ed.querySelectorAll("b")]) {
+    const strong = document.createElement("strong");
+    for (const attr of b.attributes) {
+      strong.setAttribute(attr.name, attr.value);
+    }
+    while (b.firstChild) strong.appendChild(b.firstChild);
+    b.replaceWith(strong);
+  }
+}
+
+function clearEmptyStyle(el) {
+  if (!el.getAttribute("style")?.trim()) el.removeAttribute("style");
+}
+
+function readBlockAlign(el) {
+  return normalizeTextAlign(el.style?.textAlign || el.getAttribute("align") || "");
+}
+
+function setBlockAlignStyle(el, value) {
+  const next = normalizeTextAlign(value);
+  el.removeAttribute("align");
+  if (!next) el.style.removeProperty("text-align");
+  else el.style.textAlign = next;
+  clearEmptyStyle(el);
+}
+
+function liftInlineAlignInDom(ed) {
+  for (const inline of [...ed.querySelectorAll(ALIGN_INLINE_SELECTOR)]) {
+    const ta = normalizeTextAlign(inline.style?.textAlign);
+    if (!ta) continue;
+    const block = closestAlignBlock(inline, ed);
+    if (block && !readBlockAlign(block)) setBlockAlignStyle(block, ta);
+  }
+  stripInlineAlign(ed);
+}
+
+function closestAlignBlock(node, editor) {
+  if (!node || !editor) return null;
+  let el = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+  while (el && el !== editor) {
+    if (
+      el.nodeType === Node.ELEMENT_NODE &&
+      ALIGN_BLOCK_TAGS.has(el.tagName.toLowerCase())
+    ) {
+      return el;
+    }
+    el = el.parentElement;
+  }
+  return null;
+}
+
+function blocksFromSelection(editor) {
+  const sel = window.getSelection();
+  if (!sel || !sel.rangeCount) return [];
+  const range = sel.getRangeAt(0);
+  const root = range.commonAncestorContainer;
+  if (root !== editor && !editor.contains(root)) return [];
+
+  const found = new Set();
+  const addFrom = (node) => {
+    const block = closestAlignBlock(node, editor);
+    if (block) found.add(block);
+  };
+  addFrom(range.startContainer);
+  addFrom(range.endContainer);
+
+  if (!range.collapsed) {
+    try {
+      const walkerRoot =
+        root.nodeType === Node.ELEMENT_NODE ? root : root.parentElement;
+      if (walkerRoot && (walkerRoot === editor || editor.contains(walkerRoot))) {
+        const walker = document.createTreeWalker(
+          walkerRoot,
+          NodeFilter.SHOW_TEXT,
+          {
+            acceptNode(node) {
+              return range.intersectsNode(node)
+                ? NodeFilter.FILTER_ACCEPT
+                : NodeFilter.FILTER_REJECT;
+            },
+          }
+        );
+        let n = walker.nextNode();
+        while (n) {
+          addFrom(n);
+          n = walker.nextNode();
+        }
+      }
+    } catch {
+      /* intersectsNode selon les moteurs */
+    }
+  }
+
+  if (!found.size) {
+    const fallback = editor.querySelector(ALIGN_BLOCK_SELECTOR);
+    if (fallback) found.add(fallback);
+  }
+
+  const list = [...found];
+  return list.filter(
+    (el) => !list.some((other) => other !== el && el.contains(other))
+  );
+}
+
+function effectiveAlign(el) {
+  return readBlockAlign(el) || "left";
+}
+
+/**
+ * Alignement du bloc (pas de execCommand justify*).
+ * context = 'left' | 'center' | 'right' — même bouton = retour à l’alignement normal.
+ */
+export function applyBlockAlign(context) {
+  const key = String(context || "").toLowerCase();
+  const cfg = ALIGN_CONTEXTS[key];
+  if (!cfg) {
+    throw new Error(
+      `applyBlockAlign: contexte inconnu "${key}" (attendu: ${Object.keys(ALIGN_CONTEXTS).join(", ")})`
+    );
+  }
+  const ed = getVisualEditor();
+  if (!ed) return;
+  ed.focus();
+  const blocks = blocksFromSelection(ed);
+  if (!blocks.length) return;
+
+  const want = cfg.css;
+  const allMatch = blocks.every((el) => effectiveAlign(el) === want);
+  for (const block of blocks) {
+    if (allMatch) setBlockAlignStyle(block, "");
+    else setBlockAlignStyle(block, want);
+    stripInlineAlign(block);
+  }
+  tidyVisualInline(ed);
+  renameBToStrong(ed);
+}
+
+function stripInlineAlign(root) {
+  for (const inline of root.querySelectorAll(ALIGN_INLINE_SELECTOR)) {
+    if (!normalizeTextAlign(inline.style?.textAlign)) continue;
+    inline.style.removeProperty("text-align");
+    clearEmptyStyle(inline);
+  }
+}
+
 /** Déplie spans vides / gras dans gras — sans réécrire tout le HTML (curseur conservé). */
 function tidyVisualInline(ed = getVisualEditor()) {
   if (!ed) return;
+  liftInlineAlignInDom(ed);
   for (const span of [...ed.querySelectorAll("span")]) {
     if (span.hasAttributes()) continue;
     unwrapElement(span);
@@ -60,7 +216,7 @@ function tidyVisualInline(ed = getVisualEditor()) {
   }
 }
 
-/** Gras / italique / liste / alignement — puis rangement léger. */
+/** Gras / italique / liste — puis rangement léger. */
 export function runEditorCommand(cmd, value) {
   exec(cmd, value);
   if (cmd !== "undo" && cmd !== "redo") tidyVisualInline();

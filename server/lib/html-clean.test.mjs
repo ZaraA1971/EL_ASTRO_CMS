@@ -5,6 +5,7 @@ import {
   normalizeInlineStyles,
   filterStyleDeclarations,
   stripFontJunk,
+  liftInlineTextAlign,
 } from './html-clean.mjs';
 
 describe('html-clean', () => {
@@ -14,7 +15,7 @@ describe('html-clean', () => {
     const clean = cleanHtml(dirty, 'store');
     assert.equal(
       clean,
-      '<p style="text-align: center"><b>Diversité</b></p>'
+      '<p style="text-align: center"><strong>Diversité</strong></p>'
     );
   });
 
@@ -85,22 +86,25 @@ describe('html-clean', () => {
         '<p><span style="font-weight: bold; color: rgb(0, 0, 0)">x</span></p>',
         'desk'
       ),
-      '<p><b>x</b></p>'
+      '<p><strong>x</strong></p>'
     );
     assert.equal(
       cleanHtml(
         '<p><span style="font-weight:700"><span style="font-style:italic">y</span></span></p>',
         'store'
       ),
-      '<p><b><i>y</i></b></p>'
+      '<p><strong><i>y</i></strong></p>'
     );
   });
 
   it('unwraps nested and adjacent identical phrasing', () => {
-    assert.equal(cleanHtml('<p><b><b>z</b></b></p>', 'desk'), '<p><b>z</b></p>');
+    assert.equal(
+      cleanHtml('<p><b><b>z</b></b></p>', 'desk'),
+      '<p><strong>z</strong></p>'
+    );
     assert.equal(
       cleanHtml('<p><b>a</b><b>b</b></p>', 'store'),
-      '<p><b>ab</b></p>'
+      '<p><strong>ab</strong></p>'
     );
     assert.equal(
       cleanHtml('<p><span>nu</span></p>', 'desk'),
@@ -123,7 +127,7 @@ describe('html-clean', () => {
   it('keeps real bold inside a Docs wrapper', () => {
     const dirty =
       '<b id="docs-internal-guid-abc" style="font-weight:normal"><p>a <span style="font-weight:700">b</span></p></b>';
-    assert.equal(cleanHtml(dirty, 'paste'), '<p>a <b>b</b></p>');
+    assert.equal(cleanHtml(dirty, 'paste'), '<p>a <strong>b</strong></p>');
   });
 
   it('drops class/id/align from pasted tags', () => {
@@ -145,7 +149,71 @@ describe('html-clean', () => {
       '<p><span style="font-weight:bold">a</span><span style="font-weight:700">b</span></p>',
       'desk'
     );
-    assert.equal(once, '<p><b>ab</b></p>');
+    assert.equal(once, '<p><strong>ab</strong></p>');
     assert.equal(cleanHtml(once, 'desk'), once);
+  });
+
+  it('lifts text-align from inline bold to the parent block', () => {
+    assert.equal(
+      cleanHtml('<p><b style="text-align: center">Le message</b></p>', 'desk'),
+      '<p style="text-align: center"><strong>Le message</strong></p>'
+    );
+    assert.equal(
+      cleanHtml(
+        '<p>Hello <strong style="text-align: center">world</strong></p>',
+        'store'
+      ),
+      '<p style="text-align: center">Hello <strong>world</strong></p>'
+    );
+  });
+
+  it('lifts text-align from italic and links', () => {
+    assert.equal(
+      cleanHtml('<p><i style="text-align: right">Titre</i></p>', 'desk'),
+      '<p style="text-align: right"><i>Titre</i></p>'
+    );
+    assert.equal(
+      cleanHtml(
+        '<p><a href="https://el.test" style="text-align: center">lien</a></p>',
+        'desk'
+      ),
+      '<p style="text-align: center"><a href="https://el.test">lien</a></p>'
+    );
+  });
+
+  it('lifts each selected block independently', () => {
+    assert.equal(
+      cleanHtml(
+        '<p><b style="text-align: center">a</b></p><p><em style="text-align: center">b</em></p>',
+        'desk'
+      ),
+      '<p style="text-align: center"><strong>a</strong></p><p style="text-align: center"><em>b</em></p>'
+    );
+  });
+
+  it('keeps alignment on the inner block, not the quote wrapper', () => {
+    assert.equal(
+      cleanHtml(
+        '<blockquote><p><em style="text-align:center">q</em></p></blockquote>',
+        'desk'
+      ),
+      '<blockquote><p style="text-align: center"><em>q</em></p></blockquote>'
+    );
+  });
+
+  it('liftInlineTextAlign is idempotent on already-correct markup', () => {
+    const html = '<p style="text-align: center"><strong>x</strong></p>';
+    assert.equal(liftInlineTextAlign(html), html);
+    assert.equal(cleanHtml(html, 'desk'), html);
+  });
+
+  it('does not duplicate text-align when the block already has it', () => {
+    assert.equal(
+      cleanHtml(
+        '<p style="text-align: center"><b style="text-align: center">x</b></p>',
+        'desk'
+      ),
+      '<p style="text-align: center"><strong>x</strong></p>'
+    );
   });
 });

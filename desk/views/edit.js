@@ -22,6 +22,7 @@ import {
   applyBodyClean,
   bindVisualEditorClipboard,
   runEditorCommand,
+  applyBlockAlign,
   applyLinkFromPrompt,
   setEditBaselineFromArticle,
   isEditContentDirty,
@@ -1359,7 +1360,7 @@ export function renderEdit() {
 
   if (state.mode === "visual") {
     const ed = getVisualEditor();
-    ed.innerHTML = body || "<p><br></p>";
+    ed.innerHTML = cleanBody(body) || "<p><br></p>";
     bindVisualEditorClipboard(ed);
     app.querySelectorAll("[data-cmd]").forEach((btn) => {
       btn.onmousedown = (e) => {
@@ -1375,9 +1376,9 @@ export function renderEdit() {
         else if (cmd === "quote") execFormatBlock("blockquote");
         else if (cmd === "undo") runEditorCommand("undo");
         else if (cmd === "redo") runEditorCommand("redo");
-        else if (cmd === "alignLeft") runEditorCommand("justifyLeft");
-        else if (cmd === "alignCenter") runEditorCommand("justifyCenter");
-        else if (cmd === "alignRight") runEditorCommand("justifyRight");
+        else if (cmd === "alignLeft") applyBlockAlign("left");
+        else if (cmd === "alignCenter") applyBlockAlign("center");
+        else if (cmd === "alignRight") applyBlockAlign("right");
         else if (cmd === "link") {
           applyLinkFromPrompt();
         } else if (cmd === "image") {

@@ -11,6 +11,76 @@
 /** Propriétés CSS conservées dans style="" (le reste = collages). */
 export const STYLE_ALLOWLIST = new Set(['text-align']);
 
+/**
+ * Alignement — une table, des contextes. Call-sites : align(ctx) / lift.
+ * text-align va sur le bloc, jamais seulement sur une balise en ligne.
+ */
+export const ALIGN_CONTEXTS = {
+  left: { css: 'left' },
+  center: { css: 'center' },
+  right: { css: 'right' },
+};
+
+export const ALIGN_BLOCK_TAGS = new Set([
+  'p',
+  'div',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'li',
+  'blockquote',
+  'td',
+  'th',
+  'pre',
+  'figcaption',
+  'article',
+  'section',
+  'header',
+  'footer',
+  'figure',
+  'dt',
+  'dd',
+]);
+
+export const ALIGN_INLINE_TAGS = new Set([
+  'b',
+  'strong',
+  'i',
+  'em',
+  'span',
+  'a',
+  'u',
+  's',
+  'mark',
+  'small',
+  'sub',
+  'sup',
+  'code',
+]);
+
+const ALIGN_BLOCK_RE = [...ALIGN_BLOCK_TAGS].join('|');
+const ALIGN_INLINE_RE = [...ALIGN_INLINE_TAGS].join('|');
+
+/**
+ * @param {string} value
+ * @returns {''|'left'|'center'|'right'|'justify'}
+ */
+export function normalizeTextAlign(value) {
+  const v = String(value || '')
+    .toLowerCase()
+    .replace(/['"]/g, '')
+    .trim();
+  if (v === 'start') return 'left';
+  if (v === 'end') return 'right';
+  if (v === 'left' || v === 'center' || v === 'right' || v === 'justify') {
+    return v;
+  }
+  return '';
+}
+
 /** Attributs conservés sur les balises (le reste = scories Word / Docs / web). */
 export const ATTR_ALLOWLIST = new Set([
   'href',
@@ -137,7 +207,7 @@ export function stripFontJunk(html) {
 
 /**
  * contenteditable (Chrome) pose souvent font-weight/font-style en span.
- * On les remonte en <b>/<i> avant de jeter les styles — sinon le formatage disparaît.
+ * On les remonte en <strong>/<i> avant de jeter les styles — sinon le formatage disparaît.
  * @param {string} html
  */
 export function promoteInlineStyles(html) {
@@ -175,7 +245,8 @@ export function normalizeInlineMarkup(html) {
       /<(em|i)>\s*<(i|em)>([\s\S]*?)<\/\2>\s*<\/\1>/gi,
       '<em>$3</em>'
     );
-    h = h.replace(/<\/b>\s*<b>/gi, '');
+    h = h.replace(/<b(\s[^>]*)?>/gi, '<strong$1>');
+    h = h.replace(/<\/b>/gi, '</strong>');
     h = h.replace(/<\/strong>\s*<strong>/gi, '');
     h = h.replace(/<\/i>\s*<i>/gi, '');
     h = h.replace(/<\/em>\s*<em>/gi, '');
@@ -197,7 +268,9 @@ function promoteSpan(attrs, inner) {
   let out = inner;
   const trimmed = String(out || '').trim();
   if (italic && !/^<(?:i|em)\b/i.test(trimmed)) out = `<i>${out}</i>`;
-  if (bold && !/^<(?:b|strong)\b/i.test(trimmed)) out = `<b>${out}</b>`;
+  if (bold && !/^<(?:b|strong)\b/i.test(trimmed)) {
+    out = `<strong>${out}</strong>`;
+  }
   const rest = filterStyleDeclarations(style);
   const other = rawAttrs
     .replace(/\sstyle\s*=\s*(["'])[\s\S]*?\1/i, '')
@@ -325,6 +398,154 @@ function unwrapNestedSame(html, tag) {
   return String(html || '').replace(re, `<${tag}>$1</${tag}>`);
 }
 
+function textAlignFromStyle(style) {
+  for (const part of String(style || '').split(';')) {
+    const colon = part.indexOf(':');
+    if (colon < 0) continue;
+    const prop = part.slice(0, colon).trim().toLowerCase();
+    if (prop !== 'text-align') continue;
+    return normalizeTextAlign(part.slice(colon + 1));
+  }
+  return '';
+}
+
+function removeTextAlignFromStyle(style) {
+  const kept = [];
+  for (const part of String(style || '').split(';')) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    const colon = trimmed.indexOf(':');
+    if (colon < 0) continue;
+    const prop = trimmed.slice(0, colon).trim().toLowerCase();
+    if (prop === 'text-align') continue;
+    kept.push(trimmed);
+  }
+  return kept.join('; ');
+}
+
+function replaceStyleInAttrs(attrs, styleValue) {
+  let a = String(attrs || '');
+  if (!styleValue) {
+    return a
+      .replace(/\sstyle\s*=\s*(["'])[\s\S]*?\1/i, '')
+      .replace(/\sstyle\s*=\s*[^\s>]+/i, '');
+  }
+  if (/\sstyle\s*=\s*(["'])[\s\S]*?\1/i.test(a)) {
+    return a.replace(/\sstyle\s*=\s*(["'])[\s\S]*?\1/i, ` style="${styleValue}"`);
+  }
+  if (/\sstyle\s*=\s*[^\s>]+/i.test(a)) {
+    return a.replace(/\sstyle\s*=\s*[^\s>]+/i, ` style="${styleValue}"`);
+  }
+  return `${a} style="${styleValue}"`;
+}
+
+function findTopBlockRanges(html) {
+  const ranges = [];
+  let i = 0;
+  const openRe = new RegExp(`<(${ALIGN_BLOCK_RE})\\b[^>]*>`, 'gi');
+  while (i < html.length) {
+    openRe.lastIndex = i;
+    const m = openRe.exec(html);
+    if (!m) break;
+    const tag = m[1];
+    const innerStart = m.index + m[0].length;
+    const closeAt = findMatchingClose(html, tag, innerStart);
+    if (closeAt < 0) break;
+    const end = closeAt + `</${tag}>`.length;
+    ranges.push({ start: m.index, end });
+    i = end;
+  }
+  return ranges;
+}
+
+function stripDirectInlines(html) {
+  let align = '';
+  const replacements = [];
+  const openRe = new RegExp(`<(${ALIGN_INLINE_RE})\\b([^>]*)>`, 'gi');
+  const nested = findTopBlockRanges(html);
+  let m;
+  while ((m = openRe.exec(html))) {
+    if (nested.some((r) => m.index >= r.start && m.index < r.end)) continue;
+    const style = styleFromAttrs(m[2] || '');
+    const ta = textAlignFromStyle(style);
+    if (!ta) continue;
+    if (!align) align = ta;
+    const rest = removeTextAlignFromStyle(style);
+    replacements.push({
+      start: m.index,
+      end: m.index + m[0].length,
+      next: `<${m[1]}${replaceStyleInAttrs(m[2] || '', rest)}>`,
+    });
+  }
+  let out = html;
+  for (let k = replacements.length - 1; k >= 0; k -= 1) {
+    const r = replacements[k];
+    out = out.slice(0, r.start) + r.next + out.slice(r.end);
+  }
+  return { html: out, align };
+}
+
+function liftAlignRegion(html, wrapOrphans) {
+  const src = String(html || '');
+  if (!src) return src;
+  const openRe = new RegExp(`<(${ALIGN_BLOCK_RE})\\b([^>]*)>`, 'gi');
+  const first = new RegExp(`<(${ALIGN_BLOCK_RE})\\b([^>]*)>`, 'i').exec(src);
+  if (!first) {
+    if (!wrapOrphans) return src;
+    const stripped = stripDirectInlines(src);
+    if (!stripped.align) return src;
+    return `<p style="text-align: ${stripped.align}">${stripped.html}</p>`;
+  }
+
+  let out = '';
+  let i = 0;
+  while (i < src.length) {
+    openRe.lastIndex = i;
+    const m = openRe.exec(src);
+    if (!m) {
+      const tail = src.slice(i);
+      if (wrapOrphans) {
+        const stripped = stripDirectInlines(tail);
+        out +=
+          stripped.align && !new RegExp(`<(${ALIGN_BLOCK_RE})\\b`, 'i').test(tail)
+            ? `<p style="text-align: ${stripped.align}">${stripped.html}</p>`
+            : tail;
+      } else {
+        out += tail;
+      }
+      break;
+    }
+    out += src.slice(i, m.index);
+    const tag = m[1];
+    const attrs = m[2] || '';
+    const innerStart = m.index + m[0].length;
+    const closeAt = findMatchingClose(src, tag, innerStart);
+    if (closeAt < 0) {
+      out += src.slice(m.index);
+      break;
+    }
+    const inner = src.slice(innerStart, closeAt);
+    const liftedInner = liftAlignRegion(inner, false);
+    const stripped = stripDirectInlines(liftedInner);
+    const blockAlign = textAlignFromStyle(styleFromAttrs(attrs));
+    const nextAttrs =
+      stripped.align && !blockAlign
+        ? replaceStyleInAttrs(attrs, `text-align: ${stripped.align}`)
+        : attrs;
+    out += `<${tag}${nextAttrs}>${stripped.html}</${tag}>`;
+    i = closeAt + `</${tag}>`.length;
+  }
+  return out;
+}
+
+/**
+ * Remonte text-align des balises en ligne vers le bloc parent.
+ * @param {string} html
+ */
+export function liftInlineTextAlign(html) {
+  return liftAlignRegion(String(html || ''), true);
+}
+
 /**
  * @param {string} html
  * @param {'store'|'desk'|'paste'|'ios'|string} [context='store']
@@ -367,6 +588,9 @@ export function cleanHtml(html, context = 'store') {
   }
   if (rules.normalizeInline) {
     h = normalizeInlineMarkup(h);
+  }
+  if (rules.normalizeStyles || rules.normalizeInline) {
+    h = liftInlineTextAlign(h);
   }
   if (rules.stripEmptyP) {
     h = h.replace(/<p(?:\s[^>]*)?>\s*<\/p>/gi, '');
