@@ -110,3 +110,34 @@ test('newsletter essai à sec', () => {
   assert.equal(p.facts.status, 'dry-run');
   assert.match(p.title, /essai/);
 });
+
+test('envoie le code secret si présent', async () => {
+  const prev = process.env.INCIDENT_HUB_TOKEN;
+  process.env.INCIDENT_HUB_TOKEN = 'probe-token';
+  const seen = { token: '' };
+  const orig = globalThis.fetch;
+  globalThis.fetch = async (_url, opts) => {
+    const h = opts?.headers || {};
+    seen.token =
+      typeof h.get === 'function'
+        ? h.get('X-Incident-Token') || ''
+        : h['X-Incident-Token'] || '';
+    return { ok: true, status: 200 };
+  };
+  const mod = await import(`./vigie-ingress.mjs?probe=${Date.now()}`);
+  try {
+    const out = await mod.pushVigieEvent({
+      source: 'pupitre',
+      kind: 'watch',
+      title: 'probe',
+      body: 'x',
+      drain: false,
+    });
+    assert.equal(out.ok, true);
+    assert.equal(seen.token, 'probe-token');
+  } finally {
+    globalThis.fetch = orig;
+    if (prev === undefined) delete process.env.INCIDENT_HUB_TOKEN;
+    else process.env.INCIDENT_HUB_TOKEN = prev;
+  }
+});

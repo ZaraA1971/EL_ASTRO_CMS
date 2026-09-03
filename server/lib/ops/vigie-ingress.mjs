@@ -4,6 +4,14 @@
  */
 const INGRESS = process.env.VIGIE_INGRESS_URL || 'http://127.0.0.1:8790/ingress';
 
+function ingressToken() {
+  return (
+    process.env.INCIDENT_HUB_TOKEN ||
+    process.env.VIGIE_INGRESS_TOKEN ||
+    ''
+  ).trim();
+}
+
 const ACCOUNT_ACTIONS = new Set([
   'user.create',
   'user.update',
@@ -143,9 +151,12 @@ export function newsletterPayload(evt, insertId) {
 
 export async function pushVigieEvent(payload) {
   try {
+    const headers = { 'Content-Type': 'application/json' };
+    const token = ingressToken();
+    if (token) headers['X-Incident-Token'] = token;
     const res = await fetch(INGRESS, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(4000),
     });
