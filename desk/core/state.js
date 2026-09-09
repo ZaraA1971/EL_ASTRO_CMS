@@ -52,8 +52,6 @@ export const state = {
   userPasswordDraft: "",
   /** Erreurs de champ { login?, email?, password? } */
   userFieldErrors: {},
-  /** true = panneau de confirmation suppression compte affiché */
-  userDeleteConfirm: false,
   nlDate: new Date().toISOString().slice(0, 10),
   // Défaut sûr : admin seulement (évite l’envoi « tout le monde » par oubli de décocher)
   nlGroups: { admin: true, redacteurs: false, abonnes: false },

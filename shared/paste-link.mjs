@@ -5,7 +5,7 @@
  *   context = 'clipboard' | 'prompt'
  *
  * clipboard : URL nette (texte ou un seul <a href>) — pour coller sur une sélection.
- * prompt    : saisie bouton Lien — même sanitization, accepte un hôte nu (https://).
+ * prompt    : saisie « Modifier » sur un lien existant — même sanitization, hôte nu OK.
  */
 
 import { extractClipboardFragment } from './html-clean.mjs';

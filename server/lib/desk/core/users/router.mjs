@@ -25,6 +25,8 @@
  */
 import { parseJsonBody } from '../http.mjs';
 import { nowMysql, toMysqlDate } from '../article-helpers.mjs';
+import { validateLoginId } from '../../../login-id.mjs';
+import { usersExportCsv } from '../../../users-export.mjs';
 
 function requirePolicy(policy) {
   const need = [
@@ -54,6 +56,53 @@ function defaultSanitizeStatus(status, STATUSES) {
     return STATUSES.ACTIVE;
   }
   return s;
+}
+
+
+function buildUsersWhere(url, session, policy, sanitizeStatus) {
+  const q = String(url.searchParams.get('q') || '').trim();
+  const role = String(url.searchParams.get('role') || '').trim();
+  const status = String(url.searchParams.get('status') || '').trim();
+  const where = [];
+  const params = [];
+  if (q) {
+    where.push('(login LIKE ? OR email LIKE ? OR display_name LIKE ?)');
+    const like = `%${q}%`;
+    params.push(like, like, like);
+  }
+  const groupFilters = policy.roleGroupFilters || {
+    redacteurs: ['editor', 'author'],
+    redaction: ['editor', 'author'],
+  };
+  if (role && groupFilters[role]) {
+    const roles = groupFilters[role];
+    where.push(`role IN (${roles.map(() => '?').join(', ')})`);
+    params.push(...roles);
+  } else if (role) {
+    where.push('role = ?');
+    params.push(policy.normalizeRole(role));
+  }
+  if (status === 'inactive') {
+    where.push("status IN ('disabled','expired')");
+  } else if (status) {
+    where.push('status = ?');
+    params.push(sanitizeStatus(status));
+  }
+  if (!policy.isAdmin(session.role)) {
+    const hide = policy.hideFromNonAdminRoles || [
+      'admin',
+      'administrator',
+    ];
+    where.push(`role NOT IN (${hide.map(() => '?').join(', ')})`);
+    params.push(...hide);
+  }
+  return {
+    q,
+    role,
+    status,
+    whereSql: where.length ? `WHERE ${where.join(' AND ')}` : '',
+    params,
+  };
 }
 
 function defaultSanitizeRole(role, actorRole, policy) {
@@ -114,52 +163,58 @@ export async function handleCoreUsers(req, res, parts, ctx) {
     return true;
   }
 
+  // GET /api/desk/users/export
+  if (parts[3] === 'export' && !parts[4] && req.method === 'GET') {
+    const url = new URL(req.url || '/', `http://${req.headers.host}`);
+    const filters = buildUsersWhere(url, session, policy, sanitizeStatus);
+    const rows = usersStore.listAll
+      ? await usersStore.listAll(pool, filters.whereSql, filters.params)
+      : await usersStore.list(pool, filters.whereSql, filters.params, {
+          limit: 20000,
+          offset: 0,
+        });
+    const users = rows.map(policy.rowToDeskUser).filter(Boolean);
+    const csv = usersExportCsv(users, 'csv');
+    const day = new Date().toISOString().slice(0, 10);
+    const filename = `comptes-${day}.csv`;
+    res.writeHead(200, {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Cache-Control': 'private, no-store, no-cache, must-revalidate',
+    });
+    res.end(csv);
+    if (typeof auditLog === 'function') {
+      await auditLog(pool, {
+        actor: actor || { uid: session.uid, login: session.login },
+        action: 'user.export',
+        targetType: 'user',
+        targetId: null,
+        meta: {
+          count: users.length,
+          q: filters.q || '',
+          role: filters.role || '',
+          status: filters.status || '',
+        },
+        ip,
+      });
+    }
+    return true;
+  }
+
   // GET /api/desk/users
   if (!parts[3] && req.method === 'GET') {
     const url = new URL(req.url || '/', `http://${req.headers.host}`);
-    const q = String(url.searchParams.get('q') || '').trim();
-    const role = String(url.searchParams.get('role') || '').trim();
-    const status = String(url.searchParams.get('status') || '').trim();
     const page = Math.max(1, Number(url.searchParams.get('page') || 1));
     const limit = Math.min(
       100,
       Math.max(1, Number(url.searchParams.get('limit') || 30))
     );
-
-    const where = [];
-    const params = [];
-    if (q) {
-      where.push('(login LIKE ? OR email LIKE ? OR display_name LIKE ?)');
-      const like = `%${q}%`;
-      params.push(like, like, like);
-    }
-    const groupFilters = policy.roleGroupFilters || {
-      redacteurs: ['editor', 'author'],
-      redaction: ['editor', 'author'],
-    };
-    if (role && groupFilters[role]) {
-      const roles = groupFilters[role];
-      where.push(`role IN (${roles.map(() => '?').join(', ')})`);
-      params.push(...roles);
-    } else if (role) {
-      where.push('role = ?');
-      params.push(policy.normalizeRole(role));
-    }
-    if (status === 'inactive') {
-      where.push("status IN ('disabled','expired')");
-    } else if (status) {
-      where.push('status = ?');
-      params.push(sanitizeStatus(status));
-    }
-    if (!policy.isAdmin(session.role)) {
-      const hide = policy.hideFromNonAdminRoles || [
-        'admin',
-        'administrator',
-      ];
-      where.push(`role NOT IN (${hide.map(() => '?').join(', ')})`);
-      params.push(...hide);
-    }
-    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const { whereSql, params } = buildUsersWhere(
+      url,
+      session,
+      policy,
+      sanitizeStatus
+    );
 
     const total = await usersStore.count(pool, whereSql, params);
     const pages = Math.max(1, Math.ceil(total / limit) || 1);
@@ -193,15 +248,14 @@ export async function handleCoreUsers(req, res, parts, ctx) {
     }
     const payload = parsed.value;
 
-    const login = String(payload.login || '').trim().toLowerCase();
-    const email = String(payload.email || '').trim().toLowerCase();
-    const displayName = String(payload.display_name || login).trim() || login;
-    if (!/^[a-z0-9._-]{3,60}$/.test(login)) {
-      sendJson(res, 400, {
-        error: 'Identifiant : 3–60 chars (a-z, 0-9, . _ -)',
-      });
+    const loginCheck = validateLoginId(payload.login, 'store');
+    if (!loginCheck.ok) {
+      sendJson(res, 400, { error: loginCheck.error });
       return true;
     }
+    const login = loginCheck.login;
+    const email = String(payload.email || '').trim().toLowerCase();
+    const displayName = String(payload.display_name || login).trim() || login;
     if (!email || !email.includes('@')) {
       sendJson(res, 400, { error: 'Email invalide' });
       return true;
@@ -215,9 +269,12 @@ export async function handleCoreUsers(req, res, parts, ctx) {
       return true;
     }
     const status = sanitizeStatus(payload.status);
+    // MDP transitoire toujours généré côté serveur (jamais le clair du client).
+    // L’abonné le change via le lien e-mail (afterUserCreate).
+    const tempPassword = policy.generateTempPassword();
     let passwordHash;
     try {
-      passwordHash = policy.hashPassword(payload.password);
+      passwordHash = policy.hashPassword(tempPassword);
     } catch (err) {
       sendJson(res, 400, { error: err.message });
       return true;
@@ -439,14 +496,12 @@ export async function handleCoreUsers(req, res, parts, ctx) {
 
     let login = existing.login;
     if (payload.login != null) {
-      const nextLogin = String(payload.login || '').trim().toLowerCase();
-      if (!/^[a-z0-9._-]{3,60}$/.test(nextLogin)) {
-        sendJson(res, 400, {
-          error: 'Identifiant : 3–60 chars (a-z, 0-9, . _ -)',
-        });
+      const loginCheck = validateLoginId(payload.login, 'store');
+      if (!loginCheck.ok) {
+        sendJson(res, 400, { error: loginCheck.error });
         return true;
       }
-      login = nextLogin;
+      login = loginCheck.login;
     }
 
     const email =

@@ -475,9 +475,16 @@ async function handleWebhook(req, res, ctx) {
           targetType: 'user',
           targetId: result.user?.id || null,
           meta: {
+            login: result.user?.login || email,
+            email,
+            role: result.user?.role || 'subscriber',
+            status: result.user?.status || 'active',
+            source: 'stripe',
             subscriptionId,
             customerId,
+            emailSent: Boolean(result.welcomeSent),
             welcomeSent: result.welcomeSent,
+            adminEmailSent: Boolean(result.adminEmailSent),
           },
         }).catch(() => {});
         break;

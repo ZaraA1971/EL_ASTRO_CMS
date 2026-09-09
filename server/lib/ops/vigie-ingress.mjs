@@ -20,6 +20,9 @@ const ACCOUNT_ACTIONS = new Set([
   'user.password_reset',
   'user.password_forgot_reset',
   'user.password_change',
+  'billing.provision_create',
+  'billing.provision_update',
+  'user.export',
 ]);
 
 const LABELS = {
@@ -30,7 +33,16 @@ const LABELS = {
   'user.password_reset': 'mot de passe régénéré',
   'user.password_forgot_reset': 'mot de passe réinitialisé',
   'user.password_change': 'mot de passe changé',
+  'billing.provision_create': 'création de compte',
+  'billing.provision_update': 'modification de compte',
+  'user.export': 'export de comptes',
 };
+
+function mailFlag(v) {
+  if (v === true || v === 1 || v === '1' || v === 'true') return 'envoyé';
+  if (v === false || v === 0 || v === '0' || v === 'false') return 'non envoyé';
+  return null;
+}
 
 const SECRET = /password|hash|token|secret|api_key/i;
 
@@ -48,13 +60,40 @@ function cleanMeta(meta) {
 export function accountPayload(evt, insertId) {
   const action = String(evt?.action || '');
   const meta = cleanMeta(evt?.meta);
-  const login = meta.login || evt?.targetId || '?';
+  if (action === 'user.export') {
+    const actor = evt?.actor?.login || 'système';
+    const count = Number(meta.count || 0);
+    const who = count === 1 ? '1 compte' : `${count} comptes`;
+    return {
+      source: 'pupitre',
+      kind: 'watch',
+      title: `export de comptes — ${who}`.slice(0, 240),
+      body: `Export de ${who}. Par : ${actor}.`.slice(0, 6000),
+      facts: {
+        actor,
+        id: insertId != null ? String(insertId) : '',
+        theme: 'compte',
+        label: 'export',
+        status: 'export',
+        action,
+        count,
+        audit_id: insertId != null ? String(insertId) : '',
+      },
+      fingerprint: `pupitre:user.export:${insertId || Date.now()}`.slice(0, 200),
+      drain: true,
+    };
+  }
+  const login = meta.login || meta.email || evt?.targetId || '?';
   const actor = evt?.actor?.login || 'système';
   const label = LABELS[action] || action;
   const kind = action === 'user.delete' ? 'alert' : 'watch';
   const role = meta.role || meta.newRole || '';
   const origin =
-    meta.source === 'stripe' ? 'abonnement' : meta.source || 'pupitre';
+    action.startsWith('billing.') || meta.source === 'stripe'
+      ? 'abonnement'
+      : meta.source || 'pupitre';
+  const holderMail = mailFlag(meta.emailSent ?? meta.welcomeSent);
+  const adminMail = mailFlag(meta.adminEmailSent);
   const lines = [
     `${label} : ${login}.`,
     `Par : ${actor}.`,
@@ -63,17 +102,24 @@ export function accountPayload(evt, insertId) {
   if (meta.status) lines.push(`Statut : ${meta.status}.`);
   if (origin) lines.push(`Origine : ${origin}.`);
   if (meta.email) lines.push(`Email : ${meta.email}.`);
+  if (holderMail) lines.push(`Mail titulaire : ${holderMail}.`);
+  if (adminMail) lines.push(`Mail admins : ${adminMail}.`);
   const facts = {
     actor,
+    id: String(login),
+    theme: 'compte',
+    label: role || label,
+    status: meta.status || holderMail || '',
     login: String(login),
     action,
     role,
-    status: meta.status || '',
     source: origin,
     target_id: evt?.targetId != null ? String(evt.targetId) : '',
     audit_id: insertId != null ? String(insertId) : '',
   };
   if (meta.email) facts.email = meta.email;
+  if (holderMail) facts.email_sent = holderMail;
+  if (adminMail) facts.admin_email_sent = adminMail;
   return {
     source: 'pupitre',
     kind,
@@ -158,7 +204,7 @@ export async function pushVigieEvent(payload) {
       method: 'POST',
       headers,
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(4000),
+      signal: AbortSignal.timeout(12_000),
     });
     if (!res.ok) {
       console.error('[vigie-ingress]', res.status);

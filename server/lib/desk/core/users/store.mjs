@@ -15,14 +15,17 @@ const DEFAULT_SELECT = `id, login, email, display_name, role, status, access_unt
  * @param {string} [opts.tableName='users']
  * @param {number} [opts.idFloor=900000] — plancher MAX(id)+1
  * @param {string} [opts.selectColumns]
+ * @param {string} [opts.exportColumns] — SELECT export (pas de hash / jetons)
  */
 export function createUsersStore({
   tableName = 'users',
   idFloor = 900000,
   selectColumns = DEFAULT_SELECT,
+  exportColumns = null,
 } = {}) {
   const table = assertSafeSqlIdent(tableName, 'table users');
   const select = String(selectColumns || DEFAULT_SELECT);
+  const exportSelect = String(exportColumns || select);
 
   async function nextId(pool) {
     const [[row]] = await pool.query(
@@ -47,6 +50,18 @@ export function createUsersStore({
        ORDER BY COALESCE(updated_at, registered) DESC, id DESC
        LIMIT ? OFFSET ?`,
       [...params, limit, offset]
+    );
+    return rows;
+  }
+
+  async function listAll(pool, whereSql, params, { max = 20000 } = {}) {
+    const cap = Math.min(50000, Math.max(1, Number(max) || 20000));
+    const [rows] = await pool.query(
+      `SELECT ${exportSelect}
+       FROM \`${table}\` ${whereSql}
+       ORDER BY COALESCE(updated_at, registered) DESC, id DESC
+       LIMIT ?`,
+      [...params, cap]
     );
     return rows;
   }
@@ -156,6 +171,7 @@ export function createUsersStore({
     nextId,
     count,
     list,
+    listAll,
     findById,
     findDupLoginOrEmail,
     insert,

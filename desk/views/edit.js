@@ -13,6 +13,8 @@ import {
 import { rubricList, catLabel, loadRubrics } from "../core/rubrics.js";
 import { createAutocomplete } from "../core/autocomplete.js";
 import { ctx } from "../core/ctx.js";
+import { articleTitlePublishError } from "../article-title.js";
+import { deskConfirm, deskPrompt } from "../desk-dialog.js";
 import {
   cleanBody,
   execFormatBlock,
@@ -23,7 +25,6 @@ import {
   bindVisualEditorClipboard,
   runEditorCommand,
   applyBlockAlign,
-  applyLinkFromPrompt,
   setEditBaselineFromArticle,
   isEditContentDirty,
   confirmLeaveEdit,
@@ -270,7 +271,10 @@ function fillArticlePreviewFrame() {
 }
 
 async function createRubric() {
-  const name = window.prompt("Nom de la nouvelle rubrique :");
+  const name = await deskPrompt("Nom de la nouvelle rubrique :", {
+    title: "Nouvelle rubrique",
+    placeholder: "Ex. Politique",
+  });
   if (name == null) return;
   const label = String(name).trim();
   if (!label) return;
@@ -374,7 +378,9 @@ async function runEditorialAssist(type) {
       plain.length > 4500 ? `${plain.slice(0, 4500).trim()}…` : plain;
     text = title ? `Titre : ${title}\n\n${bodyForChapo}` : bodyForChapo;
     if (extractLeadingChapo(body)) {
-      const ok = confirm("Remplacer le chapô en tête d’article ?");
+      const ok = await deskConfirm("Remplacer le chapô en tête d’article ?", {
+        title: "Remplacer le chapô",
+      });
       if (!ok) return;
     }
   } else {
@@ -489,7 +495,7 @@ export async function openArticle(articleId) {
     state.article?.data?.article_id != null &&
     Number(state.article.data.article_id) !== Number(articleId)
   ) {
-    if (!confirmLeaveEdit()) return;
+    if (!(await confirmLeaveEdit())) return;
   }
   state.status = "";
   state.error = "";
@@ -562,6 +568,18 @@ function flushFormToState() {
   }
 }
 
+/** Bloque la publication si le titre est vide ou encore le placeholder par défaut. */
+function blockPublishWithoutTitle(title) {
+  const msg = articleTitlePublishError(title);
+  if (!msg) return false;
+  state.error = msg;
+  paintEditMessages();
+  const titleEl = document.getElementById("f-title");
+  titleEl?.focus();
+  titleEl?.scrollIntoView({ behavior: "smooth", block: "center" });
+  return true;
+}
+
 /**
  * @param {{ publish?: boolean, skipPublishConfirm?: boolean }} [opts]
  *   skipPublishConfirm : confirm déjà géré (ex. undraft dirty).
@@ -578,12 +596,14 @@ async function saveArticle({
       paintEditMessages();
       return;
     }
+    if (blockPublishWithoutTitle(payload.title)) return;
     payload.draft = false;
     // Filet : publier sans rubrique → rappel (on peut forcer).
     const cats = (payload.categories || []).map(String).filter(Boolean);
     if (!cats.length) {
-      const ok = confirm(
-        "Aucune rubrique n’est cochée.\n\nPublier quand même ?"
+      const ok = await deskConfirm(
+        "Aucune rubrique n’est cochée.\n\nPublier quand même ?",
+        { title: "Rubrique manquante" }
       );
       if (!ok) {
         document.getElementById("chips")?.scrollIntoView({
@@ -599,7 +619,10 @@ async function saveArticle({
     const msg = isUpdate
       ? "Mettre à jour maintenant ?"
       : "Publier maintenant ?";
-    if (!confirm(msg)) return;
+    const ok = await deskConfirm(msg, {
+      title: isUpdate ? "Mettre à jour" : "Publier",
+    });
+    if (!ok) return;
   }
   const hadKw = (payload.ia_keywords || []).length > 0;
   const wasDraft = Boolean(state.article.data.draft);
@@ -671,8 +694,9 @@ async function generateKeywords({ force = false } = {}) {
   const input = document.getElementById("f-ia");
   const current = String(input?.value || "").trim();
   if (current && !force) {
-    const ok = confirm(
-      "Remplacer les mots-clés actuels par une nouvelle extraction IA ?"
+    const ok = await deskConfirm(
+      "Remplacer les mots-clés actuels par une nouvelle extraction IA ?",
+      { title: "Remplacer les mots-clés" }
     );
     if (!ok) return;
   }
@@ -774,8 +798,9 @@ async function toggleDraft() {
   // Remise en ligne : persister le brouillon local puis /publish (pas le body BDD stale).
   if (!nextDraft) {
     if (isEditContentDirty()) {
-      const ok = confirm(
-        "Des modifications non enregistrées seront mises en ligne. Continuer ?"
+      const ok = await deskConfirm(
+        "Des modifications non enregistrées seront mises en ligne. Continuer ?",
+        { title: "Modifications non enregistrées" }
       );
       if (!ok) return;
     }
@@ -788,8 +813,9 @@ async function toggleDraft() {
 
   // Passage en brouillon : enregistrer d’abord si dirty, puis draft API.
   if (isEditContentDirty()) {
-    const ok = confirm(
-      "Enregistrer les modifications et passer en brouillon ?"
+    const ok = await deskConfirm(
+      "Enregistrer les modifications et passer en brouillon ?",
+      { title: "Passer en brouillon" }
     );
     if (!ok) return;
   }
@@ -837,7 +863,10 @@ async function pushNow() {
     return;
   }
   const targets = pushTargetsPhrase();
-  const ok = confirm(`Envoyer une notification maintenant à ${targets} ?`);
+  const ok = await deskConfirm(
+    `Envoyer une notification maintenant à ${targets} ?`,
+    { title: "Envoyer la notification" }
+  );
   if (!ok) return;
   state.saving = true;
   state.error = "";
@@ -902,8 +931,9 @@ async function translateUk({ overwrite = true } = {}) {
   const hasPair = Boolean(isEn ? d.translation_fr : d.translation_en);
 
   if (overwrite && hasPair) {
-    const ok = confirm(
-      "Retraduire et écraser la version UK existante ?\nElle repassera en brouillon pour relecture."
+    const ok = await deskConfirm(
+      "Retraduire et écraser la version UK existante ?\nElle repassera en brouillon pour relecture.",
+      { title: "Retraduire en UK", danger: true, confirmLabel: "Retraduire" }
     );
     if (!ok) return;
   }
@@ -1023,14 +1053,13 @@ export function renderEdit() {
                         ? `<div class="toolbar-group toolbar-group--history" role="group" aria-label="Historique et nettoyage">
                     <button type="button" class="btn" data-cmd="undo" title="Annuler (Ctrl+Z)">Annuler</button>
                     <button type="button" class="btn" data-cmd="redo" title="Rétablir (Ctrl+Shift+Z)">Rétablir</button>
-                    <button type="button" class="btn" data-cmd="clean" title="Retire couleurs/polices collées (Word, Docs) — conserve le centrage">Nettoyer</button>
+                    <button type="button" class="btn" data-cmd="clean" title="Retire toutes les balises — texte brut en paragraphes simples">Nettoyer</button>
                   </div>
                   <div class="toolbar-group toolbar-group--format" role="group" aria-label="Mise en forme">
                     <button type="button" class="btn btn-face-bold" data-cmd="bold">Gras</button>
                     <button type="button" class="btn btn-face-italic" data-cmd="italic">Italique</button>
                     <button type="button" class="btn" data-cmd="ul">Liste</button>
                     <button type="button" class="btn" data-cmd="quote" title="Citation">Citation</button>
-                    <button type="button" class="btn" data-cmd="link" title="Ou coller une URL sur le texte sélectionné">Lien</button>
                     <button type="button" class="btn" data-cmd="image">Document</button>
                   </div>
                   <div class="toolbar-group toolbar-group--align" role="group" aria-label="Alignement">
@@ -1039,7 +1068,7 @@ export function renderEdit() {
                     <button type="button" class="btn btn-align" data-cmd="alignRight" title="Aligner à droite" aria-label="Aligner à droite">Droite</button>
                   </div>`
                         : `<div class="toolbar-group toolbar-group--clean" role="group" aria-label="Nettoyage">
-                    <button type="button" class="btn" data-cmd="clean" title="Retire couleurs/polices collées (Word, Docs) — conserve le centrage">Nettoyer</button>
+                    <button type="button" class="btn" data-cmd="clean" title="Retire toutes les balises — texte brut en paragraphes simples">Nettoyer</button>
                   </div>`
                     }
                   <div class="toolbar-group toolbar-group--assist" role="group" aria-label="Assistance IA">
@@ -1236,7 +1265,7 @@ export function renderEdit() {
     </div>`;
 
   document.getElementById("btn-back").onclick = async () => {
-    if (!confirmLeaveEdit()) return;
+    if (!(await confirmLeaveEdit())) return;
     state.view = "list";
     await loadList();
   };
@@ -1379,9 +1408,7 @@ export function renderEdit() {
         else if (cmd === "alignLeft") applyBlockAlign("left");
         else if (cmd === "alignCenter") applyBlockAlign("center");
         else if (cmd === "alignRight") applyBlockAlign("right");
-        else if (cmd === "link") {
-          applyLinkFromPrompt();
-        } else if (cmd === "image") {
+        else if (cmd === "image") {
           openMediaPicker();
         }
         syncPublishButton();

@@ -2,11 +2,13 @@
  * Nettoyage HTML corps d’article — source unique (desk, API, iOS).
  *
  * API principale : cleanHtml(html, context)
- *   context = 'store' | 'desk' | 'ios'
+ *   context = 'store' | 'desk' | 'paste' | 'ios' | 'reset'
  *
  * Retire les scories de collage (Word / Docs / contenteditable) qui
  * forcent color:#000 — illisible en dark mode (app iOS).
  */
+import { stripHtmlToText } from './excerpt.mjs';
+import { escapeHtml } from './escape-html.mjs';
 
 /** Propriétés CSS conservées dans style="" (le reste = collages). */
 export const STYLE_ALLOWLIST = new Set(['text-align']);
@@ -118,6 +120,8 @@ export const HTML_CLEAN_CONTEXTS = {
   paste: { ...CLEAN_FULL, flattenHeadings: true },
   /** Serveur iOS — styles collés même sur archives non ré-enregistrées. */
   ios: { ...CLEAN_FULL, extractClipboard: false, stripEmptyP: false },
+  /** Bouton Nettoyer pupitre — tout débaliser, paragraphes simples. */
+  reset: { mode: 'reset' },
 };
 
 /**
@@ -547,8 +551,31 @@ export function liftInlineTextAlign(html) {
 }
 
 /**
+ * Texte brut remis en `<p>` simples (sans gras, listes, liens…).
  * @param {string} html
- * @param {'store'|'desk'|'paste'|'ios'|string} [context='store']
+ */
+export function htmlToPlainParagraphs(html) {
+  let h = String(html || '');
+  if (!h.trim()) return '';
+
+  // Frontières de blocs avant extraction — sinon tout se mélange en un seul paragraphe.
+  h = h
+    .replace(/<\/?(?:h[1-6]|p|div|li|blockquote|tr|article|section|header|footer|figure|figcaption|pre|dt|dd)(?:\s[^>]*)?>/gi, '\n\n')
+    .replace(/<br\s*\/?>/gi, '\n');
+
+  const plain = stripHtmlToText(h, { blocks: true });
+  if (!plain.trim()) return '';
+  const parts = plain
+    .split(/\n{2,}/)
+    .map((block) => block.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+  if (!parts.length) return '';
+  return parts.map((block) => `<p>${escapeHtml(block)}</p>`).join('');
+}
+
+/**
+ * @param {string} html
+ * @param {'store'|'desk'|'paste'|'ios'|'reset'|string} [context='store']
  */
 export function cleanHtml(html, context = 'store') {
   const key = String(context || 'store').toLowerCase();
@@ -561,6 +588,10 @@ export function cleanHtml(html, context = 'store') {
 
   let h = typeof html === 'string' ? html : '';
   if (!h) return '';
+
+  if (rules.mode === 'reset') {
+    return htmlToPlainParagraphs(h);
+  }
 
   if (rules.extractClipboard) {
     h = extractClipboardFragment(h);

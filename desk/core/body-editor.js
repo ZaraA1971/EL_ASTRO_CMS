@@ -7,6 +7,7 @@ import {
 } from "../html-clean.js";
 import { stripLeadingChapoHtml } from "../excerpt.js";
 import { hrefFrom } from "../paste-link.js";
+import { deskConfirm, deskPrompt } from "../desk-dialog.js";
 import { state } from "./state.js";
 import {
   escapeHtml,
@@ -24,8 +25,13 @@ export function cleanBody(html) {
   return cleanArticleHtml(html, "desk");
 }
 
+/** Bouton Nettoyer — texte brut remis en paragraphes simples. */
+function resetBody(html) {
+  return cleanArticleHtml(html, "reset");
+}
+
 /** Collage extérieur — contexte paste (plus strict que desk). */
-export function cleanPaste(html) {
+function cleanPaste(html) {
   return cleanArticleHtml(html, "paste");
 }
 
@@ -233,17 +239,174 @@ export function execFormatBlock(tag) {
   tidyVisualInline();
 }
 
-/** Bouton Lien : le prompt vole la sélection — on la restitue. */
-export function applyLinkFromPrompt() {
-  rememberVisualSelection();
-  const raw = prompt("URL du lien");
-  restoreVisualSelectionIfNeeded();
-  const href = hrefFrom(raw, "prompt");
-  if (!href) return;
+/** Actions du menu au clic sur un texte lié. */
+const LINK_MENU_ACTIONS = {
+  remove: { label: "Retirer" },
+  change: { label: "Modifier" },
+  open: { label: "Ouvrir" },
+};
+
+const LINK_MENU_ID = "desk-link-menu";
+/** @type {HTMLAnchorElement|null} */
+let linkMenuAnchor = null;
+
+function closestEditorLink(node, ed) {
+  if (!ed || !node) return null;
+  const el = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+  const a = el?.closest?.("a");
+  if (!a || !ed.contains(a)) return null;
+  return a;
+}
+
+function hideLinkMenu() {
+  linkMenuAnchor = null;
+  document.getElementById(LINK_MENU_ID)?.remove();
+}
+
+function placeLinkMenu(menu, a) {
+  const r = a.getBoundingClientRect();
+  const gap = 8;
+  const mw = menu.offsetWidth;
+  const mh = menu.offsetHeight;
+  let top = r.bottom + gap;
+  if (top + mh > window.innerHeight - 8) {
+    top = Math.max(8, r.top - mh - gap);
+  }
+  let left = r.left;
+  if (left + mw > window.innerWidth - 8) {
+    left = Math.max(8, window.innerWidth - mw - 8);
+  }
+  menu.style.top = `${Math.round(top)}px`;
+  menu.style.left = `${Math.round(left)}px`;
+}
+
+function markEditorBodyDirty() {
   const ed = getVisualEditor();
-  ed?.focus();
-  exec("createLink", href);
   tidyVisualInline(ed);
+  if (state.article && ed) state.article.body = cleanBody(ed.innerHTML);
+  syncPublishButton();
+}
+
+function unwrapEditorLink(a) {
+  if (!a?.parentNode) return;
+  const last = a.lastChild;
+  unwrapElement(a);
+  if (last) {
+    try {
+      const sel = window.getSelection();
+      const range = document.createRange();
+      range.setStartAfter(last);
+      range.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } catch {
+      /* curseur optionnel */
+    }
+  }
+}
+
+async function changeEditorLink(a) {
+  const current = a.getAttribute("href") || "";
+  const raw = await deskPrompt("URL du lien", {
+    title: "Modifier le lien",
+    placeholder: "https://…",
+    defaultValue: current || "https://",
+  });
+  if (raw == null) return;
+  const href = hrefFrom(raw, "prompt");
+  if (!href) unwrapEditorLink(a);
+  else a.setAttribute("href", href);
+  markEditorBodyDirty();
+}
+
+function openEditorLink(a) {
+  const href = hrefFrom(a.getAttribute("href") || "", "prompt");
+  if (!href) return;
+  if (href.startsWith("#")) return;
+  window.open(href, "_blank", "noopener,noreferrer");
+}
+
+async function runLinkMenuAction(context, a) {
+  const key = String(context || "").toLowerCase();
+  if (!LINK_MENU_ACTIONS[key] || !a) return;
+  hideLinkMenu();
+  if (key === "remove") {
+    unwrapEditorLink(a);
+    markEditorBodyDirty();
+    return;
+  }
+  if (key === "change") {
+    await changeEditorLink(a);
+    return;
+  }
+  if (key === "open") {
+    openEditorLink(a);
+  }
+}
+
+function showLinkMenu(a) {
+  hideLinkMenu();
+  if (!a?.isConnected) return;
+  linkMenuAnchor = a;
+  const href = a.getAttribute("href") || "";
+  const menu = document.createElement("div");
+  menu.id = LINK_MENU_ID;
+  menu.className = "desk-link-menu";
+  menu.setAttribute("role", "dialog");
+  menu.setAttribute("aria-label", "Lien");
+  const actions = Object.entries(LINK_MENU_ACTIONS)
+    .map(
+      ([key, { label }]) =>
+        `<button type="button" class="btn${
+          key === "remove" ? " desk-link-menu__remove" : ""
+        }" data-link-act="${escapeHtml(key)}">${escapeHtml(label)}</button>`
+    )
+    .join("");
+  menu.innerHTML = `
+    <p class="desk-link-menu__url" title="${escapeHtml(href)}">${escapeHtml(href)}</p>
+    <div class="desk-link-menu__actions">${actions}</div>
+  `;
+  menu.addEventListener("mousedown", (e) => e.preventDefault());
+  menu.querySelectorAll("[data-link-act]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      void runLinkMenuAction(btn.getAttribute("data-link-act"), a);
+    });
+  });
+  document.body.appendChild(menu);
+  placeLinkMenu(menu, a);
+}
+
+function onVisualLinkClick(e) {
+  const ed = getVisualEditor();
+  const a = closestEditorLink(e.target, ed);
+  if (!a) {
+    hideLinkMenu();
+    return;
+  }
+  e.preventDefault();
+  e.stopPropagation();
+  showLinkMenu(a);
+}
+
+function onDocPointerDownLinkMenu(e) {
+  const menu = document.getElementById(LINK_MENU_ID);
+  if (!menu) return;
+  if (menu.contains(e.target)) return;
+  if (closestEditorLink(e.target, getVisualEditor())) return;
+  hideLinkMenu();
+}
+
+function onDocKeydownLinkMenu(e) {
+  if (e.key === "Escape") hideLinkMenu();
+}
+
+function onViewportLinkMenu() {
+  const menu = document.getElementById(LINK_MENU_ID);
+  if (!menu || !linkMenuAnchor?.isConnected) {
+    if (menu) hideLinkMenu();
+    return;
+  }
+  placeLinkMenu(menu, linkMenuAnchor);
 }
 
 export function getVisualEditor() {
@@ -269,16 +432,17 @@ export function getBodyFromDom() {
 
 /** Applique Nettoyer dans l’éditeur courant (sans save). */
 export function applyBodyClean() {
+  hideLinkMenu();
   if (state.mode === "visual") {
     const ed = getVisualEditor();
     if (!ed) return;
-    const next = cleanBody(ed.innerHTML) || "<p><br></p>";
+    const next = resetBody(ed.innerHTML) || "<p><br></p>";
     ed.innerHTML = next;
     if (state.article) state.article.body = next === "<p><br></p>" ? "" : next;
   } else if (state.mode === "html") {
     const el = getHtmlEditor();
     if (!el) return;
-    el.value = cleanBody(el.value);
+    el.value = resetBody(el.value);
     if (state.article) state.article.body = el.value;
   }
   syncPublishButton();
@@ -361,6 +525,7 @@ function applyPasteLink(e, payload) {
   const ed = getVisualEditor();
   ed?.focus();
   exec("createLink", href);
+  hideLinkMenu();
   if (state.article && ed) state.article.body = cleanBody(ed.innerHTML);
   syncPublishButton();
   pasteLinkJustApplied = true;
@@ -422,21 +587,35 @@ function onVisualPaste(e) {
   syncPublishButton();
 }
 
-/** Écouteurs collage / sélection — à brancher à chaque render visuel. */
+/** Écouteurs collage / liens — une fois par nœud éditeur. */
 export function bindVisualEditorClipboard(ed) {
   if (!ed) return;
+  hideLinkMenu();
   ensureEditorCommands();
-  ed.addEventListener("input", () => syncPublishButton());
+  if (ed.dataset.deskEditorBound === "1") return;
+  ed.dataset.deskEditorBound = "1";
+  ed.addEventListener("input", () => {
+    hideLinkMenu();
+    syncPublishButton();
+  });
   ed.addEventListener("beforeinput", onVisualBeforeInput, true);
   ed.addEventListener("paste", onVisualPaste, true);
+  ed.addEventListener("click", onVisualLinkClick);
+  ed.addEventListener("auxclick", (e) => {
+    if (closestEditorLink(e.target, ed)) e.preventDefault();
+  });
+  ed.addEventListener("scroll", hideLinkMenu, { passive: true });
 }
 
 if (typeof document !== "undefined") {
   document.addEventListener("selectionchange", rememberVisualSelection);
+  document.addEventListener("pointerdown", onDocPointerDownLinkMenu, true);
+  document.addEventListener("keydown", onDocKeydownLinkMenu);
+  window.addEventListener("resize", onViewportLinkMenu);
 }
 
 /** Date comparable (datetime-local local, à la minute). */
-export function fingerprintDate(d) {
+function fingerprintDate(d) {
   if (d == null || d === "") return "";
   const raw = String(d);
   if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(raw) && !/[zZ]|[+-]\d{2}:?\d{2}$/.test(raw)) {
@@ -445,7 +624,7 @@ export function fingerprintDate(d) {
   return toDatetimeLocalValue(d) || "";
 }
 
-export function normalizeKeywordList(list) {
+function normalizeKeywordList(list) {
   return [...(list || [])]
     .map((k) => String(k || "").trim())
     .filter(Boolean);
@@ -461,7 +640,7 @@ export function normalizeKeywordList(list) {
  *   includeIaKeywords?: boolean,
  * }} [opts]
  */
-export function editFingerprint(p = {}, opts = {}) {
+function editFingerprint(p = {}, opts = {}) {
   const includeAccess = opts.includeAccess !== false;
   const includeCategories = opts.includeCategories !== false;
   const includeAuthor = opts.includeAuthor !== false;
@@ -480,7 +659,7 @@ export function editFingerprint(p = {}, opts = {}) {
   return JSON.stringify(base);
 }
 
-export function editFingerprintFromArticle(article) {
+function editFingerprintFromArticle(article) {
   if (!article) return "";
   const d = article.data || {};
   return editFingerprint({
@@ -504,7 +683,7 @@ export function setEditBaselineFromArticle(article = state.article) {
   state.editDirty = false;
 }
 
-export function currentEditFingerprint() {
+function currentEditFingerprint() {
   if (!state.article) return "";
   if (state.view !== "edit") return editFingerprintFromArticle(state.article);
   const a = state.article;
@@ -555,7 +734,7 @@ export function isEditContentDirty() {
  * Accès, rubriques, auteur, mots-clés IA, épingle : ne comptent pas
  * comme « Mis à jour ».
  */
-export function isEditorialContentDirty() {
+function isEditorialContentDirty() {
   if (!state.article || state.view !== "edit") return false;
   if (!state.editBaseline) return false;
   const a = state.article;
@@ -591,7 +770,7 @@ export function isEditorialContentDirty() {
   return currentEditorial !== baselineEditorial;
 }
 
-export function refreshEditDirty() {
+function refreshEditDirty() {
   if (!state.article || state.article.data.draft) {
     state.editDirty = false;
     return;
@@ -600,10 +779,11 @@ export function refreshEditDirty() {
 }
 
 /** Quitter l’édition : confirm si dirty (texte ou metas). */
-export function confirmLeaveEdit() {
+export async function confirmLeaveEdit() {
   if (!isEditContentDirty()) return true;
-  return confirm(
-    "Modifications non enregistrées. Quitter sans enregistrer ?"
+  return deskConfirm(
+    "Modifications non enregistrées. Quitter sans enregistrer ?",
+    { title: "Modifications non enregistrées" }
   );
 }
 
@@ -697,14 +877,14 @@ export function setEditBusy(busy) {
   paintEditMessages();
 }
 
-export function paintEditTopMeta() {
+function paintEditTopMeta() {
   const meta = document.querySelector(".main-edit .topbar .meta");
   if (!meta || !state.article) return;
   const d = state.article.data;
   meta.textContent = `#${d.article_id} · ${d.draft ? "brouillon" : "en ligne"}`;
 }
 
-export function paintModifiedLabel() {
+function paintModifiedLabel() {
   const el = document.getElementById("f-modified");
   if (!el || !state.article) return;
   const d = state.article.data;
@@ -720,7 +900,7 @@ export function paintModifiedLabel() {
 }
 
 /** Champ date + aide selon draft / date conservée. */
-export function paintDateField() {
+function paintDateField() {
   const dateEl = document.getElementById("f-date");
   const help = document.getElementById("date-help");
   if (!dateEl || !state.article) return;
@@ -742,7 +922,7 @@ export function paintDateField() {
   }
 }
 
-export function paintDraftButton() {
+function paintDraftButton() {
   const btn = document.getElementById("btn-draft");
   const help = document.getElementById("draft-help");
   if (!btn || !state.article) return;
@@ -759,7 +939,7 @@ export function paintDraftButton() {
   }
 }
 
-export function paintKeywordsFromArticle() {
+function paintKeywordsFromArticle() {
   const ia = document.getElementById("f-ia");
   if (!ia || !state.article) return;
   if (state.article.data.access === "granted") return;

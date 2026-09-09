@@ -14,5 +14,6 @@ export {
   unwrapPasteWrappers,
   filterTagAttributes,
   flattenPastedHeadings,
+  htmlToPlainParagraphs,
   cleanHtml,
 } from '../../shared/html-clean.mjs';

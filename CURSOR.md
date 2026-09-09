@@ -142,6 +142,7 @@ Exemples : `shared/excerpt.mjs` (`stripHtmlToText`, chapô),
 
 Note desk : si un `shared/*.mjs` importe un autre module partagé en
 `./foo.mjs`, ajouter aussi le symlink `desk/foo.mjs` (résolution URL navigateur).
+Voir règle Cursor `desk-shared-imports.mdc` + `node scripts/check-desk-symlinks.mjs`.
 
 Si tu ajoutes une règle utilisée à plusieurs endroits : **factorer / étendre
 `shared/` d’abord**, puis brancher les call-sites. Dupliquer un seuil ou une

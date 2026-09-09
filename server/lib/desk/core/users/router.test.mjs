@@ -62,6 +62,7 @@ function basePolicy(overrides = {}) {
 function mockStore(existing = null) {
   return {
     list: async () => [],
+    listAll: async () => existing ? [existing] : [],
     count: async () => 0,
     findById: async () => existing,
     findDupLoginOrEmail: async () => null,
@@ -212,5 +213,181 @@ describe('handleCoreUsers security', () => {
     assert.equal(res.body.password, 'TempPass99xxxx');
     assert.equal(res.body.user.login, 'u');
     assert.ok(!String(JSON.stringify(res.body)).includes('hash:Temp'));
+  });
+
+  it('accepts an email as login on create', async () => {
+    const res = mockRes();
+    let inserted = null;
+    await handleCoreUsers(
+      { method: 'POST' },
+      res,
+      ['api', 'desk', 'users'],
+      {
+        sendJson: (r, s, b) => res.sendJson(r, s, b),
+        readBody: async () =>
+          Buffer.from(
+            JSON.stringify({
+              login: 'Marie+Tag@Example.com',
+              email: 'marie+tag@example.com',
+              role: 'subscriber',
+            })
+          ),
+        session: { role: 'admin', uid: 1, login: 'a' },
+        usersStore: {
+          ...mockStore(),
+          insert: async (_p, row) => {
+            inserted = row;
+            return {
+              id: row.id,
+              login: row.login,
+              email: row.email,
+              role: row.role,
+              status: row.status,
+            };
+          },
+        },
+        userPolicy: basePolicy(),
+        pool: {},
+      }
+    );
+    assert.equal(res.status, 201);
+    assert.equal(inserted.login, 'marie+tag@example.com');
+    assert.equal(res.body.user.login, 'marie+tag@example.com');
+  });
+
+  it('rejects a login with spaces', async () => {
+    const res = mockRes();
+    await handleCoreUsers(
+      { method: 'POST' },
+      res,
+      ['api', 'desk', 'users'],
+      {
+        sendJson: (r, s, b) => res.sendJson(r, s, b),
+        readBody: async () =>
+          Buffer.from(
+            JSON.stringify({
+              login: 'marie dupont',
+              email: 'marie@example.com',
+            })
+          ),
+        session: { role: 'admin', uid: 1, login: 'a' },
+        usersStore: mockStore(),
+        userPolicy: basePolicy(),
+        pool: {},
+      }
+    );
+    assert.equal(res.status, 400);
+    assert.match(res.body.error, /espace|Identifiant/);
+  });
+
+  it('generates a temp password on create and never returns it', async () => {
+    const res = mockRes();
+    let hashed = null;
+    let inserted = null;
+    await handleCoreUsers(
+      { method: 'POST' },
+      res,
+      ['api', 'desk', 'users'],
+      {
+        sendJson: (r, s, b) => res.sendJson(r, s, b),
+        readBody: async () =>
+          Buffer.from(
+            JSON.stringify({
+              login: 'nouveau',
+              email: 'nouveau@example.com',
+              password: 'client-supplied-should-be-ignored',
+              role: 'subscriber',
+            })
+          ),
+        session: { role: 'admin', uid: 1, login: 'a' },
+        usersStore: {
+          ...mockStore(),
+          insert: async (_p, row) => {
+            inserted = row;
+            return {
+              id: row.id,
+              login: row.login,
+              email: row.email,
+              role: row.role,
+              status: row.status,
+            };
+          },
+        },
+        userPolicy: basePolicy({
+          hashPassword: (p) => {
+            hashed = p;
+            return `hash:${p}`;
+          },
+        }),
+        pool: {},
+      }
+    );
+    assert.equal(res.status, 201);
+    assert.equal(hashed, 'TempPass99xxxx');
+    assert.equal(inserted.passwordHash, 'hash:TempPass99xxxx');
+    const raw = JSON.stringify(res.body);
+    assert.ok(!raw.includes('TempPass'));
+    assert.ok(!raw.includes('client-supplied'));
+    assert.equal(res.body.password, undefined);
+  });
+
+  it('exports csv without secrets', async () => {
+    const res = {
+      status: null,
+      headers: null,
+      body: null,
+      writeHead(status, headers) {
+        this.status = status;
+        this.headers = headers;
+      },
+      end(body) {
+        this.body = body;
+      },
+    };
+    await handleCoreUsers(
+      { method: 'GET', url: '/api/desk/users/export', headers: { host: 'x' } },
+      res,
+      ['api', 'desk', 'users', 'export'],
+      {
+        sendJson: (r, s, b) => {
+          r.status = s;
+          r.body = b;
+        },
+        session: { role: 'admin', uid: 1, login: 'a' },
+        usersStore: {
+          ...mockStore(),
+          listAll: async () => [
+            {
+              id: 3,
+              login: 'marie',
+              email: 'marie@example.com',
+              display_name: 'Marie',
+              role: 'subscriber',
+              status: 'active',
+              password_hash: 'SECRET',
+            },
+          ],
+        },
+        userPolicy: basePolicy({
+          rowToDeskUser: (row) => ({
+            id: row.id,
+            login: row.login,
+            email: row.email,
+            name: row.display_name,
+            role: row.role,
+            status: row.status,
+            entitled: true,
+            desk: false,
+            newsletter_opt_in: true,
+          }),
+        }),
+        pool: {},
+      }
+    );
+    assert.equal(res.status, 200);
+    assert.match(String(res.headers['Content-Type']), /csv/);
+    assert.match(String(res.body), /marie@example.com/);
+    assert.ok(!String(res.body).includes('SECRET'));
+    assert.ok(!String(res.body).includes('password'));
   });
 });

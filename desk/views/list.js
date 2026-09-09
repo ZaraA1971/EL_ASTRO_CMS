@@ -19,6 +19,7 @@ import {
   statusBadgeHtml,
 } from "../core/list-resource.js";
 import { ctx } from "../core/ctx.js";
+import { deskConfirm } from "../desk-dialog.js";
 import { logout } from "./login.js";
 import { openArticle, createArticle } from "./edit.js";
 
@@ -193,7 +194,12 @@ function articlesItemsHtml(articles) {
 
 async function deleteArticleFromList(id, title) {
   const label = String(title || id).trim() || String(id);
-  if (!confirm(`Supprimer définitivement « ${label} » ?`)) return;
+  const ok = await deskConfirm(`Supprimer définitivement « ${label} » ?`, {
+    title: "Supprimer l’article",
+    danger: true,
+    confirmLabel: "Supprimer",
+  });
+  if (!ok) return;
   try {
     state.error = "";
     await api(`/api/desk/articles/${id}`, { method: "DELETE" });

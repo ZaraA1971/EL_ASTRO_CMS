@@ -29,8 +29,38 @@ test('payload riche sans secret', () => {
   assert.match(p.body, /marie/);
   assert.match(p.body, /admin/);
   assert.equal(p.facts.login, 'marie');
+  assert.equal(p.facts.id, 'marie');
+  assert.equal(p.facts.theme, 'compte');
+  assert.equal(p.facts.label, 'author');
   assert.equal(p.facts.password, undefined);
   assert.equal(p.fingerprint, 'pupitre:user.delete:99');
+});
+
+test('création de compte dit si le mail est parti', () => {
+  assert.equal(shouldPushAccount('billing.provision_create'), true);
+  const p = accountPayload(
+    {
+      action: 'user.create',
+      actor: { login: 'Isabelle' },
+      targetId: 900003,
+      meta: {
+        login: 'abo@example.com',
+        email: 'abo@example.com',
+        role: 'subscriber',
+        status: 'active',
+        source: 'desk',
+        emailSent: true,
+        adminEmailSent: false,
+      },
+    },
+    439
+  );
+  assert.equal(p.facts.theme, 'compte');
+  assert.equal(p.facts.id, 'abo@example.com');
+  assert.equal(p.facts.email_sent, 'envoyé');
+  assert.equal(p.facts.admin_email_sent, 'non envoyé');
+  assert.match(p.body, /Mail titulaire : envoyé/);
+  assert.match(p.body, /Mail admins : non envoyé/);
 });
 
 test('audience payload', () => {

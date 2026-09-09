@@ -33,6 +33,9 @@ const STAFF_ROLES = new Set([ROLES.ADMIN, ROLES.EDITOR]);
 const USER_SELECT = `id, login, email, display_name, role, status, access_until,
             wp_role, source, notes, newsletter_opt_in, registered, updated_at`;
 
+const USER_EXPORT_SELECT = `${USER_SELECT},
+            plan, billing_email, stripe_customer_id, stripe_subscription_id`;
+
 /** Mot de passe lisible one-shot (jamais stocké en clair). */
 export function generateTempPassword(length = 14) {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
@@ -84,6 +87,10 @@ export function rowToDeskUser(row) {
     newsletter_opt_in: Number(row.newsletter_opt_in) !== 0,
     registered: row.registered || null,
     updated_at: row.updated_at || null,
+    plan: row.plan || '',
+    billing_email: row.billing_email || '',
+    stripe_customer_id: row.stripe_customer_id || '',
+    stripe_subscription_id: row.stripe_subscription_id || '',
   };
 }
 
@@ -105,6 +112,7 @@ export const elUsersStore = createUsersStore({
   tableName: 'el_users',
   idFloor: 900000,
   selectColumns: USER_SELECT,
+  exportColumns: USER_EXPORT_SELECT,
 });
 
 /** Policy injectée dans handleCoreUsers — ne jamais contourner le hash WP. */

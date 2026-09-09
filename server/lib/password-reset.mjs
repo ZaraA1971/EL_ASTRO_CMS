@@ -44,9 +44,7 @@ export async function ensurePasswordResetSchema(pool) {
   }
 }
 
-export function normalizeLoginId(raw) {
-  return String(raw || '').trim().toLowerCase();
-}
+export { normalizeLoginId } from './login-id.mjs';
 
 /**
  * Crée un token et envoie l’e-mail. Ne révèle pas si le compte existe.

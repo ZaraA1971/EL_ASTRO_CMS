@@ -2,6 +2,7 @@ import { state } from "../core/state.js";
 import { api } from "../core/api.js";
 import { escapeHtml, brandBlock } from "../core/format.js";
 import { ctx } from "../core/ctx.js";
+import { deskConfirm } from "../desk-dialog.js";
 import { logout } from "../views/login.js";
 
 const app = document.getElementById("app");
@@ -12,6 +13,39 @@ const NL_GROUP_LABELS = {
   abonnes: "Abonnés",
 };
 
+const NL_PREFS_KEY = "el-desk-nl-prefs";
+
+function loadNlPrefs() {
+  try {
+    const raw = localStorage.getItem(NL_PREFS_KEY);
+    if (!raw) return;
+    const prefs = JSON.parse(raw);
+    if (typeof prefs.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(prefs.date)) {
+      state.nlDate = prefs.date;
+    }
+    if (prefs.groups && typeof prefs.groups === "object") {
+      state.nlGroups = {
+        admin: Boolean(prefs.groups.admin),
+        redacteurs: Boolean(prefs.groups.redacteurs),
+        abonnes: Boolean(prefs.groups.abonnes),
+      };
+    }
+  } catch {
+    /* ignore prefs corrompues */
+  }
+}
+
+function saveNlPrefs() {
+  try {
+    localStorage.setItem(
+      NL_PREFS_KEY,
+      JSON.stringify({ date: state.nlDate, groups: state.nlGroups })
+    );
+  } catch {
+    /* ignore quota / mode privé */
+  }
+}
+
 function selectedNlGroups() {
   return Object.entries(state.nlGroups)
     .filter(([, on]) => on)
@@ -19,6 +53,7 @@ function selectedNlGroups() {
 }
 
 export async function loadNewsletter() {
+  loadNlPrefs();
   state.error = "";
   state.nlHistoryView = null;
   try {
@@ -86,14 +121,12 @@ async function draftAndSendNewsletter() {
   const groupLabel = previewGroups
     .map((g) => NL_GROUP_LABELS[g] || g)
     .join(" + ");
-  const dry = state.nlDryRun ? " (dry-run Brevo — aucun e-mail réel)" : " — ENVOI RÉEL";
-  if (
-    !confirm(
-      `Envoyer « ${state.nlPreview.subject} »\n\nGroupes : ${groupLabel}\nDestinataires : ${total}${dry}\n\nConfirmer ?`
-    )
-  ) {
-    return;
-  }
+  const dry = state.nlDryRun ? "\n\nMode test — aucun e-mail réel." : "";
+  const ok = await deskConfirm(
+    `Envoyer « ${state.nlPreview.subject} »\n\nGroupes : ${groupLabel}\nDestinataires : ${total}${dry}`,
+    { title: "Envoyer la newsletter", confirmLabel: "Envoyer" }
+  );
+  if (!ok) return;
   state.saving = true;
   state.error = "";
   state.status = "Enregistrement + envoi…";
@@ -186,7 +219,6 @@ export function renderNewsletter() {
     </header>
     ${ctx.navTabs("newsletter")}
     <main class="main stack nl-page">
-      ${state.nlDryRun ? `<p class="nl-banner">Brevo dry-run actif — aucun e-mail réel ne partira.</p>` : ""}
       <section class="nl-panel nl-panel--compose" aria-labelledby="nl-compose-title">
         <h2 class="nl-compose-title" id="nl-compose-title">Newsletter du jour</h2>
         <div class="toolbar-list nl-row">
@@ -199,36 +231,26 @@ export function renderNewsletter() {
             <button type="button" class="chip${g.redacteurs ? " is-active" : ""}" data-nl-group="redacteurs" aria-pressed="${g.redacteurs ? "true" : "false"}">Rédacteurs</button>
             <button type="button" class="chip${g.abonnes ? " is-active" : ""}" data-nl-group="abonnes" aria-pressed="${g.abonnes ? "true" : "false"}">Abonnés</button>
           </div>
-          <p class="sub nl-groups-hint">Cochez uniquement les groupes ciblés (défaut : Admin).</p>
         </div>
         <div class="nl-actions toolbar-list">
           <button class="btn btn-primary" type="button" id="nl-generate" ${state.saving ? "disabled" : ""}>Générer</button>
           <button class="btn" type="button" id="nl-send" ${state.saving || !preview ? "disabled" : ""}>Envoyer</button>
         </div>
-        ${state.status ? `<p class="status-line">${escapeHtml(state.status)}</p>` : ""}
         ${state.error ? `<p class="err">${escapeHtml(state.error)}</p>` : ""}
+        ${!preview && state.status ? `<p class="status-line">${escapeHtml(state.status)}</p>` : ""}
+        ${state.saving && preview ? `<p class="status-line">${escapeHtml(state.status || "…")}</p>` : ""}
         ${
           preview
             ? `<div class="nl-meta">
                 <p><strong>${escapeHtml(preview.subject)}</strong></p>
-                <p class="sub">Aujourd’hui : ${preview.counts?.today || 0} (éditos ${preview.counts?.editorial || 0} · brèves ${preview.counts?.briefs || 0}) · manqués ${preview.counts?.missed || 0} · groupes <strong>${escapeHtml(
+                <p class="sub">${preview.counts?.today || 0} article(s) · ${preview.recipientTotal || 0} destinataire(s) · ${escapeHtml(
                   (preview.groups || selectedNlGroups())
                     .map((x) => NL_GROUP_LABELS[x] || x)
                     .join(" + ") || "—"
-                )}</strong> · <strong>${preview.recipientTotal || 0}</strong> destinataire(s)${
-                  g.admin ? ` · admin ${preview.recipientCounts?.admin || 0}` : ""
-                }${
-                  g.redacteurs
-                    ? ` · rédacteurs ${preview.recipientCounts?.redacteurs || 0}`
-                    : ""
-                }${
-                  g.abonnes
-                    ? ` · abonnés ${preview.recipientCounts?.abonnes || 0}`
-                    : ""
-                }</p>
+                )}</p>
               </div>
               <iframe class="nl-iframe" id="nl-iframe" title="Aperçu newsletter" sandbox=""></iframe>`
-            : `<p class="empty">Choisissez une date et prévisualisez.</p>`
+            : `<p class="empty">Choisissez une date et générez l’aperçu.</p>`
         }
       </section>
       <section class="nl-panel nl-panel--history" aria-labelledby="nl-hist-title">
@@ -236,11 +258,6 @@ export function renderNewsletter() {
           <h2 class="nl-hist-title" id="nl-hist-title">Déjà envoyées${
             historyAll.length ? ` <span class="sub">(${historyAll.length})</span>` : ""
           }</h2>
-          <p class="sub nl-hist-hint">${
-            histView
-              ? "Replier via le bouton ou en recliquant la ligne."
-              : "Cliquez une ligne pour afficher l’envoi."
-          }</p>
         </div>
         <ul class="nl-history">${hist || `<li class="sub">Aucune campagne</li>`}</ul>
         ${
@@ -269,6 +286,7 @@ export function renderNewsletter() {
   }
   document.getElementById("nl-date").onchange = async (e) => {
     state.nlDate = e.target.value;
+    saveNlPrefs();
     state.nlPreview = null;
     await generateNewsletter();
   };
@@ -276,6 +294,7 @@ export function renderNewsletter() {
     el.onclick = async () => {
       const key = el.dataset.nlGroup;
       state.nlGroups[key] = !state.nlGroups[key];
+      saveNlPrefs();
       state.nlPreview = null;
       await generateNewsletter();
     };

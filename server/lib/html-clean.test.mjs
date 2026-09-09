@@ -216,4 +216,24 @@ describe('html-clean', () => {
       '<p style="text-align: center"><strong>x</strong></p>'
     );
   });
+
+  it('reset strips all markup into plain paragraphs', () => {
+    const dirty =
+      '<div style="color:red"><h2>Titre</h2><p><strong>A</strong> et <a href="/x">lien</a></p><ul><li>un</li><li>deux</li></ul></div>';
+    assert.equal(
+      cleanHtml(dirty, 'reset'),
+      '<p>Titre</p><p>A et lien</p><p>un</p><p>deux</p>'
+    );
+  });
+
+  it('reset collapses inline whitespace', () => {
+    assert.equal(
+      cleanHtml('<p>  moto   <span>velo</span>  </p>', 'reset'),
+      '<p>moto velo</p>'
+    );
+  });
+
+  it('reset returns empty for blank input', () => {
+    assert.equal(cleanHtml('<p> </p><span></span>', 'reset'), '');
+  });
 });

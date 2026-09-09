@@ -3,6 +3,7 @@ import { api, apiForm } from "../core/api.js";
 import { escapeHtml, brandBlock } from "../core/format.js";
 import { createPagedList, listDismissHtml } from "../core/list-resource.js";
 import { ctx } from "../core/ctx.js";
+import { deskConfirm } from "../desk-dialog.js";
 import { getVisualEditor, exec, getBodyFromDom } from "../core/body-editor.js";
 import { logout } from "./login.js";
 
@@ -216,7 +217,12 @@ async function deleteMediaItem(id) {
   const mp = state.mediaPicker;
   const item = mp.items.find((i) => Number(i.id) === Number(id));
   if (!item) return;
-  if (!confirm(`Supprimer « ${item.filename} » ?`)) return;
+  const ok = await deskConfirm(`Supprimer « ${item.filename} » ?`, {
+    title: "Supprimer le document",
+    danger: true,
+    confirmLabel: "Supprimer",
+  });
+  if (!ok) return;
   try {
     await api(`/api/desk/media/${id}`, { method: "DELETE" });
     if (Number(mp.selectedId) === Number(id)) mp.selectedId = null;

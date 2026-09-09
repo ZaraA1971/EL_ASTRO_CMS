@@ -19,8 +19,10 @@ import {
   statusBadgeHtml,
 } from "../core/list-resource.js";
 import { ctx } from "../core/ctx.js";
+import { deskConfirm } from "../desk-dialog.js";
 import { logout } from "./login.js";
 import { isStaffRole, roleLabelUi, statusLabel } from "../roles.js";
+import { LOGIN_ID_MAX, LOGIN_ID_MIN, validateLoginId } from "../login-id.js";
 
 const app = document.getElementById("app");
 
@@ -119,7 +121,12 @@ function usersItemsHtml(users) {
 
 async function deleteUserFromList(id, title) {
   const label = String(title || id).trim() || String(id);
-  if (!confirm(`Supprimer définitivement le compte « ${label} » ?`)) return;
+  const ok = await deskConfirm(`Supprimer définitivement le compte « ${label} » ?`, {
+    title: "Supprimer le compte",
+    danger: true,
+    confirmLabel: "Supprimer",
+  });
+  if (!ok) return;
   try {
     state.error = "";
     await api(`/api/desk/users/${id}`, { method: "DELETE" });
@@ -239,13 +246,8 @@ function syncUserFormToState() {
 
 function validateUserFormFields(form, isNew) {
   const errors = {};
-  const login = String(form.login || "");
-  if (!login) {
-    errors.login = "Identifiant requis.";
-  } else if (!/^[a-z0-9._-]{3,60}$/.test(login)) {
-    errors.login =
-      "Identifiant : 3–60 caractères (a-z, 0-9, point, underscore, tiret).";
-  }
+  const loginCheck = validateLoginId(form.login, "store");
+  if (!loginCheck.ok) errors.login = loginCheck.error;
   const email = String(form.email || "");
   if (!email) {
     errors.email = "E-mail requis.";
@@ -253,13 +255,7 @@ function validateUserFormFields(form, isNew) {
     errors.email = "E-mail invalide.";
   }
   const password = String(form.password || "");
-  if (isNew) {
-    if (!password) {
-      errors.password = "Mot de passe requis.";
-    } else if (password.length < 8) {
-      errors.password = "Mot de passe : 8 caractères minimum.";
-    }
-  } else if (password && password.length < 8) {
+  if (!isNew && password && password.length < 8) {
     errors.password = "Mot de passe : 8 caractères minimum.";
   }
   return errors;
@@ -344,7 +340,6 @@ export async function openUser(id) {
   state.generatedPassword = "";
   state.userPasswordDraft = "";
   state.userFieldErrors = {};
-  state.userDeleteConfirm = false;
   if (!id) {
     state.editUser = emptyUserForm();
     state.view = "user-edit";
@@ -363,7 +358,7 @@ function accessUntilInputValue(v) {
 
 async function saveUser(ev) {
   ev?.preventDefault?.();
-  if (!state.editUser || state.userDeleteConfirm) return;
+  if (!state.editUser) return;
   const isNew = !state.editUser.id;
   const form = syncUserFormToState() || readUserFormDom();
   const fieldErrors = validateUserFormFields(form, isNew);
@@ -389,9 +384,7 @@ async function saveUser(ev) {
     notes: form.notes,
     newsletter_opt_in: form.newsletter_opt_in,
   };
-  if (isNew) {
-    payload.password = form.password;
-  } else if (form.password) {
+  if (!isNew && form.password) {
     payload.password = form.password;
   }
 
@@ -412,12 +405,13 @@ async function saveUser(ev) {
       state.userFieldErrors = {};
       if (data.emailSent && data.adminEmailSent) {
         state.status =
-          "Compte créé — e-mails envoyés (titulaire + admins)";
+          "Compte créé — e-mail envoyé pour choisir le mot de passe (admins prévenus)";
       } else if (data.emailSent) {
         state.status =
-          "Compte créé — e-mail titulaire envoyé (admins : échec ou aucun)";
+          "Compte créé — e-mail envoyé pour choisir le mot de passe";
       } else {
-        state.status = "Compte créé (e-mail de confirmation non envoyé)";
+        state.status =
+          "Compte créé (e-mail pour choisir le mot de passe non envoyé — utilisez « Régénérer »)";
       }
     } else {
       const data = await api(`/api/desk/users/${state.editUser.id}`, {
@@ -444,13 +438,11 @@ async function saveUser(ev) {
 
 async function regenerateUserPassword() {
   if (!state.editUser?.id) return;
-  if (
-    !confirm(
-      `Régénérer le mot de passe de « ${state.editUser.login} » ? L’ancien ne fonctionnera plus.`
-    )
-  ) {
-    return;
-  }
+  const ok = await deskConfirm(
+    `Régénérer le mot de passe de « ${state.editUser.login} » ? L’ancien ne fonctionnera plus.`,
+    { title: "Régénérer le mot de passe", confirmLabel: "Régénérer" }
+  );
+  if (!ok) return;
   syncUserFormToState();
   state.saving = true;
   state.error = "";
@@ -475,22 +467,18 @@ async function regenerateUserPassword() {
   }
 }
 
-function requestDeleteUser() {
+async function deleteCurrentUser() {
   if (!state.editUser?.id || state.saving) return;
-  state.userDeleteConfirm = true;
-  state.error = "";
-  state.status = "";
-  renderUserEdit();
-}
-
-function cancelDeleteUser() {
-  state.userDeleteConfirm = false;
-  renderUserEdit();
-}
-
-async function confirmDeleteUser() {
-  if (!state.editUser?.id || !state.userDeleteConfirm) return;
   const label = state.editUser.login || state.editUser.email || state.editUser.id;
+  const ok = await deskConfirm(
+    `Supprimer définitivement le compte « ${label} » (${roleLabelUi(state.editUser.role)}) ?\n\nCette action est irréversible.`,
+    {
+      title: "Confirmer la suppression",
+      danger: true,
+      confirmLabel: "Oui, supprimer le compte",
+    }
+  );
+  if (!ok) return;
   state.saving = true;
   state.error = "";
   state.status = "Suppression…";
@@ -503,7 +491,6 @@ async function confirmDeleteUser() {
     state.generatedPassword = "";
     state.userPasswordDraft = "";
     state.userFieldErrors = {};
-    state.userDeleteConfirm = false;
     state.view = "users";
     state.status = data.adminEmailSent
       ? `Compte « ${label} » supprimé — admins notifiés`
@@ -514,8 +501,48 @@ async function confirmDeleteUser() {
     state.error = err.message || "Échec suppression";
     state.status = "";
     state.saving = false;
-    state.userDeleteConfirm = true;
     renderUserEdit();
+  }
+}
+
+async function exportUsers() {
+  const params = new URLSearchParams();
+  if (state.usersQ) params.set("q", state.usersQ);
+  if (state.usersRole) params.set("role", state.usersRole);
+  if (state.usersStatus) params.set("status", state.usersStatus);
+  const qs = params.toString();
+  const url = `/api/desk/users/export${qs ? `?${qs}` : ""}`;
+  state.error = "";
+  state.status = "Export…";
+  const errEl = document.getElementById("users-error");
+  const btn = document.getElementById("btn-export-users");
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch(url, { credentials: "same-origin" });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `HTTP ${res.status}`);
+    }
+    const blob = await res.blob();
+    const match = /filename="([^"]+)"/i.exec(
+      res.headers.get("content-disposition") || ""
+    );
+    const name = match?.[1] || "comptes.csv";
+    const href = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = href;
+    a.download = name;
+    a.click();
+    URL.revokeObjectURL(href);
+    state.status = "";
+  } catch (err) {
+    state.error = err.message || "Export impossible";
+    if (errEl) {
+      errEl.hidden = false;
+      errEl.textContent = state.error;
+    }
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 
@@ -545,6 +572,7 @@ export function renderUsers() {
           ${usersAc.html()}
         </div>
         ${filterChips("Filtrer les comptes", filterChipsOpts, activeFilter, "ufilter")}
+        <button class="btn" type="button" id="btn-export-users" title="Tous les comptes visibles, tous les détails">Exporter</button>
       </div>
       ${chrome.top}
       <p class="err" id="users-error" ${state.error ? "" : "hidden"}>${escapeHtml(state.error || "")}</p>
@@ -568,6 +596,8 @@ export function renderUsers() {
   });
   usersCtl.bindPager();
   bindUsersResultClicks();
+  const exportBtn = document.getElementById("btn-export-users");
+  if (exportBtn) exportBtn.onclick = () => exportUsers();
 }
 
 export function renderUserEdit() {
@@ -600,8 +630,8 @@ export function renderUserEdit() {
       <form class="card stack" id="user-form" novalidate>
         <div class="field">
           <label for="u-login">Identifiant</label>
-          <input id="u-login" value="${escapeHtml(u.login || "")}" required autocomplete="off" spellcheck="false" class="${fe.login ? "is-invalid" : ""}" aria-invalid="${fe.login ? "true" : "false"}" aria-describedby="u-login-help u-login-error" />
-          <p class="uk-help" id="u-login-help">3–60 caractères : a-z, 0-9, point, underscore, tiret.</p>
+          <input id="u-login" value="${escapeHtml(u.login || "")}" required maxlength="${LOGIN_ID_MAX}" autocomplete="off" spellcheck="false" class="${fe.login ? "is-invalid" : ""}" aria-invalid="${fe.login ? "true" : "false"}" aria-describedby="u-login-help u-login-error" />
+          <p class="uk-help" id="u-login-help">${LOGIN_ID_MIN}–${LOGIN_ID_MAX} caractères. Un e-mail convient — connexion avec l’identifiant ou l’e-mail.</p>
           <p class="field-error" id="u-login-error" ${fe.login ? "" : "hidden"}>${escapeHtml(fe.login || "")}</p>
         </div>
         <div class="field">
@@ -643,16 +673,16 @@ export function renderUserEdit() {
             Inscrit à la newsletter
           </label>
         </div>
-        <div class="field">
-          <label for="u-password">${isNew ? "Mot de passe" : "Nouveau mot de passe (optionnel)"}</label>
-          <input id="u-password" type="password" autocomplete="new-password" value="${pwdVal}" ${isNew ? "required minlength=\"8\"" : 'minlength="8"'} class="${fe.password ? "is-invalid" : ""}" aria-invalid="${fe.password ? "true" : "false"}" aria-describedby="u-password-help u-password-error" />
-          <p class="uk-help" id="u-password-help">${
-            isNew
-              ? "8 caractères minimum (secours). Le compte est actif dès la création ; un e-mail propose aussi de choisir un mot de passe pour se connecter."
-              : "Ou utilisez « Régénérer » pour créer un mot de passe temporaire à communiquer une fois."
-          }</p>
+        ${
+          isNew
+            ? `<p class="uk-help">Un mot de passe transitoire est créé à l’enregistrement. L’abonné reçoit un e-mail pour le changer.</p>`
+            : `<div class="field">
+          <label for="u-password">Nouveau mot de passe (optionnel)</label>
+          <input id="u-password" type="password" autocomplete="new-password" value="${pwdVal}" minlength="8" class="${fe.password ? "is-invalid" : ""}" aria-invalid="${fe.password ? "true" : "false"}" aria-describedby="u-password-help u-password-error" />
+          <p class="uk-help" id="u-password-help">Ou utilisez « Régénérer » pour créer un mot de passe temporaire à communiquer une fois.</p>
           <p class="field-error" id="u-password-error" ${fe.password ? "" : "hidden"}>${escapeHtml(fe.password || "")}</p>
-        </div>
+        </div>`
+        }
         ${
           state.generatedPassword
             ? `<div class="pwd-reveal" role="status">
@@ -678,36 +708,19 @@ export function renderUserEdit() {
         ${state.error ? `<p class="err">${escapeHtml(state.error)}</p>` : ""}
         ${state.status ? `<p class="ok">${escapeHtml(state.status)}</p>` : ""}
         <div class="row user-actions" style="gap:10px;flex-wrap:wrap">
-          <button class="btn btn-primary" type="submit" ${state.saving || state.userDeleteConfirm ? "disabled" : ""}>Enregistrer</button>
+          <button class="btn btn-primary" type="submit" ${state.saving ? "disabled" : ""}>Enregistrer</button>
           ${
             !isNew
-              ? `<button class="btn" type="button" id="btn-regen-pwd" ${state.saving || state.userDeleteConfirm ? "disabled" : ""}>Régénérer le mot de passe</button>`
+              ? `<button class="btn" type="button" id="btn-regen-pwd" ${state.saving ? "disabled" : ""}>Régénérer le mot de passe</button>`
               : ""
           }
           <button class="btn" type="button" id="btn-cancel-user">Annuler</button>
           ${
-            !isNew && !isSelf && !state.userDeleteConfirm
+            !isNew && !isSelf
               ? `<button class="btn btn-danger" type="button" id="btn-delete-user" ${state.saving ? "disabled" : ""}>Supprimer</button>`
               : ""
           }
         </div>
-        ${
-          !isNew && !isSelf && state.userDeleteConfirm
-            ? `<div class="user-delete-confirm" role="alertdialog" aria-labelledby="user-delete-title" aria-describedby="user-delete-desc">
-                <p id="user-delete-title" class="user-delete-confirm__title">Confirmer la suppression</p>
-                <p id="user-delete-desc" class="user-delete-confirm__desc">
-                  Supprimer définitivement le compte
-                  <strong>${escapeHtml(u.login || u.email || String(u.id))}</strong>
-                  (${escapeHtml(roleLabelUi(u.role))})&nbsp;?
-                  Cette action est irréversible.
-                </p>
-                <div class="row" style="gap:10px;flex-wrap:wrap">
-                  <button class="btn" type="button" id="btn-delete-cancel" ${state.saving ? "disabled" : ""}>Ne pas supprimer</button>
-                  <button class="btn btn-danger" type="button" id="btn-delete-confirm" ${state.saving ? "disabled" : ""}>Oui, supprimer le compte</button>
-                </div>
-              </div>`
-            : ""
-        }
       </form>
     </main>`;
 
@@ -717,7 +730,6 @@ export function renderUserEdit() {
     state.generatedPassword = "";
     state.userPasswordDraft = "";
     state.userFieldErrors = {};
-    state.userDeleteConfirm = false;
     await loadUsers();
   };
   document.getElementById("btn-cancel-user").onclick = async () => {
@@ -726,7 +738,6 @@ export function renderUserEdit() {
     state.generatedPassword = "";
     state.userPasswordDraft = "";
     state.userFieldErrors = {};
-    state.userDeleteConfirm = false;
     await loadUsers();
   };
   document.getElementById("user-form").onsubmit = (e) => saveUser(e);
@@ -734,11 +745,7 @@ export function renderUserEdit() {
   const regenBtn = document.getElementById("btn-regen-pwd");
   if (regenBtn) regenBtn.onclick = () => regenerateUserPassword();
   const delBtn = document.getElementById("btn-delete-user");
-  if (delBtn) delBtn.onclick = () => requestDeleteUser();
-  const delCancel = document.getElementById("btn-delete-cancel");
-  if (delCancel) delCancel.onclick = () => cancelDeleteUser();
-  const delConfirm = document.getElementById("btn-delete-confirm");
-  if (delConfirm) delConfirm.onclick = () => confirmDeleteUser();
+  if (delBtn) delBtn.onclick = () => deleteCurrentUser();
   const copyBtn = document.getElementById("btn-copy-pwd");
   if (copyBtn) {
     copyBtn.onclick = async () => {

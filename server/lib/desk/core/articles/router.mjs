@@ -20,6 +20,14 @@ import {
   isEditorialUpdate,
   shouldBumpEditorialModified,
 } from '../../../editorial-update.mjs';
+import { articleTitlePublishError } from '../../../article-title.mjs';
+
+function rejectMissingTitle(res, sendJson, title) {
+  const error = articleTitlePublishError(title);
+  if (!error) return false;
+  sendJson(res, 400, { error, code: 'TITLE_REQUIRED' });
+  return true;
+}
 
 function tableOf(ctx) {
   return assertSafeSqlIdent(
@@ -184,6 +192,7 @@ async function handleCollection(req, res, ctx) {
           ? 0
           : 1
         : 1;
+    if (!draft && rejectMissingTitle(res, sendJson, title)) return;
     const bodyHtml = cleanHtml(payload.body || '', 'store');
     const sourceUrl = payload.source_url
       ? String(payload.source_url).trim().slice(0, 500) || null
@@ -277,6 +286,7 @@ async function handlePublish(req, res, ctx, existing, articleId) {
       error: 'Publication réservée éditeur/admin',
     });
   }
+  if (rejectMissingTitle(res, sendJson, existing.title)) return;
   const parsed = await parseJsonBody(req, readBody, { allowEmpty: true });
   if (!parsed.ok) {
     return sendJson(res, 400, { error: 'JSON invalide' });
@@ -386,6 +396,7 @@ async function handleDraft(req, res, ctx, existing, articleId) {
       error: 'Publication réservée éditeur/admin',
     });
   }
+  if (!wantDraft && rejectMissingTitle(res, sendJson, existing.title)) return;
   await h.ensureArticleDateNullable(pool);
   if (wantDraft) {
     await pool.query(
@@ -508,6 +519,9 @@ async function handleUpdate(req, res, ctx, existing, articleId) {
   let draftVal = existing.draft;
   if (payload.draft === true) draftVal = 1;
   else if (payload.draft === false && canPublish(session.role)) draftVal = 0;
+  if (Number(draftVal) === 0 && rejectMissingTitle(res, sendJson, title)) {
+    return;
+  }
 
   const authorName =
     payload.author != null ? String(payload.author).trim() : existing.author;

@@ -66,7 +66,12 @@ const ACCOUNT_ACTIONS = [
   'user.update',
   'user.delete',
   'user.password_regenerate',
+  'user.password_reset',
   'user.password_forgot_reset',
+  'user.password_change',
+  'billing.provision_create',
+  'billing.provision_update',
+  'user.export',
 ];
 
 function actionLabelFr(action) {
@@ -75,7 +80,12 @@ function actionLabelFr(action) {
     'user.update': 'modification de compte',
     'user.delete': 'suppression de compte',
     'user.password_regenerate': 'mot de passe régénéré (pupitre)',
+    'user.password_reset': 'mot de passe régénéré',
     'user.password_forgot_reset': 'mot de passe réinitialisé',
+    'user.password_change': 'mot de passe changé',
+    'billing.provision_create': 'création de compte (abonnement)',
+    'billing.provision_update': 'modification de compte (abonnement)',
+    'user.export': 'export de comptes',
   };
   return map[action] || action;
 }
