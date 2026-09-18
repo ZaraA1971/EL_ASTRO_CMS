@@ -26,12 +26,14 @@ import {
   runEditorCommand,
   applyBlockAlign,
   setEditBaselineFromArticle,
-  isEditContentDirty,
   confirmLeaveEdit,
   canClickPublish,
   publishButtonLabel,
   isPublishUpdateAction,
   syncPublishButton,
+  scheduleSyncPublishButton,
+  markLiveBodyDirty,
+  editDirtyFromPayload,
   paintEditMessages,
   setEditBusy,
   paintEditAfterMutation,
@@ -41,7 +43,6 @@ import {
   assistResultToHtml,
   replaceSelectionOrBody,
   getAssistSourceText,
-  flushEditFormToState,
 } from "../core/body-editor.js";
 import { loadList } from "./list.js";
 import { closeMediaPicker, openMediaPicker } from "./media.js";
@@ -544,27 +545,27 @@ export async function createArticle() {
 }
 
 /** Sync le formulaire vers state.article avant un re-render (évite de perdre le texte). */
-function flushFormToState() {
+function flushFormToState(payload) {
   if (!state.article || state.view !== "edit") return;
-  const payload = collectForm();
-  if (!payload) return;
-  state.article.body = payload.body;
+  const next = payload || collectForm();
+  if (!next) return;
+  state.article.body = next.body;
   Object.assign(state.article.data, {
-    title: payload.title,
-    excerpt: payload.excerpt,
-    author: payload.author,
-    date: payload.date,
-    categories: payload.categories,
-    category_names: payload.category_names,
-    ia_keywords: payload.ia_keywords,
-    access: payload.access,
-    lang: payload.lang,
+    title: next.title,
+    excerpt: next.excerpt,
+    author: next.author,
+    date: next.date,
+    categories: next.categories,
+    category_names: next.category_names,
+    ia_keywords: next.ia_keywords,
+    access: next.access,
+    lang: next.lang,
   });
-  if (payload.author_slug !== undefined) {
-    state.article.data.author_slug = payload.author_slug;
+  if (next.author_slug !== undefined) {
+    state.article.data.author_slug = next.author_slug;
   }
-  if (payload.author_user_id !== undefined) {
-    state.article.data.author_user_id = payload.author_user_id;
+  if (next.author_user_id !== undefined) {
+    state.article.data.author_user_id = next.author_user_id;
   }
 }
 
@@ -587,9 +588,11 @@ function blockPublishWithoutTitle(title) {
 async function saveArticle({
   publish = false,
   skipPublishConfirm = false,
+  payload: given,
 } = {}) {
-  const payload = collectForm();
+  const payload = given || collectForm();
   if (!payload || !state.article) return;
+  const dirty = editDirtyFromPayload(payload);
   if (publish) {
     if (!state.caps.publish) {
       state.error = "Publication réservée éditeur/admin";
@@ -614,8 +617,12 @@ async function saveArticle({
       }
     }
   }
+  if (publish && !state.article.data.draft && !dirty.content) {
+    syncPublishButton({ dirty });
+    return;
+  }
   if (publish && !skipPublishConfirm) {
-    const isUpdate = isPublishUpdateAction();
+    const isUpdate = isPublishUpdateAction(dirty);
     const msg = isUpdate
       ? "Mettre à jour maintenant ?"
       : "Publier maintenant ?";
@@ -626,9 +633,9 @@ async function saveArticle({
   }
   const hadKw = (payload.ia_keywords || []).length > 0;
   const wasDraft = Boolean(state.article.data.draft);
-  const asUpdate = publish && isPublishUpdateAction();
+  const asUpdate = publish && isPublishUpdateAction(dirty);
   // Sync state sans reconstruire l’éditeur (garde curseur / scroll).
-  flushFormToState();
+  flushFormToState(payload);
   state.error = "";
   const pubVerb = asUpdate ? "Mise à jour" : "Publication";
   state.status =
@@ -797,7 +804,9 @@ async function toggleDraft() {
 
   // Remise en ligne : persister le brouillon local puis /publish (pas le body BDD stale).
   if (!nextDraft) {
-    if (isEditContentDirty()) {
+    const payload = collectForm();
+    if (!payload) return;
+    if (editDirtyFromPayload(payload).content) {
       const ok = await deskConfirm(
         "Des modifications non enregistrées seront mises en ligne. Continuer ?",
         { title: "Modifications non enregistrées" }
@@ -807,22 +816,22 @@ async function toggleDraft() {
     await saveArticle({
       publish: true,
       skipPublishConfirm: true,
+      payload,
     });
     return;
   }
 
   // Passage en brouillon : enregistrer d’abord si dirty, puis draft API.
-  if (isEditContentDirty()) {
+  const payload = collectForm();
+  if (!payload) return;
+  if (editDirtyFromPayload(payload).content) {
     const ok = await deskConfirm(
       "Enregistrer les modifications et passer en brouillon ?",
       { title: "Passer en brouillon" }
     );
     if (!ok) return;
   }
-
-  const payload = collectForm();
-  if (!payload) return;
-  flushFormToState();
+  flushFormToState(payload);
   state.error = "";
   state.status = "Passage en brouillon…";
   setEditBusy(true);
@@ -1002,7 +1011,7 @@ export function renderEdit() {
       ? `<textarea class="html-editor" id="html-editor">${escapeHtml(body)}</textarea>`
       : state.mode === "preview"
         ? `<iframe class="article-preview-frame" id="article-preview-frame" title="Aperçu mise en page site" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>`
-        : `<div class="visual-editor" id="visual-editor" contenteditable="true" role="textbox" aria-label="Texte"></div>`;
+        : `<div class="visual-editor" id="visual-editor" contenteditable="true" role="textbox" aria-label="Texte" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off"></div>`;
 
   app.innerHTML = `
     <header class="topbar">
@@ -1275,7 +1284,7 @@ export function renderEdit() {
     btnPublish.onclick = () =>
       saveArticle({ publish: true, skipPublishConfirm: false });
   }
-  const onEditDirty = () => syncPublishButton();
+  const onEditDirty = () => scheduleSyncPublishButton();
   document.getElementById("f-title")?.addEventListener("input", onEditDirty);
   document.getElementById("f-author")?.addEventListener("input", onEditDirty);
   document.getElementById("f-date")?.addEventListener("change", onEditDirty);
@@ -1372,7 +1381,7 @@ export function renderEdit() {
 
   app.querySelectorAll(".editor-tabs [data-mode]").forEach((btn) => {
     btn.onclick = () => {
-      flushEditFormToState();
+      flushFormToState();
       state.mode = btn.dataset.mode;
       ctx.render();
     };
@@ -1416,7 +1425,7 @@ export function renderEdit() {
     });
   }
   if (state.mode === "html") {
-    getHtmlEditor()?.addEventListener("input", () => syncPublishButton());
+    getHtmlEditor()?.addEventListener("input", () => markLiveBodyDirty());
     app.querySelectorAll('[data-cmd="clean"]').forEach((btn) => {
       btn.onclick = () => applyBodyClean();
     });

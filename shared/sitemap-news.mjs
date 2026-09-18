@@ -37,6 +37,47 @@ export function newsLang(lang) {
  * @param {Array<{ article_id?: number, slug?: string, title?: string, date?: Date|string, lang?: string }>} rows
  * @param {{ locOf: (row: object) => string, name?: string }} opts
  */
+/**
+ * @param {Array<{ loc: string, lastmod?: string, changefreq?: string, priority?: string, links?: Array<{ hreflang: string, href: string }> }>} urls
+ */
+export function buildSitemapIndex(locs) {
+  let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+  xml +=
+    '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
+  for (const loc of locs || []) {
+    if (!loc) continue;
+    xml += '  <sitemap>\n';
+    xml += `    <loc>${xmlEscape(loc)}</loc>\n`;
+    xml += '  </sitemap>\n';
+  }
+  xml += '</sitemapindex>\n';
+  return xml;
+}
+
+export function buildUrlset(urls) {
+  const list = (urls || []).filter((u) => u && u.loc);
+  const useXhtml = list.some((u) => Array.isArray(u.links) && u.links.length);
+  let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+  xml += useXhtml
+    ? '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">\n'
+    : '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
+  for (const u of list) {
+    xml += '  <url>\n';
+    xml += `    <loc>${xmlEscape(u.loc)}</loc>\n`;
+    if (u.lastmod) xml += `    <lastmod>${xmlEscape(u.lastmod)}</lastmod>\n`;
+    if (u.changefreq)
+      xml += `    <changefreq>${xmlEscape(u.changefreq)}</changefreq>\n`;
+    if (u.priority) xml += `    <priority>${xmlEscape(u.priority)}</priority>\n`;
+    for (const link of u.links || []) {
+      if (!link?.hreflang || !link?.href) continue;
+      xml += `    <xhtml:link rel="alternate" hreflang="${xmlEscape(link.hreflang)}" href="${xmlEscape(link.href)}"/>\n`;
+    }
+    xml += '  </url>\n';
+  }
+  xml += '</urlset>\n';
+  return xml;
+}
+
 export function newsSitemapXml(rows, opts) {
   const locOf = opts.locOf;
   const name = xmlEscape(opts.name || 'ElectronLibre');

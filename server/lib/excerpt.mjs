@@ -10,6 +10,7 @@ export {
   CARD_EXCERPT_WORDS,
   RELATED_EXCERPT_WORDS,
   IOS_BODY_FALLBACK_WORDS,
+  PUSH_EXCERPT_WORDS,
   deriveExcerptFromBody,
   trimExcerpt,
   cardExcerpt,

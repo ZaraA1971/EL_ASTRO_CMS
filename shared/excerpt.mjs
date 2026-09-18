@@ -2,7 +2,7 @@
  * Chapô / excerpts — source unique (desk, API, front Astro).
  *
  * API principale : chapo(article, context)
- *   context = 'hero' | 'card' | 'related' | 'ios' | 'store'
+ *   context = 'hero' | 'card' | 'related' | 'ios' | 'store' | 'push'
  */
 
 const CHAPO_LEAD_RE =
@@ -13,6 +13,7 @@ export const HERO_EXCERPT_WORDS = 130;
 export const CARD_EXCERPT_WORDS = 28;
 export const RELATED_EXCERPT_WORDS = 32;
 export const IOS_BODY_FALLBACK_WORDS = 55;
+export const PUSH_EXCERPT_WORDS = 40;
 
 /**
  * Règles par contexte — source de vérité pour les call-sites.
@@ -29,6 +30,8 @@ export const EXCERPT_CONTEXTS = {
   ios: { words: IOS_BODY_FALLBACK_WORDS, mode: 'ios' },
   /** Enregistrement BDD (desk) — dérivé proportionnel du corps. */
   store: { mode: 'store' },
+  /** Notification OneSignal — début (chapô, prolongé avec le corps si besoin). */
+  push: { words: PUSH_EXCERPT_WORDS, allowBody: true },
 };
 
 export function stripLeadingChapoHtml(html) {
@@ -176,7 +179,7 @@ export function excerptPlainForClient(row, opts = {}) {
  * @param {object|string|null} articleOrBody
  *   article `{ excerpt, body }` / Astro `{ data }` pour hero|card|related|ios ;
  *   HTML corps (string) ou article pour `store`.
- * @param {'hero'|'card'|'related'|'ios'|'store'} context
+ * @param {'hero'|'card'|'related'|'ios'|'store'|'push'} context
  * @param {{
  *   entitled?: boolean,
  *   allowBodyFallback?: boolean,

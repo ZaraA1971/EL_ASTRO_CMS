@@ -19,6 +19,8 @@ import {
   articleDisplayKeywords,
 } from "../../lib/articles";
 import { ASSET_V } from "../../lib/assets";
+import { chrome, pagePath, resolveLang } from "@el/i18n-seo";
+import LangSwitcher from "../../components/LangSwitcher.astro";
 
 const idSlug = Astro.params.idSlug || "";
 const article = await getArticleByIdSlug(idSlug);
@@ -31,7 +33,7 @@ if (idSlug !== canonicalSlug) {
   return Astro.redirect(articlePath(article), 301);
 }
 
-const pageLang = (article.data.lang || "fr").toLowerCase() === "en" ? "en" : "fr";
+const pageLang = resolveLang(article.data.lang);
 const [related, translationUrls] = await Promise.all([
   getRelatedArticles(article, 3),
   getTranslationUrls(article),
@@ -39,24 +41,19 @@ const [related, translationUrls] = await Promise.all([
 
 const free = isFreeArticle(article);
 const d = article.data;
-const homeHref = pageLang === "en" ? "/en/" : "/";
-const homeLabel = pageLang === "en" ? "Home" : "Accueil";
-const relatedTitle =
-  pageLang === "en" ? "Related reading..." : "A lire aussi...";
-const browseTitle = pageLang === "en" ? "Related topics" : "Sujets liés";
-const browseHint =
-  pageLang === "en" ? "Open articles with this keyword" : "Voir les articles sur ce mot-clé";
-const defineTitle = pageLang === "en" ? "Define" : "Définir";
-const defineHelp =
-  pageLang === "en"
-    ? "Click a term to get an AI definition in this article’s context."
-    : "Cliquez un terme pour obtenir une définition IA dans le contexte de l’article.";
-const dateLabel = formatArchiveDate(d.date);
+const homeHref = pagePath("home", pageLang);
+const homeLabel = chrome("homeLabel", pageLang);
+const relatedTitle = chrome("related", pageLang);
+const browseTitle = chrome("browseTitle", pageLang);
+const browseHint = chrome("browseHint", pageLang);
+const defineTitle = chrome("defineTitle", pageLang);
+const defineHelp = chrome("defineHelp", pageLang);
+const dateLabel = formatArchiveDate(d.date, pageLang);
 const updateDate = articleUpdateDate(article);
 const updateLabel = updateDate
-  ? formatUpdateDateTime(updateDate, pageLang === "en" ? "en" : "fr")
+  ? formatUpdateDateTime(updateDate, pageLang)
   : "";
-const updatePrefix = pageLang === "en" ? "Updated" : "Mis à jour le";
+const updatePrefix = chrome("updatePrefix", pageLang);
 const primaryCat = {
   slug: d.categories[0] || "",
   name: d.category_names[0] || "Article",
@@ -72,7 +69,6 @@ const iaKeywords = (!free ? d.ia_keywords || [] : []).slice(0, 24);
 const href = articlePath(article);
 const hasTranslations =
   Boolean(translationUrls?.FR) && Boolean(translationUrls?.EN);
-const currentLangCode = pageLang === "en" ? "EN" : "FR";
 
 // Paywall : jamais de cache public. Articles gratuits : revalidation rapide
 // (mots-clés / métadonnées éditées dans le pupitre doivent apparaître tout de suite).
@@ -90,9 +86,14 @@ Astro.response.headers.set(
   lang={pageLang}
   bodyClass="el-single-page"
   ogType="article"
+  alternates={{
+    fr: translationUrls.FR,
+    en: translationUrls.EN,
+  }}
+  hreflangContext="article"
 >
   <div class="el-archive-shell el-single-shell">
-    <nav class="el-breadcrumb" aria-label="Fil d'Ariane">
+    <nav class="el-breadcrumb" aria-label={chrome("breadcrumb", pageLang)}>
       <ol class="el-breadcrumb__list">
         <li class="el-breadcrumb__item">
           <a class="el-breadcrumb__link" href={homeHref}>{homeLabel}</a>
@@ -102,7 +103,7 @@ Astro.response.headers.set(
             <li class="el-breadcrumb__item">
               <a
                 class="el-breadcrumb__link"
-                href={`/articles/category/${primaryCat.slug}/`}
+                href={pagePath("category", pageLang, { slug: primaryCat.slug })}
               >
                 {primaryCat.name}
               </a>
@@ -119,7 +120,7 @@ Astro.response.headers.set(
       <p class="el-section-head__title">
         {
           primaryCat.slug ? (
-            <a href={`/articles/category/${primaryCat.slug}/`}>{primaryCat.name}</a>
+            <a href={pagePath("category", pageLang, { slug: primaryCat.slug })}>{primaryCat.name}</a>
           ) : (
             primaryCat.name
           )
@@ -132,28 +133,11 @@ Astro.response.headers.set(
         <div class="el-single-main">
           {
             hasTranslations && (
-              <div id="language-selector">
-                <label class="screen-reader-text" for="el-article-lang">
-                  {pageLang === "en" ? "Article language" : "Langue de l’article"}
-                </label>
-                <select
-                  id="el-article-lang"
-                  onchange="location = this.value;"
-                >
-                  <option
-                    value={translationUrls.FR}
-                    selected={currentLangCode === "FR" ? true : undefined}
-                  >
-                    🇫🇷 FR
-                  </option>
-                  <option
-                    value={translationUrls.EN}
-                    selected={currentLangCode === "EN" ? true : undefined}
-                  >
-                    🇬🇧 EN
-                  </option>
-                </select>
-              </div>
+              <LangSwitcher
+                lang={pageLang}
+                hrefs={{ fr: translationUrls.FR!, en: translationUrls.EN! }}
+                context="article"
+              />
             )
           }
           <article
@@ -191,7 +175,7 @@ Astro.response.headers.set(
               cats.length > 0 && (
                 <div class="category">
                   {cats.map((c) => (
-                    <a href={`/articles/category/${c.slug}/`}>{c.name}</a>
+                    <a href={pagePath("category", pageLang, { slug: c.slug })}>{c.name}</a>
                   ))}
                 </div>
               )
@@ -213,18 +197,16 @@ Astro.response.headers.set(
                     )}
                     <div class="el-paywall abonnement-cta">
                       <p>
-                        {pageLang === "en"
-                          ? "This article is reserved for ElectronLibre subscribers."
-                          : "Cet article est réservé aux abonnés ElectronLibre."}
+                        {chrome("paywall", pageLang)}
                       </p>
                       <a
                         class="btn-subscribe"
                         href={`/login/?redirect=${encodeURIComponent(href)}`}
                       >
-                        {pageLang === "en" ? "Log in" : "Connexion"}
+                        {chrome("login", pageLang)}
                       </a>
                       <a class="btn-subscribe" href="/abonnement/">
-                        {pageLang === "en" ? "Subscribe" : "Je m’abonne"}
+                        {chrome("subscribeCta", pageLang)}
                       </a>
                     </div>
                   </div>
@@ -241,6 +223,7 @@ Astro.response.headers.set(
                     keywords={browseKeywords}
                     class="tags el-keywords-browse"
                     linkTitle={browseHint}
+                    lang={pageLang}
                   />
                 </div>
               )
@@ -257,7 +240,7 @@ Astro.response.headers.set(
                 </header>
                 <div class="el-card-grid blog-grid-view el-related-grid">
                   {related.map((a) => (
-                    <ArticleCard article={a} variant="related" />
+                    <ArticleCard article={a} variant="related" lang={pageLang} />
                   ))}
                 </div>
               </section>

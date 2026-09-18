@@ -211,7 +211,7 @@ a {
   padding: 18px 16px 20px;
   box-shadow: var(--shadow);
   /* Isole le gros contenteditable du reste de la page */
-  contain: layout paint style;
+  contain: layout paint;
 }
 
 .edit-col-meta {
@@ -1284,6 +1284,7 @@ body.desk-dialog-open {
 }
 
 .visual-editor {
+  overflow-anchor: none;
   min-height: 52vh;
   max-height: min(70vh, calc(100dvh - 220px - var(--sticky-actions-h)));
   padding: 18px 20px;

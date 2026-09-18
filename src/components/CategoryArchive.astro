@@ -1,0 +1,29 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import ArchiveList from "./ArchiveList.astro";
+import { categoryArchiveBase, type CategoryArchiveReady } from "../lib/archive";
+import { chrome } from "@el/i18n-seo";
+
+type Props = CategoryArchiveReady;
+
+const { lang, slug, name, featured, rest, page, totalPages, title } = Astro.props;
+---
+
+<BaseLayout
+  title={title}
+  description={`Articles — ${name}`}
+  lang={lang}
+  hreflangContext="category"
+  hreflangOpts={{ slug, page }}
+>
+  <ArchiveList
+    title={name}
+    featured={featured}
+    rest={rest}
+    page={page}
+    totalPages={totalPages}
+    lang={lang}
+    basePath={categoryArchiveBase(slug, lang)}
+    emptyMessage={chrome("emptyCategory", lang)}
+  />
+</BaseLayout>

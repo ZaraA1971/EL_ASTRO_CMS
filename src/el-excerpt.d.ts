@@ -3,8 +3,9 @@ declare module '@el/excerpt' {
   export const CARD_EXCERPT_WORDS: number;
   export const RELATED_EXCERPT_WORDS: number;
   export const IOS_BODY_FALLBACK_WORDS: number;
+  export const PUSH_EXCERPT_WORDS: number;
 
-  export type ExcerptContext = 'hero' | 'card' | 'related' | 'ios' | 'store';
+  export type ExcerptContext = 'hero' | 'card' | 'related' | 'ios' | 'store' | 'push';
 
   export const EXCERPT_CONTEXTS: Record<
     ExcerptContext,

@@ -91,6 +91,11 @@ body.admin-bar .site-header .top-bar {
 .site-header .top-bar .top-lang-switcher {
   margin-left: 0 !important;
   margin-right: 0 !important;
+  display: flex;
+  align-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 4px;
+  overflow: hidden;
 }
 
 .site-header .top-bar .top-search {
@@ -134,29 +139,23 @@ body.admin-bar .site-header .top-bar {
   fill: #fff;
 }
 
-.site-header .top-bar .top-lang-switcher {
-  display: flex;
+.site-header .top-bar .top-lang-switcher .el-lang-link {
+  display: inline-flex;
   align-items: center;
-}
-
-.site-header .top-bar .top-lang-switcher select {
-  background-color: transparent;
+  justify-content: center;
+  min-width: 28px;
+  padding: 2px 5px;
   color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  border-radius: 4px;
-  padding: 3px 6px;
   font-size: 14px;
-  font-family: inherit;
-  cursor: pointer;
-  appearance: none;
+  line-height: 1.2;
+  text-decoration: none;
+  opacity: 0.45;
 }
 
-.site-header .top-bar .top-lang-switcher select option {
-  color: #000;
-}
-
-.site-header .top-bar .top-lang-switcher select:hover {
-  border-color: #fff;
+.site-header .top-bar .top-lang-switcher .el-lang-link:hover,
+.site-header .top-bar .top-lang-switcher .el-lang-link.is-active {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .site-header .top-bar .top-login {

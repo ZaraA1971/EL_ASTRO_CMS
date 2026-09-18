@@ -3,7 +3,7 @@
  * Env : ONESIGNAL_APP_ID, ONESIGNAL_REST_API_KEY, ONESIGNAL_SITE_URL
  */
 
-import { stripHtmlToText } from './excerpt.mjs';
+import { chapo } from './excerpt.mjs';
 import { absoluteArticleUrl } from './article-path.mjs';
 import {
   mergeSegmentLists,
@@ -90,9 +90,15 @@ export async function listPushSegments(opts = {}) {
  * @param {string} opts.siteUrl — base URL publique (ex. https://electronlibre.info)
  * @param {string|string[]} [opts.segment]
  * @param {string[]} [opts.segments]
- * @param {string} [opts.title] — heading (défaut nom du site)
  * @param {boolean} [opts.sendToMobile]
  */
+export function articlePushCopy(articleRow) {
+  const heading =
+    String(articleRow?.title || '').trim() || 'Nouvel article';
+  const content = chapo(articleRow, 'push') || heading;
+  return { heading, content };
+}
+
 export async function sendArticlePush(articleRow, opts) {
   const appId = String(opts.appId || '').trim();
   const apiKey = String(opts.apiKey || '').trim();
@@ -101,11 +107,7 @@ export async function sendArticlePush(articleRow, opts) {
 
   const articleId = Number(articleRow.article_id);
   const slug = String(articleRow.slug || 'article');
-  const articleTitle = String(articleRow.title || 'Nouvel article').trim();
-  const heading = String(opts.title || 'ElectronLibre').trim() || 'ElectronLibre';
-  const content =
-    stripHtmlToText(articleRow.excerpt).slice(0, 220) ||
-    articleTitle.slice(0, 220);
+  const { heading, content } = articlePushCopy(articleRow);
   const url = absoluteArticleUrl(siteUrl, articleId, slug);
   const segments = resolvePushSegments(opts.segments ?? opts.segment);
 

@@ -1,12 +1,12 @@
 ---
 export const prerender = false;
 
-import CategoryArchive from "../../../../../components/CategoryArchive.astro";
-import { prepareCategoryArchive } from "../../../../../lib/archive";
+import CategoryArchive from "../../../../../../components/CategoryArchive.astro";
+import { prepareCategoryArchive } from "../../../../../../lib/archive";
 
 const result = await prepareCategoryArchive(
   Astro.params.slug,
-  "fr",
+  "en",
   Number(Astro.params.n || 2),
   { paginated: true }
 );

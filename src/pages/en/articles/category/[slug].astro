@@ -1,10 +1,10 @@
 ---
 export const prerender = false;
 
-import CategoryArchive from "../../../components/CategoryArchive.astro";
-import { prepareCategoryArchive } from "../../../lib/archive";
+import CategoryArchive from "../../../../components/CategoryArchive.astro";
+import { prepareCategoryArchive } from "../../../../lib/archive";
 
-const result = await prepareCategoryArchive(Astro.params.slug, "fr", 1);
+const result = await prepareCategoryArchive(Astro.params.slug, "en", 1);
 if ("redirect" in result) return Astro.redirect(result.redirect);
 Astro.response.headers.set(
   "Cache-Control",

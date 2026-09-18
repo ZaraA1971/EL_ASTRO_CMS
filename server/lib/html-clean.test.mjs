@@ -236,4 +236,11 @@ describe('html-clean', () => {
   it('reset returns empty for blank input', () => {
     assert.equal(cleanHtml('<p> </p><span></span>', 'reset'), '');
   });
+
+  it('leaves already-clean article html unchanged', () => {
+    const html =
+      '<p><strong>Chapô d’intro.</strong></p><p>Un paragraphe avec un <a href="https://el.test">lien</a>.</p><p>Encore du texte, sans style collé.</p>';
+    assert.equal(cleanHtml(html, 'desk'), html);
+    assert.equal(cleanHtml(html, 'store'), html);
+  });
 });

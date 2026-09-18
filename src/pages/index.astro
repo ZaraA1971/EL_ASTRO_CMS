@@ -1,20 +1,12 @@
 ---
 export const prerender = false;
 
-import BaseLayout from "../layouts/BaseLayout.astro";
-import ArchiveHome from "../components/ArchiveHome.astro";
-import { getArchivePage } from "../lib/archive";
+import HomeArchive from "../components/HomeArchive.astro";
+import { prepareHomeArchive } from "../lib/archive";
 
-const { featured, rest, page, totalPages } = await getArchivePage("fr", 1);
-Astro.response.headers.set("Cache-Control", "public, max-age=10, must-revalidate");
+const result = await prepareHomeArchive("fr", 1);
+if ("redirect" in result) return Astro.redirect(result.redirect);
+Astro.response.headers.set("Cache-Control", result.cache);
 ---
 
-<BaseLayout>
-  <ArchiveHome
-    featured={featured}
-    rest={rest}
-    page={page}
-    totalPages={totalPages}
-    lang="fr"
-  />
-</BaseLayout>
+<HomeArchive {...result} />

@@ -1,0 +1,37 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import ArticleCard from "./ArticleCard.astro";
+import type { TagArchiveReady } from "../lib/archive";
+import { chrome } from "@el/i18n-seo";
+
+type Props = TagArchiveReady;
+
+const { lang, tagSlug, name, featured, rest } = Astro.props;
+---
+
+<BaseLayout
+  title={`${name} | ElectronLibre`}
+  description={`Articles — ${name}`}
+  lang={lang}
+  hreflangContext="tag"
+  hreflangOpts={{ slug: tagSlug }}
+>
+  <section class="el-archive-shell el-archive-page el-home-page">
+    <header class="el-section-head">
+      <h1 class="el-section-head__title">{name}</h1>
+    </header>
+
+    {
+      !featured && rest.length === 0 ? (
+        <p class="el-home__sub">{chrome("emptyTag", lang)}</p>
+      ) : (
+        <div class="el-card-grid blog-grid-view">
+          {featured && <ArticleCard article={featured} featured lang={lang} />}
+          {rest.map((article) => (
+            <ArticleCard article={article} lang={lang} />
+          ))}
+        </div>
+      )
+    }
+  </section>
+</BaseLayout>

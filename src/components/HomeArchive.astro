@@ -1,0 +1,24 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import ArchiveHome from "./ArchiveHome.astro";
+import type { HomeArchiveReady } from "../lib/archive";
+
+type Props = HomeArchiveReady;
+
+const { lang, featured, rest, page, totalPages, title } = Astro.props;
+---
+
+<BaseLayout
+  title={title}
+  lang={lang}
+  hreflangContext="home"
+  hreflangOpts={page > 1 ? { page } : undefined}
+>
+  <ArchiveHome
+    featured={featured}
+    rest={rest}
+    page={page}
+    totalPages={totalPages}
+    lang={lang}
+  />
+</BaseLayout>

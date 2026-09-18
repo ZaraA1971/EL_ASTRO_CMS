@@ -118,21 +118,32 @@
   function updateHeader(me) {
     var box = document.getElementById('el-login');
     if (!box) return;
+    var isEn = String(window.currentLanguage || 'FR').toUpperCase() === 'EN';
     if (me && me.authenticated) {
+      var account = isEn ? 'Account' : 'Compte';
       box.innerHTML =
-        '<a href="/compte/" class="icon-btn login-icon" aria-label="Mon compte">' +
+        '<a href="/compte/" class="icon-btn login-icon" aria-label="' +
+        (isEn ? 'My account' : 'Mon compte') +
+        '">' +
         '<div class="ia-header-icon-wrapper">' +
         '<img src="/icons/sf/loginEL.svg" alt="" width="20" height="20">' +
-        '<span class="ia-header-label">Compte</span></div></a>';
+        '<span class="ia-header-label">' +
+        account +
+        '</span></div></a>';
     } else {
       var redirect = encodeURIComponent(location.pathname + location.search);
+      var login = isEn ? 'Log in' : 'Connexion';
       box.innerHTML =
         '<a href="/login/?redirect=' +
         redirect +
-        '" class="icon-btn login-icon" aria-label="Connexion">' +
+        '" class="icon-btn login-icon" aria-label="' +
+        login +
+        '">' +
         '<div class="ia-header-icon-wrapper">' +
         '<img src="/icons/sf/loginEL.svg" alt="" width="20" height="20">' +
-        '<span class="ia-header-label">Connexion</span></div></a>';
+        '<span class="ia-header-label">' +
+        login +
+        '</span></div></a>';
     }
   }
 

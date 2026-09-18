@@ -15,14 +15,46 @@ import {
   fromDatetimeLocalValue,
   updateDateLabel,
 } from "./format.js";
-import { catLabel } from "./rubrics.js";
 import { ctx } from "./ctx.js";
 import { isPastEditorialUpdateGrace } from "../editorial-update.js";
 import { normalizeAccess } from "../article-row.js";
 
+/** Dernier couple brut → nettoyé (évite 3–6 passes identiques d’affilée). */
+let cleanBodyCacheRaw = null;
+let cleanBodyCacheOut = "";
+/** Corps déjà normalisé au dernier chargement / enregistrement. */
+let baselineCleanedBody = "";
+/** true dès qu’on a touché le corps depuis la baseline. */
+let bodyDomDirty = false;
+let publishSyncRaf = 0;
+
+const EDITORIAL_FP_OPTS = {
+  includeAccess: false,
+  includeCategories: false,
+  includeAuthor: false,
+  includeIaKeywords: false,
+};
+
+function noteBodyMutated() {
+  bodyDomDirty = true;
+  if (state.article && !state.article.data.draft) state.editDirty = true;
+  paintPublishButton({ content: true, editorial: true });
+}
+
+export function markLiveBodyDirty() {
+  noteBodyMutated();
+}
+
 /** Corps article : toujours via contexte desk (styles collés, data-pm, etc.). */
 export function cleanBody(html) {
-  return cleanArticleHtml(html, "desk");
+  const raw = typeof html === "string" ? html : "";
+  if (raw === cleanBodyCacheRaw || raw === cleanBodyCacheOut) {
+    return cleanBodyCacheOut;
+  }
+  const out = cleanArticleHtml(raw, "desk");
+  cleanBodyCacheRaw = raw;
+  cleanBodyCacheOut = out;
+  return out;
 }
 
 /** Bouton Nettoyer — texte brut remis en paragraphes simples. */
@@ -112,6 +144,13 @@ function closestAlignBlock(node, editor) {
     }
     el = el.parentElement;
   }
+  if (
+    el === editor &&
+    editor !== getVisualEditor() &&
+    ALIGN_BLOCK_TAGS.has(editor.tagName.toLowerCase())
+  ) {
+    return editor;
+  }
   return null;
 }
 
@@ -196,9 +235,10 @@ export function applyBlockAlign(context) {
     if (allMatch) setBlockAlignStyle(block, "");
     else setBlockAlignStyle(block, want);
     stripInlineAlign(block);
+    tidyVisualInline(block);
+    renameBToStrong(block);
   }
-  tidyVisualInline(ed);
-  renameBToStrong(ed);
+  noteBodyMutated();
 }
 
 function stripInlineAlign(root) {
@@ -210,22 +250,33 @@ function stripInlineAlign(root) {
 }
 
 /** Déplie spans vides / gras dans gras — sans réécrire tout le HTML (curseur conservé). */
-function tidyVisualInline(ed = getVisualEditor()) {
-  if (!ed) return;
-  liftInlineAlignInDom(ed);
-  for (const span of [...ed.querySelectorAll("span")]) {
+function tidyVisualInline(root = getVisualEditor()) {
+  if (!root) return;
+  liftInlineAlignInDom(root);
+  for (const span of [...root.querySelectorAll("span")]) {
     if (span.hasAttributes()) continue;
     unwrapElement(span);
   }
-  for (const inner of [...ed.querySelectorAll("b b, strong strong, i i, em em")]) {
+  for (const inner of [...root.querySelectorAll("b b, strong strong, i i, em em")]) {
     unwrapElement(inner);
   }
+}
+
+function tidySelectionOrEditor(ed = getVisualEditor()) {
+  if (!ed) return;
+  const blocks = blocksFromSelection(ed);
+  if (!blocks.length) {
+    tidyVisualInline(ed);
+    return;
+  }
+  for (const block of blocks) tidyVisualInline(block);
 }
 
 /** Gras / italique / liste — puis rangement léger. */
 export function runEditorCommand(cmd, value) {
   exec(cmd, value);
-  if (cmd !== "undo" && cmd !== "redo") tidyVisualInline();
+  if (cmd !== "undo" && cmd !== "redo") tidySelectionOrEditor();
+  noteBodyMutated();
 }
 
 /** formatBlock cross-browser (Chrome préfère `<h2>`). */
@@ -236,7 +287,8 @@ export function execFormatBlock(tag) {
   if (!document.execCommand("formatBlock", false, `<${t}>`)) {
     document.execCommand("formatBlock", false, t);
   }
-  tidyVisualInline();
+  tidySelectionOrEditor();
+  noteBodyMutated();
 }
 
 /** Actions du menu au clic sur un texte lié. */
@@ -259,6 +311,7 @@ function closestEditorLink(node, ed) {
 }
 
 function hideLinkMenu() {
+  if (!linkMenuAnchor) return;
   linkMenuAnchor = null;
   document.getElementById(LINK_MENU_ID)?.remove();
 }
@@ -283,8 +336,7 @@ function placeLinkMenu(menu, a) {
 function markEditorBodyDirty() {
   const ed = getVisualEditor();
   tidyVisualInline(ed);
-  if (state.article && ed) state.article.body = cleanBody(ed.innerHTML);
-  syncPublishButton();
+  noteBodyMutated();
 }
 
 function unwrapEditorLink(a) {
@@ -430,6 +482,14 @@ export function getBodyFromDom() {
   return state.article?.body || "";
 }
 
+/** Corps pour empreinte. En mode léger, on ne lit pas le DOM. */
+function readBodyForDirty(precise) {
+  if (!precise || !bodyDomDirty) return baselineCleanedBody || "";
+  const cleaned = getBodyFromDom();
+  if (cleaned === baselineCleanedBody) bodyDomDirty = false;
+  return cleaned;
+}
+
 /** Applique Nettoyer dans l’éditeur courant (sans save). */
 export function applyBodyClean() {
   hideLinkMenu();
@@ -445,7 +505,7 @@ export function applyBodyClean() {
     el.value = resetBody(el.value);
     if (state.article) state.article.body = el.value;
   }
-  syncPublishButton();
+  noteBodyMutated();
 }
 
 /** Dernière sélection dans l’éditeur — Safari/Chrome Mac peuvent la perdre au Cmd+V. */
@@ -468,6 +528,10 @@ function hasVisualTextSelection() {
 }
 
 function rememberVisualSelection() {
+  if (state.view !== "edit" || state.mode !== "visual") {
+    lastVisualRange = null;
+    return;
+  }
   const ed = getVisualEditor();
   const sel = window.getSelection();
   if (!ed || !sel || !sel.rangeCount || sel.isCollapsed) {
@@ -526,8 +590,7 @@ function applyPasteLink(e, payload) {
   ed?.focus();
   exec("createLink", href);
   hideLinkMenu();
-  if (state.article && ed) state.article.body = cleanBody(ed.innerHTML);
-  syncPublishButton();
+  noteBodyMutated();
   pasteLinkJustApplied = true;
   setTimeout(() => {
     pasteLinkJustApplied = false;
@@ -583,8 +646,7 @@ function onVisualPaste(e) {
   if (!insert) return;
   if (hasVisualTextSelection()) restoreVisualSelectionIfNeeded();
   exec("insertHTML", insert);
-  if (state.article) state.article.body = cleanBody(ed.innerHTML);
-  syncPublishButton();
+  noteBodyMutated();
 }
 
 /** Écouteurs collage / liens — une fois par nœud éditeur. */
@@ -596,7 +658,7 @@ export function bindVisualEditorClipboard(ed) {
   ed.dataset.deskEditorBound = "1";
   ed.addEventListener("input", () => {
     hideLinkMenu();
-    syncPublishButton();
+    noteBodyMutated();
   });
   ed.addEventListener("beforeinput", onVisualBeforeInput, true);
   ed.addEventListener("paste", onVisualPaste, true);
@@ -649,7 +711,7 @@ function editFingerprint(p = {}, opts = {}) {
   const kws = normalizeKeywordList(p.ia_keywords);
   const base = {
     title: String(p.title || "").trim(),
-    body: cleanBody(p.body || ""),
+    body: String(p.body || ""),
     date: fingerprintDate(p.date),
   };
   if (includeIaKeywords) base.ia_keywords = kws;
@@ -659,12 +721,12 @@ function editFingerprint(p = {}, opts = {}) {
   return JSON.stringify(base);
 }
 
-function editFingerprintFromArticle(article) {
+function editFingerprintFromArticle(article, cleanedBody = null) {
   if (!article) return "";
   const d = article.data || {};
   return editFingerprint({
     title: d.title,
-    body: article.body,
+    body: cleanedBody != null ? cleanedBody : cleanBody(article.body || ""),
     author: d.author,
     date: d.date,
     categories: d.categories,
@@ -676,17 +738,38 @@ function editFingerprintFromArticle(article) {
 export function setEditBaselineFromArticle(article = state.article) {
   if (!article) {
     state.editBaseline = "";
+    state.editEditorialBaseline = "";
     state.editDirty = false;
+    baselineCleanedBody = "";
+    bodyDomDirty = false;
     return;
   }
-  state.editBaseline = editFingerprintFromArticle(article);
+  const cleanedBody = cleanBody(article.body || "");
+  baselineCleanedBody = cleanedBody;
+  bodyDomDirty = false;
+  state.editBaseline = editFingerprintFromArticle(article, cleanedBody);
+  const d = article.data || {};
+  state.editEditorialBaseline = editFingerprint(
+    { title: d.title, body: cleanedBody, date: d.date },
+    EDITORIAL_FP_OPTS
+  );
   state.editDirty = false;
 }
 
-function currentEditFingerprint() {
-  if (!state.article) return "";
-  if (state.view !== "edit") return editFingerprintFromArticle(state.article);
+function collectEditFields(precise) {
   const a = state.article;
+  if (!a) return null;
+  if (state.view !== "edit") {
+    return {
+      title: a.data.title,
+      body: precise ? cleanBody(a.body || "") : baselineCleanedBody || "",
+      author: a.data.author,
+      date: a.data.date,
+      categories: a.data.categories,
+      access: a.data.access,
+      ia_keywords: a.data.ia_keywords,
+    };
+  }
   const titleEl = document.getElementById("f-title");
   const authorEl = document.getElementById("f-author");
   const accessEl = document.getElementById("f-access");
@@ -711,71 +794,57 @@ function currentEditFingerprint() {
   if (!a.data.draft && dateEl && !dateEl.disabled && dateEl.value) {
     date = fromDatetimeLocalValue(dateEl.value) || date;
   }
-  return editFingerprint({
+  return {
     title: titleEl != null ? titleEl.value : a.data.title,
-    body: getBodyFromDom(),
+    body: readBodyForDirty(precise),
     author: authorEl != null ? authorEl.value : a.data.author,
     date,
     categories: cats,
     access,
     ia_keywords,
+  };
+}
+
+function dirtyFromFields(fields) {
+  if (!fields || !state.editBaseline) return { content: false, editorial: false };
+  return {
+    content: editFingerprint(fields) !== state.editBaseline,
+    editorial:
+      Boolean(state.editEditorialBaseline) &&
+      editFingerprint(
+        { title: fields.title, body: fields.body, date: fields.date },
+        EDITORIAL_FP_OPTS
+      ) !== state.editEditorialBaseline,
+  };
+}
+
+function evaluateEditDirty({ precise = false } = {}) {
+  if (!state.article || state.view !== "edit" || !state.editBaseline) {
+    return { content: false, editorial: false };
+  }
+  if (bodyDomDirty && !precise) return { content: true, editorial: true };
+  return dirtyFromFields(collectEditFields(precise));
+}
+
+/** Empreinte déjà lue (collectForm) — pas de 2e lecture du corps. */
+export function editDirtyFromPayload(payload) {
+  if (!state.article || !state.editBaseline || !payload) {
+    return { content: false, editorial: false };
+  }
+  return dirtyFromFields({
+    title: payload.title,
+    body: payload.body || "",
+    author: payload.author,
+    date: payload.date,
+    categories: payload.categories,
+    access: payload.access,
+    ia_keywords: payload.ia_keywords,
   });
 }
 
 /** Titre / corps / metas modifiés depuis le dernier save / chargement. */
 export function isEditContentDirty() {
-  if (!state.article || state.view !== "edit") return false;
-  if (!state.editBaseline) return false;
-  return currentEditFingerprint() !== state.editBaseline;
-}
-
-/**
- * Contenu éditorial dirty (titre / corps / date).
- * Accès, rubriques, auteur, mots-clés IA, épingle : ne comptent pas
- * comme « Mis à jour ».
- */
-function isEditorialContentDirty() {
-  if (!state.article || state.view !== "edit") return false;
-  if (!state.editBaseline) return false;
-  const a = state.article;
-  const d = a.data || {};
-  const fpOpts = {
-    includeAccess: false,
-    includeCategories: false,
-    includeAuthor: false,
-    includeIaKeywords: false,
-  };
-  const baselineEditorial = editFingerprint(
-    {
-      title: d.title,
-      body: a.body,
-      date: d.date,
-    },
-    fpOpts
-  );
-  const titleEl = document.getElementById("f-title");
-  const dateEl = document.getElementById("f-date");
-  let date = d.date;
-  if (!d.draft && dateEl && !dateEl.disabled && dateEl.value) {
-    date = fromDatetimeLocalValue(dateEl.value) || date;
-  }
-  const currentEditorial = editFingerprint(
-    {
-      title: titleEl != null ? titleEl.value : d.title,
-      body: getBodyFromDom(),
-      date,
-    },
-    fpOpts
-  );
-  return currentEditorial !== baselineEditorial;
-}
-
-function refreshEditDirty() {
-  if (!state.article || state.article.data.draft) {
-    state.editDirty = false;
-    return;
-  }
-  state.editDirty = isEditContentDirty();
+  return evaluateEditDirty({ precise: true }).content;
 }
 
 /** Quitter l’édition : confirm si dirty (texte ou metas). */
@@ -795,34 +864,58 @@ export function canClickPublish() {
 }
 
 /** Article en ligne hors délai de grâce → une validation compte comme mise à jour. */
-export function isPublishUpdateAction() {
+export function isPublishUpdateAction(dirty) {
+  const d = dirty || evaluateEditDirty({ precise: true });
   return Boolean(
     state.article &&
       !state.article.data.draft &&
       isPastEditorialUpdateGrace(state.article.data.date) &&
-      isEditorialContentDirty()
+      d.editorial
   );
 }
 
 /** Libellé Publier : « Mis à jour » si en ligne, dirty éditorial, et ≥ 45 min après publication. */
-export function publishButtonLabel() {
+export function publishButtonLabel(dirty) {
+  const d = dirty || evaluateEditDirty({ precise: false });
   if (!state.article) return "Publier";
   if (state.article.data.draft) return "Publier";
-  if (!isEditContentDirty()) return "Publier";
-  return isPublishUpdateAction() ? "Mis à jour" : "Publier";
+  if (!d.content) return "Publier";
+  return isPublishUpdateAction(d) ? "Mis à jour" : "Publier";
 }
 
-export function syncPublishButton() {
-  refreshEditDirty();
+function paintPublishButton(dirty) {
   const btn = document.getElementById("btn-publish");
   if (!btn) return;
   const ok = canClickPublish();
-  const label = publishButtonLabel();
+  const label = publishButtonLabel(dirty);
   btn.disabled = !ok || state.saving;
   btn.textContent = label;
   btn.title = ok
     ? label
     : "Déjà publié — modifiez le texte ou les métas pour mettre à jour";
+}
+
+export function syncPublishButton({ precise = false, dirty } = {}) {
+  if (publishSyncRaf) {
+    cancelAnimationFrame(publishSyncRaf);
+    publishSyncRaf = 0;
+  }
+  const next = dirty || evaluateEditDirty({ precise });
+  if (!state.article || state.article.data.draft) {
+    state.editDirty = false;
+  } else {
+    state.editDirty = next.content;
+  }
+  paintPublishButton(next);
+}
+
+/** Titre / metas : compare sans relire le corps. */
+export function scheduleSyncPublishButton() {
+  if (publishSyncRaf) return;
+  publishSyncRaf = requestAnimationFrame(() => {
+    publishSyncRaf = 0;
+    syncPublishButton({ precise: false });
+  });
 }
 
 /** Messages sous l’éditeur — sans reconstruire le DOM. */
@@ -1001,6 +1094,7 @@ export function insertChapoAtTop(chapoPlain) {
     return;
   }
   state.article.body = next;
+  noteBodyMutated();
 }
 
 /** Texte source pour Corriger / Reformuler (sélection ou corps entier). */
@@ -1047,6 +1141,7 @@ export function replaceSelectionOrBody(html) {
       el.value = html;
     }
     state.article.body = el.value;
+    noteBodyMutated();
     return;
   }
   const ed = document.getElementById("visual-editor");
@@ -1073,8 +1168,9 @@ export function replaceSelectionOrBody(html) {
     }
   } else {
     ed.innerHTML = html;
+    if (state.article) state.article.body = html;
   }
-  state.article.body = cleanBody(ed.innerHTML);
+  noteBodyMutated();
 }
 
 export function stripTagsPlain(html) {
@@ -1084,34 +1180,4 @@ export function stripTagsPlain(html) {
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-/** Flush champs édition vers state avant re-render (changement d’onglet). */
-export function flushEditFormToState() {
-  if (!state.article) return;
-  if (state.mode === "visual" || state.mode === "html") {
-    state.article.body = getBodyFromDom();
-  }
-  const titleEl = document.getElementById("f-title");
-  if (titleEl) {
-    state.article.data.title =
-      titleEl.value.trim() || state.article.data.title || "";
-  }
-  const authorEl = document.getElementById("f-author");
-  if (authorEl) {
-    state.article.data.author =
-      authorEl.value.trim() || state.article.data.author || "";
-  }
-  const chips = [...document.querySelectorAll("#chips .chip.on")].map(
-    (el) => el.dataset.value
-  );
-  if (chips.length) {
-    state.article.data.categories = chips;
-    state.article.data.category_names = chips.map(catLabel);
-  }
-  const dateEl = document.getElementById("f-date");
-  if (dateEl && !dateEl.disabled && dateEl.value) {
-    const iso = fromDatetimeLocalValue(dateEl.value);
-    if (iso) state.article.data.date = iso;
-  }
 }

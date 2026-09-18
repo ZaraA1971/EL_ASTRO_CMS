@@ -85,15 +85,27 @@
 }
 
 .el-single-page #language-selector {
+  display: flex;
+  gap: 8px;
   margin-bottom: 18px;
 }
 
-.el-single-page #language-selector select {
+.el-single-page #language-selector .el-article-lang-link {
+  display: inline-flex;
+  align-items: center;
   font-family: var(--el-font-ui);
   font-size: 0.88rem;
-  border-color: var(--el-border);
+  border: 1px solid var(--el-border);
   border-radius: 999px;
   padding: 6px 12px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.el-single-page #language-selector .el-article-lang-link.is-active {
+  border-color: var(--el-accent);
+  color: var(--el-accent);
+  font-weight: 600;
 }
 
 /* Paywall + GEO teaser */

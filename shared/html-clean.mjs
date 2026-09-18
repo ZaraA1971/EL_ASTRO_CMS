@@ -547,7 +547,9 @@ function liftAlignRegion(html, wrapOrphans) {
  * @param {string} html
  */
 export function liftInlineTextAlign(html) {
-  return liftAlignRegion(String(html || ''), true);
+  const h = String(html || '');
+  if (!h || !/text-align/i.test(h)) return h;
+  return liftAlignRegion(h, true);
 }
 
 /**
@@ -573,6 +575,39 @@ export function htmlToPlainParagraphs(html) {
   return parts.map((block) => `<p>${escapeHtml(block)}</p>`).join('');
 }
 
+function hasClipboardChrome(html) {
+  return /<!--|<body\b|<meta\b|<link\b|<xml\b/i.test(html);
+}
+
+function hasEmbeddedCss(html) {
+  return /<(?:style|script)\b/i.test(html);
+}
+
+function hasPasteWrappers(html) {
+  return /docs-internal-guid|<\/?o:p\b|<\/?[a-z]+:[a-z]|font-weight\s*:\s*(?:normal|400)/i.test(
+    html
+  );
+}
+
+function hasFontJunk(html) {
+  return /<font\b|\s(?:color|face|size|bgcolor)\s*=/i.test(html);
+}
+
+function hasTagAttributes(html) {
+  return /<[a-z][a-z0-9]*\s/i.test(html);
+}
+
+function needsInlineMarkupNormalize(html) {
+  return (
+    /<(?:b|span)\b/i.test(html) ||
+    /<(strong|em|i)(?:\s[^>]*)?>\s*<\1\b/i.test(html) ||
+    /<\/(?:strong|em|i)>\s*<(?:strong|em|i)\b/i.test(html) ||
+    /<(?:span|strong|em|i)(?:\s[^>]*)?>\s*(?:&nbsp;|\u00a0|\s)*<\/(?:span|strong|em|i)>/i.test(
+      html
+    )
+  );
+}
+
 /**
  * @param {string} html
  * @param {'store'|'desk'|'paste'|'ios'|'reset'|string} [context='store']
@@ -593,34 +628,34 @@ export function cleanHtml(html, context = 'store') {
     return htmlToPlainParagraphs(h);
   }
 
-  if (rules.extractClipboard) {
+  if (rules.extractClipboard && hasClipboardChrome(h)) {
     h = extractClipboardFragment(h);
   }
-  if (rules.stripEmbeddedCss) {
+  if (rules.stripEmbeddedCss && hasEmbeddedCss(h)) {
     h = stripEmbeddedCss(h);
   }
-  if (rules.unwrapPasteWrappers) {
+  if (rules.unwrapPasteWrappers && hasPasteWrappers(h)) {
     h = unwrapPasteWrappers(h);
   }
-  if (rules.normalizeInline) {
+  if (rules.normalizeInline && /<span\b/i.test(h)) {
     h = promoteInlineStyles(h);
   }
-  if (rules.stripFontJunk) {
+  if (rules.stripFontJunk && hasFontJunk(h)) {
     h = stripFontJunk(h);
   }
-  if (rules.filterAttrs) {
+  if (rules.filterAttrs && hasTagAttributes(h)) {
     h = filterTagAttributes(h);
   }
-  if (rules.normalizeStyles) {
+  if (rules.normalizeStyles && /\sstyle\s*=/i.test(h)) {
     h = normalizeInlineStyles(h);
   }
   if (rules.flattenHeadings) {
     h = flattenPastedHeadings(h);
   }
-  if (rules.normalizeInline) {
+  if (rules.normalizeInline && needsInlineMarkupNormalize(h)) {
     h = normalizeInlineMarkup(h);
   }
-  if (rules.normalizeStyles || rules.normalizeInline) {
+  if ((rules.normalizeStyles || rules.normalizeInline) && /text-align/i.test(h)) {
     h = liftInlineTextAlign(h);
   }
   if (rules.stripEmptyP) {

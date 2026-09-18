@@ -1,4 +1,11 @@
 ---
+import { chrome } from "@el/i18n-seo";
+
+interface Props {
+  lang?: "fr" | "en";
+}
+
+const { lang = "fr" } = Astro.props;
 const year = new Date().getFullYear();
 ---
 
@@ -12,7 +19,7 @@ const year = new Date().getFullYear();
   </div>
 </footer>
 
-<a class="scroll-to-top" href="#top" aria-label="Remonter en haut" role="button">
+<a class="scroll-to-top" href="#top" aria-label={chrome("top", lang)} role="button">
   <svg version="1.1" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
     <polyline points="32,18 14,36 18,40 32,26 46,40 50,36" fill="none" stroke="currentColor" stroke-width="4"></polyline>
   </svg>

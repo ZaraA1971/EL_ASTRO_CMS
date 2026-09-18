@@ -1,6 +1,7 @@
 ---
 import { archivePath, buildPageNumbers } from "../lib/archive";
 import type { LangCode } from "../lib/articles";
+import { chrome } from "@el/i18n-seo";
 
 interface Props {
   page: number;
@@ -28,12 +29,12 @@ function pageHref(n: number): string {
 
 {
   totalPages > 1 && (
-    <nav class="el-pagination" aria-label="Pagination">
+    <nav class="el-pagination" aria-label={chrome("pagination", lang)}>
       <ul class="el-pagination__list">
         {page > 1 && (
           <li>
             <a href={pageHref(page - 1)} rel="prev">
-              « Précédent
+              {chrome("prev", lang)}
             </a>
           </li>
         )}
@@ -57,7 +58,7 @@ function pageHref(n: number): string {
         {page < totalPages && (
           <li>
             <a href={pageHref(page + 1)} rel="next">
-              Suivant »
+              {chrome("next", lang)}
             </a>
           </li>
         )}

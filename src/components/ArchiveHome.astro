@@ -3,6 +3,7 @@ import ArticleCard from "./ArticleCard.astro";
 import HomeTools from "./HomeTools.astro";
 import Pagination from "./Pagination.astro";
 import type { Article, LangCode } from "../lib/articles";
+import { chrome } from "@el/i18n-seo";
 
 interface Props {
   featured?: Article;
@@ -19,7 +20,7 @@ const {
   page,
   totalPages,
   lang,
-  title = lang === "en" ? "Featured" : "À la une",
+  title = chrome("featured", lang),
 } = Astro.props;
 
 const withTools = page === 1;
@@ -42,9 +43,9 @@ const withTools = page === 1;
           </header>
 
           <div class="el-card-grid blog-grid-view">
-            {featured && <ArticleCard article={featured} featured />}
+            {featured && <ArticleCard article={featured} featured lang={lang} />}
             {rest.map((article) => (
-              <ArticleCard article={article} />
+              <ArticleCard article={article} lang={lang} />
             ))}
           </div>
 
@@ -60,9 +61,9 @@ const withTools = page === 1;
         </header>
 
         <div class="el-card-grid blog-grid-view">
-          {featured && <ArticleCard article={featured} featured={false} />}
+          {featured && <ArticleCard article={featured} featured={false} lang={lang} />}
           {rest.map((article) => (
-            <ArticleCard article={article} />
+            <ArticleCard article={article} lang={lang} />
           ))}
         </div>
 

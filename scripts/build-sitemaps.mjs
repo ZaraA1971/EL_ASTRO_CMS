@@ -11,15 +11,22 @@ import {
   NEWS_SITEMAP_DAYS,
   NEWS_SITEMAP_FALLBACK,
   newsSitemapXml,
-  xmlEscape,
-  isoDate,
+  buildUrlset,
+  buildSitemapIndex,
 } from '../shared/sitemap-news.mjs';
+import { absoluteArticleUrl } from '../shared/article-path.mjs';
+import {
+  SITEMAP_PAGE_SIZE,
+  POSTS_SITEMAP_SQL,
+  staticSitemapUrls,
+  articleSitemapUrl,
+} from '../shared/sitemap-urls.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
 const OUT = path.join(ROOT, 'var/sitemaps');
 const SITE = 'https://electronlibre.info';
-const PAGE_SIZE = 2000;
+const PAGE_SIZE = SITEMAP_PAGE_SIZE;
 const ENV_FILE = process.env.EL_API_ENV_FILE || '/etc/electronlibre/el-astro-api.env';
 
 function loadEnv(file) {
@@ -41,9 +48,7 @@ function loadEnv(file) {
 }
 
 function articleLoc(id, slug) {
-  const n = Number(id) || 0;
-  if (!n) return '';
-  return `${SITE}/articles/${n}-${slug || 'article'}/`;
+  return absoluteArticleUrl(SITE, id, slug);
 }
 
 function writeAtomic(file, body) {
@@ -52,43 +57,9 @@ function writeAtomic(file, body) {
   fs.renameSync(tmp, file);
 }
 
-const STATIC = [
-  { loc: `${SITE}/`, changefreq: 'hourly', priority: '1.0' },
-  { loc: `${SITE}/en/`, changefreq: 'hourly', priority: '0.9' },
-  { loc: `${SITE}/abonnement/`, changefreq: 'monthly', priority: '0.6' },
-  { loc: `${SITE}/a-propos/`, changefreq: 'yearly', priority: '0.3' },
-  { loc: `${SITE}/mentions-legales/`, changefreq: 'yearly', priority: '0.2' },
-  { loc: `${SITE}/search/`, changefreq: 'monthly', priority: '0.4' },
-];
+const STATIC = staticSitemapUrls(SITE);
 
-function buildIndex(locs) {
-  let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
-  xml +=
-    '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
-  for (const loc of locs) {
-    xml += '  <sitemap>\n';
-    xml += `    <loc>${xmlEscape(loc)}</loc>\n`;
-    xml += '  </sitemap>\n';
-  }
-  xml += '</sitemapindex>\n';
-  return xml;
-}
 
-function buildUrlset(urls) {
-  let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
-  xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
-  for (const u of urls) {
-    if (!u.loc) continue;
-    xml += '  <url>\n';
-    xml += `    <loc>${xmlEscape(u.loc)}</loc>\n`;
-    if (u.lastmod) xml += `    <lastmod>${xmlEscape(u.lastmod)}</lastmod>\n`;
-    if (u.changefreq) xml += `    <changefreq>${xmlEscape(u.changefreq)}</changefreq>\n`;
-    if (u.priority) xml += `    <priority>${xmlEscape(u.priority)}</priority>\n`;
-    xml += '  </url>\n';
-  }
-  xml += '</urlset>\n';
-  return xml;
-}
 
 async function main() {
   const env = loadEnv(ENV_FILE);
@@ -114,7 +85,7 @@ async function main() {
   for (let i = 1; i <= pages; i += 1) {
     indexLocs.push(`${SITE}/wp-sitemap-posts-${i}.xml`);
   }
-  const indexXml = buildIndex(indexLocs);
+  const indexXml = buildSitemapIndex(indexLocs);
   for (const name of ['wp-sitemap.xml', 'sitemap_index.xml', 'sitemap.xml']) {
     writeAtomic(path.join(OUT, name), indexXml);
   }
@@ -125,20 +96,10 @@ async function main() {
   for (let p = 1; p <= pages; p += 1) {
     const offset = (p - 1) * PAGE_SIZE;
     const [rows] = await pool.query(
-      `SELECT article_id, slug, date, modified
-       FROM el_articles
-       WHERE draft = 0
-       ORDER BY date DESC, article_id DESC
-       LIMIT ? OFFSET ?`,
+      `${POSTS_SITEMAP_SQL} LIMIT ? OFFSET ?`,
       [PAGE_SIZE, offset]
     );
-    const urls = rows
-      .map((r) => {
-        const loc = articleLoc(r.article_id, r.slug);
-        if (!loc) return null;
-        return { loc, lastmod: isoDate(r.modified || r.date) };
-      })
-      .filter(Boolean);
+    const urls = rows.map((r) => articleSitemapUrl(r, SITE)).filter(Boolean);
     const xml = buildUrlset(urls);
     writeAtomic(path.join(OUT, `wp-sitemap-posts-${p}.xml`), xml);
     writeAtomic(path.join(OUT, `sitemap-posts-${p}.xml`), xml);

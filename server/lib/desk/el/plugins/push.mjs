@@ -2,18 +2,9 @@ import { auditLog } from '../../../audit.mjs';
 import { listPushSegments, sendArticlePush } from '../../../onesignal.mjs';
 import { canPublish } from '../../../roles.mjs';
 
-/** Titre notification : ctx.brand.name ou onesignal.title, jamais hardcodé produit. */
-function pushTitle(ctx) {
-  return (
-    ctx.brand?.name ||
-    ctx.onesignal?.title ||
-    process.env.DESK_BRAND_NAME ||
-    'Notification'
-  );
-}
-
 /**
  * Push OneSignal pour un article déjà publié (appelé depuis /push ou publish+push).
+ * Titre = titre de l’article ; texte = chapô (`chapo(..., 'push')`).
  */
 export async function pushPublishedArticle(article, ctx, { segment, segments } = {}) {
   return sendArticlePush(article, {
@@ -21,7 +12,6 @@ export async function pushPublishedArticle(article, ctx, { segment, segments } =
     apiKey: ctx.onesignal?.apiKey,
     siteUrl: ctx.onesignal?.siteUrl,
     dryRun: Boolean(ctx.onesignal?.dryRun),
-    title: pushTitle(ctx),
     segments: segments ?? segment,
     sendToMobile: true,
   });

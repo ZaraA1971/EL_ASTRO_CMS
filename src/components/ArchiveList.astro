@@ -44,10 +44,10 @@ const featureFirst = page <= 1;
     ) : (
       <div class="el-card-grid blog-grid-view">
         {featured && (
-          <ArticleCard article={featured} featured={featureFirst} />
+          <ArticleCard article={featured} featured={featureFirst} lang={lang} />
         )}
         {rest.map((article) => (
-          <ArticleCard article={article} />
+          <ArticleCard article={article} lang={lang} />
         ))}
       </div>
     )

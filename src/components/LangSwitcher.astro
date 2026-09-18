@@ -1,0 +1,58 @@
+---
+import { chrome } from "@el/i18n-seo";
+
+interface Props {
+  lang: "fr" | "en";
+  hrefs: { fr: string; en: string };
+  context: "header" | "article";
+}
+
+const { lang, hrefs, context } = Astro.props;
+const header = context === "header";
+const linkClass = header ? "el-lang-link" : "el-article-lang-link";
+---
+
+<nav
+  id={header ? undefined : "language-selector"}
+  class={header ? "top-lang-switcher" : undefined}
+  aria-label={chrome(header ? "langSwitch" : "articleLang", lang)}
+>
+  <a
+    href={hrefs.fr}
+    hreflang="fr"
+    lang="fr"
+    class:list={[linkClass, lang === "fr" && "is-active"]}
+    aria-current={lang === "fr" ? "page" : undefined}
+    title={header ? "Français" : undefined}
+  >
+    {
+      header ? (
+        <>
+          <span aria-hidden="true">🇫🇷</span>
+          <span class="screen-reader-text">FR</span>
+        </>
+      ) : (
+        "🇫🇷 FR"
+      )
+    }
+  </a>
+  <a
+    href={hrefs.en}
+    hreflang="en"
+    lang="en"
+    class:list={[linkClass, lang === "en" && "is-active"]}
+    aria-current={lang === "en" ? "page" : undefined}
+    title={header ? "English" : undefined}
+  >
+    {
+      header ? (
+        <>
+          <span aria-hidden="true">🇬🇧</span>
+          <span class="screen-reader-text">EN</span>
+        </>
+      ) : (
+        "🇬🇧 EN"
+      )
+    }
+  </a>
+</nav>

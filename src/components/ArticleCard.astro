@@ -7,6 +7,7 @@ import LockIcon from "./LockIcon.astro";
 import KeywordTags from "./KeywordTags.astro";
 import {
   type Article,
+  type LangCode,
   articlePath,
   isFreeArticle,
   formatArchiveDate,
@@ -14,18 +15,21 @@ import {
   KEYWORDS_LIMIT_CARD,
 } from "../lib/articles";
 import { chapo } from "../lib/excerpt";
+import { pagePath, resolveLang } from "@el/i18n-seo";
 
 interface Props {
   article: Article;
   featured?: boolean;
   variant?: "default" | "related";
+  lang?: LangCode;
 }
 
-const { article, featured = false, variant = "default" } = Astro.props;
+const { article, featured = false, variant = "default", lang } = Astro.props;
 const related = variant === "related";
 const d = article.data;
+const pageLang: LangCode = lang || resolveLang(d.lang);
 const href = articlePath(article);
-const dateLabel = formatArchiveDate(d.date);
+const dateLabel = formatArchiveDate(d.date, pageLang);
 const excerpt = chapo(
   article,
   featured ? "hero" : related ? "related" : "card"
@@ -75,7 +79,7 @@ const cats = d.categories.map((slug, i) => ({
         cats.length > 0 && (
           <div class="category">
             {cats.map((c) => (
-              <a href={`/articles/category/${c.slug}/`}>{c.name}</a>
+              <a href={pagePath("category", pageLang, { slug: c.slug })}>{c.name}</a>
             ))}
           </div>
         )
@@ -83,7 +87,7 @@ const cats = d.categories.map((slug, i) => ({
 
       {excerpt && <div class="excerpt">{excerpt}</div>}
 
-      <KeywordTags keywords={keywords} />
+      <KeywordTags keywords={keywords} lang={pageLang} />
     </div>
   </div>
 </article>

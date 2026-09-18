@@ -36,6 +36,8 @@ export default defineConfig({
         '@el/format-date-fr': path.join(root, 'shared/format-date-fr.mjs'),
         '@el/keyword-policy': path.join(root, 'shared/keyword-policy.mjs'),
         '@el/sitemap-news': path.join(root, 'shared/sitemap-news.mjs'),
+        '@el/i18n-seo': path.join(root, 'shared/i18n-seo.mjs'),
+        '@el/sitemap-urls': path.join(root, 'shared/sitemap-urls.mjs'),
       },
     },
     server: {

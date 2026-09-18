@@ -1,10 +1,10 @@
 ---
 export const prerender = false;
 
-import TagArchive from "../../../components/TagArchive.astro";
-import { prepareTagArchive } from "../../../lib/archive";
+import TagArchive from "../../../../components/TagArchive.astro";
+import { prepareTagArchive } from "../../../../lib/archive";
 
-const result = await prepareTagArchive(Astro.params.slug, "fr");
+const result = await prepareTagArchive(Astro.params.slug, "en");
 if ("redirect" in result) return Astro.redirect(result.redirect);
 Astro.response.headers.set(
   "Cache-Control",

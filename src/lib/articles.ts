@@ -13,6 +13,7 @@ import {
   formatDateFrLong,
   formatDateTimeFrLong,
 } from '@el/format-date-fr';
+import { pagePath, resolveLang } from '@el/i18n-seo';
 
 export type ArticleData = {
   article_id: number;
@@ -174,8 +175,11 @@ export async function getHeroArticle(
   return row ? rowToArticle(row, { includeBody: false }) : null;
 }
 
-export function formatArchiveDate(date: Date): string {
-  return formatDateFrLong(date);
+export function formatArchiveDate(
+  date: Date,
+  lang: 'fr' | 'en' = 'fr'
+): string {
+  return formatDateFrLong(date, lang === 'en' ? 'en-GB' : 'fr-FR');
 }
 
 /** Mise à jour éditoriale : date + heure (fuseau Europe/Paris). */
@@ -232,8 +236,8 @@ export function articleDisplayKeywords(
   return list.slice(0, limit);
 }
 
-export function tagPath(slug: string): string {
-  return `/articles/tag/${encodeURIComponent(String(slug || '').trim())}/`;
+export function tagPath(slug: string, lang: LangCode = 'fr'): string {
+  return pagePath('tag', lang, { slug: String(slug || '').trim() });
 }
 
 /** Charge le body d’un article (chapô hero) sans relire toute la liste. */
@@ -267,14 +271,18 @@ export async function hydrateFeaturedBody(
 export async function getTranslationUrls(
   article: Article
 ): Promise<Partial<Record<'FR' | 'EN', string>>> {
+  const lang = resolveLang(article.data.lang);
+  const urls: Partial<Record<'FR' | 'EN', string>> = {};
+  if (lang === 'en') urls.EN = articlePath(article);
+  else urls.FR = articlePath(article);
+  const selfId = article.data.article_id;
   const ids = [
     article.data.translation_fr,
     article.data.translation_en,
-  ].filter((n): n is number => n != null && n > 0);
-  if (!ids.length) return {};
+  ].filter((n): n is number => n != null && n > 0 && n !== selfId);
+  if (!ids.length) return urls;
   const found = await getArticlesByIds(ids);
   const byId = new Map(found.map((a) => [a.data.article_id, a]));
-  const urls: Partial<Record<'FR' | 'EN', string>> = {};
   const frId = article.data.translation_fr;
   const enId = article.data.translation_en;
   if (frId && byId.has(frId)) urls.FR = articlePath(byId.get(frId)!);
@@ -290,7 +298,7 @@ export async function getRelatedArticles(
   limit = 3
 ): Promise<Article[]> {
   const pool = getPool();
-  const lang = (article.data.lang || 'fr').toLowerCase();
+  const lang = resolveLang(article.data.lang);
   const cats = article.data.categories || [];
   const articleId = article.data.article_id;
 

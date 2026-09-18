@@ -4,12 +4,19 @@
  */
 import { ASSET_V } from "../lib/assets";
 import { listNavCategories } from "../lib/categories";
+import { chrome, pagePath } from "@el/i18n-seo";
+import LangSwitcher from "./LangSwitcher.astro";
 
 interface Props {
   lang?: "fr" | "en";
+  alternates?: { fr?: string; en?: string };
 }
 
-const { lang = "fr" } = Astro.props;
+const { lang = "fr", alternates = {} } = Astro.props;
+const homeHref = pagePath("home", lang);
+const searchHref = pagePath("search", lang);
+const frHref = alternates.fr || pagePath("home", "fr");
+const enHref = alternates.en || pagePath("home", "en");
 
 type NavChild = { label: string; href: string; rel?: string };
 type NavItem = { label: string; href: string; children?: NavChild[] };
@@ -18,24 +25,24 @@ const navCategories = await listNavCategories();
 const navItems: NavItem[] = [
   ...navCategories.map((c) => ({
     label: c.name,
-    href: `/articles/category/${c.slug}/`,
+    href: pagePath("category", lang, { slug: c.slug }),
   })),
   {
-    label: "Espace Client",
+    label: chrome("clientSpace", lang),
     href: "/compte/",
     children: [
-      { label: "Abonnement", href: "/abonnement/" },
-      { label: "Mon compte", href: "/compte/" },
-      { label: "À propos", href: "/a-propos/" },
+      { label: chrome("subscribe", lang), href: "/abonnement/" },
+      { label: chrome("accountLong", lang), href: "/compte/" },
+      { label: chrome("about", lang), href: "/a-propos/" },
       {
-        label: "Mentions légales",
+        label: chrome("legal", lang),
         href: "/mentions-legales/",
         rel: "privacy-policy",
       },
     ],
   },
 ];
-
+const currentLanguage = lang === "en" ? "EN" : "FR";
 ---
 
 <header id="masthead" class="site-header">
@@ -43,12 +50,11 @@ const navItems: NavItem[] = [
     <div class="container">
       <div class="top-wrapper">
         <div class="top-left">
-          <div class="top-lang-switcher">
-            <select id="el-lang-switch" aria-label="Langue" data-lang={lang}>
-              <option value="/" selected={lang === "fr" ? true : undefined}>🇫🇷</option>
-              <option value="/en/" selected={lang === "en" ? true : undefined}>🇬🇧</option>
-            </select>
-          </div>
+          <LangSwitcher
+            lang={lang}
+            hrefs={{ fr: frHref, en: enHref }}
+            context="header"
+          />
           <div class="top-social">
             <div class="social-links">
               <ul class="list-group list-group-horizontal list-inline">
@@ -61,7 +67,7 @@ const navItems: NavItem[] = [
                     aria-label="X"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="32" height="32" fill="currentColor" aria-hidden="true">
-                      <path d="M461.1 32H358.7c-5.7 0-10.9 3.1-13.6 8.1L256 176.7 166.9 40.1c-2.8-5-8-8.1-13.6-8.1H50.9C37.1 32 28.6 47.3 36.8 58.3l175.1 236.5-175.1 159C28.6 464.7 37.1 480 50.9 480h102.4c5.7 0 10.9-3.1 13.6-8.1l89.1-136.6 89.1 136.6c2.8 5 8 8.1 13.6 8.1h102.4c13.8 0 22.3-15.3 14.1-26.3l-175.1-159 175.1-236.5C483.4 47.3 474.9 32 461.1 32z"></path>
+                      <path d="M461.1 32H358.7c-5.7 0-10.9 3.1-13.6 8.1L256 176.7 166.9 40.1c-2.8-5-8-8.1-13.6-8.1H50.9C37.1 32 28.6 47.3 36.8 58.3l175.1 236.5-175.1 159C28.6 464.7 37.1 480 50.9 480h102.4c5.7 0 10.9 3.1 13.6 8.1l89.1-136.6 89.1 136.6c2.8 5 8 8.1 13.6 8.1h102.4c13.8 0 22.3-15.3 14.1-26.3l-175.1-159 175.1-236.5C483.4 47.3 474.9 32 461.1 32z"></path>
                     </svg>
                   </a>
                 </li>
@@ -74,35 +80,40 @@ const navItems: NavItem[] = [
           <div class="top-brand site-branding">
             <div class="site-identity">
               <div class="site-title">
-                <a href="/" rel="home" class="logo" aria-label="ElectronLibre">
+                <a href={homeHref} rel="home" class="logo" aria-label="ElectronLibre">
                   <span class="site-title-electron">Electron</span><span class="site-title-libre">Libre</span>
                 </a>
               </div>
             </div>
           </div>
           <div class="top-search">
-            <form role="search" method="get" class="search-form" action="/search/">
+            <form role="search" method="get" class="search-form" action={searchHref}>
               <label>
-                <span class="screen-reader-text">Rechercher :</span>
-                <input type="search" class="search-field" placeholder="Rechercher…" name="s" />
+                <span class="screen-reader-text">{chrome("searchLabel", lang)}</span>
+                <input
+                  type="search"
+                  class="search-field"
+                  placeholder={chrome("searchPlaceholder", lang)}
+                  name="s"
+                />
               </label>
-              <input type="submit" class="search-submit" value="Rechercher" />
+              <input type="submit" class="search-submit" value={chrome("searchSubmit", lang)} />
             </form>
           </div>
         </div>
 
         <div class="top-right">
-          <script is:inline>
+          <script is:inline define:vars={{ currentLanguage }}>
             window.isSubscriber = false;
             window.elEntitled = false;
             window.elAuthenticated = false;
-            window.currentLanguage = "FR";
+            window.currentLanguage = currentLanguage;
           </script>
           <div class="top-login" id="el-login">
-            <a href="/login/" class="icon-btn login-icon" aria-label="Connexion">
+            <a href="/login/" class="icon-btn login-icon" aria-label={chrome("login", lang)}>
               <div class="ia-header-icon-wrapper">
                 <img src="/icons/sf/loginEL.svg" alt="" width="20" height="20" />
-                <span class="ia-header-label">Connexion</span>
+                <span class="ia-header-label">{chrome("login", lang)}</span>
               </div>
             </a>
           </div>
@@ -121,7 +132,7 @@ const navItems: NavItem[] = [
             type="button"
             aria-controls="primary-menu"
             aria-expanded="false"
-            aria-label="Menu catégories"
+            aria-label={chrome("menu", lang)}
           >
             <span></span>
             <span></span>
@@ -162,10 +173,4 @@ const navItems: NavItem[] = [
   ></script>
   <script is:inline defer src={`/js/el-auth.js?v=${ASSET_V}`}></script>
   <script is:inline defer src={`/js/header-nav.js?v=${ASSET_V}`}></script>
-  <script is:inline>
-    document.getElementById("el-lang-switch")?.addEventListener("change", function (e) {
-      var v = e.target && e.target.value;
-      if (v) location.href = v;
-    });
-  </script>
 </header>

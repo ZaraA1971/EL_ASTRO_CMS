@@ -32,6 +32,8 @@ export const state = {
   article: null,
   /** Empreinte titre+corps après chargement / enregistrement / publish — pour griser Publier. */
   editBaseline: "",
+  /** Titre + corps + date seulement — pour le libellé « Mis à jour ». */
+  editEditorialBaseline: "",
   editDirty: false,
   mode: "visual", // visual | html | preview
   /** Aperçu : "full" (corps) | "visitor" (teaser paywall si abonnés). */

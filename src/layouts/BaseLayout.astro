@@ -6,6 +6,7 @@ import OneSignalInit from "../components/OneSignalInit.astro";
 import GoogleAnalytics from "../components/GoogleAnalytics.astro";
 import GoatCounter from "../components/GoatCounter.astro";
 import { ASSET_V } from "../lib/assets";
+import { chrome, hreflang, pagePath } from "@el/i18n-seo";
 import "../styles/global.css";
 
 interface Props {
@@ -18,17 +19,24 @@ interface Props {
   ogType?: string;
   /** URL absolue — absente = pas de vignette (évite le thumb vide sur X). */
   ogImage?: string;
+  /** Chemins des versions linguistiques (FR/EN). */
+  alternates?: { fr?: string; en?: string };
+  hreflangContext?: "home" | "search" | "category" | "tag" | "article" | "page";
+  hreflangOpts?: { slug?: string; page?: number };
 }
 
 const {
-  title = "ElectronLibre | Médias, technologies, IA et industries culturelles",
-  description = "ElectronLibre est un média indépendant d’analyse et d’information sur les technologies, l’intelligence artificielle, les médias, les plateformes et les industries culturelles.",
+  title,
+  description,
   lang = "fr",
   canonical,
   noindex = false,
   bodyClass = "",
   ogType = "website",
   ogImage = "",
+  alternates = {},
+  hreflangContext = "page",
+  hreflangOpts = {},
 } = Astro.props;
 
 const assetV = ASSET_V;
@@ -36,8 +44,20 @@ const canonicalUrl =
   canonical ||
   new URL(Astro.url.pathname, Astro.site || "https://electronlibre.info").href;
 const imageUrl = String(ogImage || "").trim();
-// Sans image : summary (pas summary_large_image) — sinon X affiche un thumb vide.
 const twitterCard = imageUrl ? "summary_large_image" : "summary";
+const pageTitle = title || chrome("homeTitle", lang);
+const pageDescription = description || chrome("homeDescription", lang);
+const altFr = alternates.fr || pagePath("home", "fr");
+const altEn = alternates.en || pagePath("home", "en");
+const hreflangLinks = hreflang(
+  {
+    lang,
+    path: canonicalUrl,
+    alternates: { fr: alternates.fr, en: alternates.en },
+  },
+  hreflangContext,
+  hreflangOpts
+);
 ---
 
 <!doctype html>
@@ -50,22 +70,33 @@ const twitterCard = imageUrl ? "summary_large_image" : "summary";
     <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192x192.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <meta name="generator" content={Astro.generator} />
-    <meta name="description" content={description} />
+    <meta name="description" content={pageDescription} />
     {noindex && <meta name="robots" content="noindex,nofollow" />}
     <link rel="canonical" href={canonicalUrl} />
+    {
+      hreflangLinks.map((link) => (
+        <link rel="alternate" hreflang={link.hreflang} href={link.href} />
+      ))
+    }
     <meta property="og:type" content={ogType} />
     <meta property="og:site_name" content="ElectronLibre" />
-    <meta property="og:title" content={title} />
-    <meta property="og:description" content={description} />
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={pageDescription} />
     <meta property="og:url" content={canonicalUrl} />
     <meta property="og:locale" content={lang === "en" ? "en_US" : "fr_FR"} />
+    {
+      lang === "en" ? (
+        <meta property="og:locale:alternate" content="fr_FR" />
+      ) : (
+        <meta property="og:locale:alternate" content="en_US" />
+      )
+    }
     {imageUrl && <meta property="og:image" content={imageUrl} />}
     <meta name="twitter:card" content={twitterCard} />
-    <meta name="twitter:title" content={title} />
-    <meta name="twitter:description" content={description} />
+    <meta name="twitter:title" content={pageTitle} />
+    <meta name="twitter:description" content={pageDescription} />
     {imageUrl && <meta name="twitter:image" content={imageUrl} />}
-    <title>{title}</title>
-    {/* CMP avant GA / OneSignal — blocage cookies jusqu’au consentement */}
+    <title>{pageTitle}</title>
     <CookieYes />
     <link rel="stylesheet" href={`/css/el/el-tokens.css?v=${assetV}`} />
     <link rel="stylesheet" href={`/css/el/el-reset.css?v=${assetV}`} />
@@ -80,11 +111,11 @@ const twitterCard = imageUrl ? "summary_large_image" : "summary";
     <GoatCounter />
   </head>
   <body class={bodyClass}>
-    <a class="skip-link screen-reader-text" href="#primary">Aller au contenu</a>
-    <Header lang={lang} />
+    <a class="skip-link screen-reader-text" href="#primary">{chrome("skip", lang)}</a>
+    <Header lang={lang} alternates={{ fr: altFr, en: altEn }} />
     <main id="primary">
       <slot />
     </main>
-    <Footer />
+    <Footer lang={lang} />
   </body>
 </html>

@@ -8,7 +8,28 @@ import {
   segmentLabel,
   togglePushSelection,
 } from './onesignal-segments.mjs';
-import { listPushSegments } from './onesignal.mjs';
+import { articlePushCopy, listPushSegments } from './onesignal.mjs';
+
+describe('onesignal copy', () => {
+  it('uses the article title and the start of the text', () => {
+    const words = Array.from({ length: 80 }, (_, i) => `mot${i}`).join(' ');
+    const copy = articlePushCopy({
+      title: 'La Commission change de cap',
+      excerpt: words,
+      body: `<p>${words}</p>`,
+    });
+    assert.equal(copy.heading, 'La Commission change de cap');
+    assert.equal(copy.content.replace(/…$/, '').split(/\s+/).length, 40);
+    assert.match(copy.content, /^mot0 /);
+    assert.doesNotMatch(copy.heading, /ElectronLibre|Notification/);
+  });
+
+  it('falls back to the title when there is no chapô', () => {
+    const copy = articlePushCopy({ title: 'Seul le titre', excerpt: '', body: '' });
+    assert.equal(copy.heading, 'Seul le titre');
+    assert.equal(copy.content, 'Seul le titre');
+  });
+});
 
 describe('onesignal segments', () => {
   it('labels builtins in French', () => {

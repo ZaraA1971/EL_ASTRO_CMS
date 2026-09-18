@@ -31,6 +31,8 @@ describe('excerpt / chapo', () => {
     assert.equal(EXCERPT_CONTEXTS.hero.words, 130);
     assert.equal(EXCERPT_CONTEXTS.card.words, 28);
     assert.equal(EXCERPT_CONTEXTS.related.words, 32);
+    assert.equal(EXCERPT_CONTEXTS.push.words, 40);
+    assert.equal(EXCERPT_CONTEXTS.push.allowBody, true);
   });
 
   it('hero extends short excerpt from body to 130 words', () => {
@@ -70,6 +72,10 @@ describe('excerpt / chapo', () => {
     assert.equal(
       chapo(article, 'related').replace(/…$/, '').split(/\s+/).length,
       32
+    );
+    assert.equal(
+      chapo(article, 'push').replace(/…$/, '').split(/\s+/).length,
+      40
     );
     const stored = chapo(`<p>${'x '.repeat(400)}</p>`, 'store');
     assert.ok(stored.length >= 120);
