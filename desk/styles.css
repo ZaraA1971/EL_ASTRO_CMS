@@ -1162,14 +1162,24 @@ body.desk-dialog-open {
 }
 
 .editor-toolbar {
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x pinch-zoom;
+  scrollbar-width: thin;
+}
+
+.editor-toolbar-track {
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
   justify-content: space-between;
   gap: clamp(6px, 1.5vw, 20px);
-  width: 100%;
-  min-width: 0;
-  overflow: visible;
+  width: max-content;
+  min-width: 100%;
 }
 
 .toolbar-group {
