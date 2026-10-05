@@ -1171,12 +1171,12 @@ body.desk-dialog-open {
   overscroll-behavior-x: contain;
   touch-action: pan-x pinch-zoom;
   scrollbar-width: thin;
-  /* Ombres de défilement : signal visuel s’il reste des boutons hors écran */
+  /* Voile clair (teinte --line) s’il reste des boutons hors écran */
   background:
     linear-gradient(to right, var(--paper), var(--paper)) left center / 16px 100% local,
-    linear-gradient(to left, var(--paper), var(--paper)) right center / 20px 100% local,
-    linear-gradient(to right, rgba(15, 23, 42, 0.14), transparent) left center / 14px 100% scroll,
-    linear-gradient(to left, rgba(15, 23, 42, 0.16), transparent) right center / 18px 100% scroll;
+    linear-gradient(to left, var(--paper), var(--paper)) right center / 24px 100% local,
+    linear-gradient(to right, var(--line), transparent) left center / 18px 100% scroll,
+    linear-gradient(to left, var(--line), transparent) right center / 28px 100% scroll;
   background-repeat: no-repeat;
 }
 
