@@ -47,7 +47,6 @@ export async function ensurePasswordResetSchema(pool) {
   }
 }
 
-
 /**
  * Crée un token et envoie l’e-mail. Ne révèle pas si le compte existe.
  * @returns {{ ok: true, sent: boolean, dryRun?: boolean }}
