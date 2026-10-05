@@ -1162,7 +1162,6 @@ body.desk-dialog-open {
 }
 
 .editor-toolbar {
-  display: block;
   width: 100%;
   min-width: 0;
   overflow-x: auto;
@@ -1179,10 +1178,8 @@ body.desk-dialog-open {
   align-items: center;
   justify-content: space-between;
   gap: clamp(6px, 1.5vw, 20px);
-  box-sizing: border-box;
   width: max-content;
   min-width: 100%;
-  padding-right: 8px;
 }
 
 .toolbar-group {
