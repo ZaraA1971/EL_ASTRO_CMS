@@ -1057,6 +1057,7 @@ export function renderEdit() {
             ${
               state.mode === "visual" || state.mode === "html"
                 ? `<div class="editor-toolbar" role="toolbar" aria-label="Outils d’édition">
+                    <div class="editor-toolbar-track">
                     ${
                       state.mode === "visual"
                         ? `<div class="toolbar-group toolbar-group--history" role="group" aria-label="Historique et nettoyage">
@@ -1091,6 +1092,7 @@ export function renderEdit() {
                       state.assisting || state.saving ? "disabled" : ""
                     }>Chapô</button>
                   </div>
+                    </div>
                   </div>`
                 : ""
             }
