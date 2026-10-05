@@ -7,6 +7,9 @@ import { hashUserPassword } from './users.mjs';
 import { STATUSES } from './roles.mjs';
 import { escapeHtml } from './escape-html.mjs';
 import { toMysqlDate } from './mysql-date.mjs';
+import { normalizeLoginId } from './login-id.mjs';
+
+export { normalizeLoginId };
 
 const TOKEN_TTL_MS = 60 * 60 * 1000; // 1 h
 
@@ -44,7 +47,6 @@ export async function ensurePasswordResetSchema(pool) {
   }
 }
 
-export { normalizeLoginId } from './login-id.mjs';
 
 /**
  * Crée un token et envoie l’e-mail. Ne révèle pas si le compte existe.
