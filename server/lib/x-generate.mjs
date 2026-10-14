@@ -9,6 +9,63 @@ import { X_ACCOUNTS, normalizeXAccount, DEFAULT_X_ACCOUNT } from './x-accounts.m
 import { X_MAX_LENGTH, xWeightedLength } from './x-post.mjs';
 import { absoluteArticleUrl } from './article-path.mjs';
 
+const COPY = {
+  fr: {
+    langLine: 'Langue : français',
+    title: 'Titre',
+    excerpt: 'Chapô',
+    url: 'URL (à ne pas répéter dans l’accroche)',
+    only: 'L’article est en français. Écris UNIQUEMENT en français.',
+    produce:
+      'Produis EXACTEMENT 3 variantes d’accroche orientées engagement (tension, chiffre ou question).',
+    rules: (tags) =>
+      `Règles : pas d’URL, ${tags}, pas de « thread », max ~200 caractères par variante, ton professionnel.`,
+    reply:
+      'Réponds UNIQUEMENT avec les 3 textes séparés par une ligne contenant seulement ---',
+    write: (beat) => `Tu rédiges des posts X pour ${beat}.`,
+    beats: {
+      bulletin: (handle) =>
+        `le compte ${handle} (veille / régulation UE, Bruxelles, marchés européens)`,
+      el: (handle) =>
+        `le compte ${handle} (média ElectronLibre : numérique, IA, médias, plateformes)`,
+    },
+    tags: { bulletin: 'pas de hashtags', el: 'pas de hashtags spam' },
+    empty: 'À lire sur ElectronLibre',
+    takeaway: (title) => `${title} — ce qu’il faut retenir`,
+    closer: (title) => `Et si on regardait ça de près ? ${title}`,
+    closerEmpty: 'Nouvelle analyse ElectronLibre',
+  },
+  en: {
+    langLine: 'Language: English',
+    title: 'Title',
+    excerpt: 'Standfirst',
+    url: 'URL (do not repeat it in the hook)',
+    only: 'The article is in English. Write ONLY in English.',
+    produce:
+      'Produce EXACTLY 3 engagement-oriented hooks (tension, a figure, or a question).',
+    rules: (tags) =>
+      `Rules: no URL, ${tags}, no “thread”, about 200 characters max per variant, professional tone.`,
+    reply:
+      'Reply ONLY with the 3 texts separated by a line that contains only ---',
+    write: (beat) => `You write X posts for ${beat}.`,
+    beats: {
+      bulletin: (handle) =>
+        `the account ${handle} (EU watch: regulation, Brussels, European markets)`,
+      el: (handle) =>
+        `the account ${handle} (ElectronLibre: digital, AI, media, platforms)`,
+    },
+    tags: { bulletin: 'no hashtags', el: 'no spam hashtags' },
+    empty: 'Read on ElectronLibre',
+    takeaway: (title) => `${title} — the takeaway`,
+    closer: (title) => `A closer look: ${title}`,
+    closerEmpty: 'New ElectronLibre analysis',
+  },
+};
+
+function copyFor(language) {
+  return COPY[language] || COPY.fr;
+}
+
 /** @param {object} row */
 export function articleXLanguage(row) {
   return String(row?.lang || 'fr').toLowerCase().startsWith('en') ? 'en' : 'fr';
@@ -20,35 +77,18 @@ export function articleXLanguage(row) {
  * @param {string} handle
  */
 export function buildXPrompt(accountId, language, handle) {
-  if (language === 'en') {
-    const beat =
-      accountId === 'bulletin'
-        ? `the account ${handle} (EU watch: regulation, Brussels, European markets)`
-        : `the account ${handle} (ElectronLibre: digital, AI, media, platforms)`;
-    const tags = accountId === 'bulletin' ? 'no hashtags' : 'no spam hashtags';
-    return `You write X posts for ${beat}.
-The article is in English. Write ONLY in English.
-Produce EXACTLY 3 engagement-oriented hooks (tension, a figure, or a question).
-Rules: no URL, ${tags}, no “thread”, about 200 characters max per variant, professional tone.
-Reply ONLY with the 3 texts separated by a line that contains only ---`;
-  }
-  const beat =
-    accountId === 'bulletin'
-      ? `le compte ${handle} (veille / régulation UE, Bruxelles, marchés européens)`
-      : `le compte ${handle} (média ElectronLibre : numérique, IA, médias, plateformes)`;
-  const tags = accountId === 'bulletin' ? 'pas de hashtags' : 'pas de hashtags spam';
-  return `Tu rédiges des posts X pour ${beat}.
-L’article est en français. Écris UNIQUEMENT en français.
-Produis EXACTEMENT 3 variantes d’accroche orientées engagement (hook, tension, chiffre ou question).
-Règles : pas d’URL, ${tags}, pas de « thread », max ~200 caractères par variante, ton professionnel.
-Réponds UNIQUEMENT avec les 3 textes séparés par une ligne contenant seulement ---`;
+  const copy = copyFor(language);
+  const beat = (copy.beats[accountId] || copy.beats.el)(handle);
+  const tags = copy.tags[accountId] || copy.tags.el;
+  return [copy.write(beat), copy.only, copy.produce, copy.rules(tags), copy.reply].join(
+    '\n'
+  );
 }
 
 function trimHook(hook, url, max = X_MAX_LENGTH) {
   const fixed = xWeightedLength(`\n${url}`);
   const budget = Math.max(40, max - fixed);
   let h = String(hook || '').trim().replace(/\s+/g, ' ');
-  // Retirer une URL déjà collée par le modèle (on la remet proprement)
   h = h.replace(/\s*https?:\/\/\S+/gi, '').trim();
   if (xWeightedLength(h) <= budget) return h;
   const chars = [...h];
@@ -67,25 +107,17 @@ function compose(hook, url) {
   return `${h}\n${url}`;
 }
 
+function articleExcerpt(row) {
+  return (chapo(row, 'card') || stripHtmlToText(row.excerpt)).slice(0, 220);
+}
+
 function fallbackVariants(row, url, language) {
+  const copy = copyFor(language);
   const title = String(row.title || '').trim();
-  const excerpt =
-    chapo(row, 'card') || stripHtmlToText(row.excerpt).slice(0, 180);
-  if (language === 'en') {
-    const v1 = title || excerpt || 'Read on ElectronLibre';
-    const v2 =
-      excerpt && excerpt !== title ? excerpt : `${title} — the takeaway`;
-    const v3 = title
-      ? `A closer look: ${title}`
-      : 'New ElectronLibre analysis';
-    return [compose(v1, url), compose(v2, url), compose(v3, url)];
-  }
-  const v1 = title || excerpt || 'À lire sur ElectronLibre';
-  const v2 =
-    excerpt && excerpt !== title ? excerpt : `${title} — ce qu’il faut retenir`;
-  const v3 = title
-    ? `Et si on regardait ça de près ? ${title}`
-    : 'Nouvelle analyse ElectronLibre';
+  const excerpt = articleExcerpt(row);
+  const v1 = title || excerpt || copy.empty;
+  const v2 = excerpt && excerpt !== title ? excerpt : copy.takeaway(title);
+  const v3 = title ? copy.closer(title) : copy.closerEmpty;
   return [compose(v1, url), compose(v2, url), compose(v3, url)];
 }
 
@@ -110,12 +142,11 @@ function parseVariants(raw, url) {
   }
   const out = [];
   for (const p of parts) {
-    let hook = p
-      .replace(/^variante\s*\d+\s*[:.\-–—]\s*/i, '')
-      .replace(/^variant\s*\d+\s*[:.\-–—]\s*/i, '')
+    const hook = p
+      .replace(/^(?:variante|variant)\s*\d+\s*[:.\-–—]\s*/i, '')
       .replace(/^[-*•]\s*/, '')
+      .replace(/\s*https?:\/\/\S+\s*$/i, '')
       .trim();
-    hook = hook.replace(/\s*https?:\/\/\S+\s*$/i, '').trim();
     if (!hook) continue;
     out.push(compose(hook, url));
     if (out.length >= 3) break;
@@ -131,39 +162,22 @@ export async function generateXVariants(row, opts) {
   const accountId = normalizeXAccount(opts.account) || DEFAULT_X_ACCOUNT;
   const meta = X_ACCOUNTS[accountId];
   const language = articleXLanguage(row);
+  const copy = copyFor(language);
   const url = absoluteArticleUrl(opts.siteUrl, row);
   const title = String(row.title || '').trim();
-  const excerpt =
-    chapo(row, 'card') || stripHtmlToText(row.excerpt).slice(0, 220);
+  const excerpt = articleExcerpt(row);
   const fallback = fallbackVariants(row, url, language);
 
-  const labels =
-    language === 'en'
-      ? {
-          lang: 'Language: English',
-          title: 'Title',
-          excerpt: 'Standfirst',
-          url: 'URL (do not repeat it in the hook)',
-        }
-      : {
-          lang: 'Langue : français',
-          title: 'Titre',
-          excerpt: 'Chapô',
-          url: 'URL (à ne pas répéter dans l’accroche)',
-        };
-
   const source = [
-    labels.lang,
-    `${labels.title} : ${title}`,
-    excerpt ? `${labels.excerpt} : ${excerpt}` : '',
-    `${labels.url} : ${url}`,
+    copy.langLine,
+    `${copy.title} : ${title}`,
+    excerpt ? `${copy.excerpt} : ${excerpt}` : '',
+    `${copy.url} : ${url}`,
   ]
     .filter(Boolean)
     .join('\n');
 
-  const prompt = buildXPrompt(accountId, language, meta.handle);
-
-  let variants = [];
+  let variants = fallback;
   let sourceMode = 'fallback';
   try {
     if (opts.agentEditorial?.url && opts.agentEditorial?.apiKey) {
@@ -172,20 +186,18 @@ export async function generateXVariants(row, opts) {
         apiKey: opts.agentEditorial.apiKey,
         type: 'reformuler',
         text: source,
-        prompt,
+        prompt: buildXPrompt(accountId, language, meta.handle),
         profile: 'electronlibre',
         timeoutMs: 90_000,
       });
-      variants = parseVariants(result.text, url);
-      if (variants.length) sourceMode = 'assist';
+      const parsed = parseVariants(result.text, url);
+      if (parsed.length >= 2) {
+        variants = parsed;
+        sourceMode = 'assist';
+      }
     }
   } catch (err) {
     console.warn('[x-generate] assist failed, fallback', err.message);
-  }
-
-  if (variants.length < 2) {
-    variants = fallback;
-    sourceMode = sourceMode === 'assist' ? 'assist+fallback' : 'fallback';
   }
 
   return {
