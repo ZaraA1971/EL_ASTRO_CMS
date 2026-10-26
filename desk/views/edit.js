@@ -1005,13 +1005,14 @@ export function renderEdit() {
     })
     .join("");
 
+  const editorLang = escapeHtml(d.lang || "fr");
   const body = a.body || "";
   const editorPane =
     state.mode === "html"
       ? `<textarea class="html-editor" id="html-editor">${escapeHtml(body)}</textarea>`
       : state.mode === "preview"
         ? `<iframe class="article-preview-frame" id="article-preview-frame" title="Aperçu mise en page site" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>`
-        : `<div class="visual-editor" id="visual-editor" contenteditable="true" role="textbox" aria-label="Texte" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off"></div>`;
+        : `<div class="visual-editor" id="visual-editor" contenteditable="true" role="textbox" aria-label="Texte" lang="${editorLang}" spellcheck="true" autocapitalize="sentences" autocorrect="on"></div>`;
 
   app.innerHTML = `
     <header class="topbar">
@@ -1021,7 +1022,7 @@ export function renderEdit() {
     <main class="main main-edit">
       <div class="edit-grid">
         <section class="edit-col-write" aria-label="Rédaction">
-          <input class="title-input" id="f-title" value="${escapeHtml(d.title)}" placeholder="Titre" ${
+          <input class="title-input" id="f-title" lang="${editorLang}" spellcheck="true" autocapitalize="sentences" autocorrect="on" value="${escapeHtml(d.title)}" placeholder="Titre" ${
             state.mode === "preview" ? "hidden" : ""
           } />
 
