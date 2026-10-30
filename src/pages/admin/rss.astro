@@ -1,0 +1,1273 @@
+---
+export const prerender = false;
+import AuthLayout from "../../layouts/AuthLayout.astro";
+import "../../styles/admin-rss.css";
+---
+
+<AuthLayout
+  title="Administration RSS | ElectronLibre"
+  description="Pupitre RSS éditorial"
+>
+  <style is:global>
+    /* Isoler ce pupitre du fond beige des pages auth / site. */
+    body.el-auth-page--bare {
+      background: #d9e3ea;
+    }
+    body.el-auth-page--bare .el-auth-topbar {
+      background: #0b1f2a;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    body.el-auth-page--bare .el-auth-topbar__brand {
+      color: #e7eef3;
+    }
+  </style>
+  <main class="rss-admin">
+    <header class="rss-admin__head">
+      <div>
+        <p class="rss-admin__eyebrow">Administration · Flux RSS éditoriaux</p>
+        <h1>Articles RSS</h1>
+      </div>
+      <nav class="rss-admin__tabs" id="tabs" aria-label="Vues RSS">
+        <button type="button" data-view="inbox" class="is-active">Flux</button>
+        <button type="button" data-view="sent">Envoyés <span data-count="sent">—</span></button>
+        <button type="button" data-view="deleted">Supprimés <span data-count="deleted">—</span></button>
+        <button type="button" data-view="config">Config</button>
+      </nav>
+    </header>
+
+    <p id="status" class="rss-admin__status">Vérification des droits…</p>
+
+    <div id="app" class="rss-admin__layout" hidden>
+      <aside class="rss-admin__panel" id="filters-panel">
+        <h2>Filtres</h2>
+
+        <form id="filters" class="rss-admin__filters">
+          <label>
+            Source
+            <select name="source">
+              <option value="">Toutes</option>
+            </select>
+          </label>
+
+          <label>
+            Thème
+            <select name="theme">
+              <option value="">Tous</option>
+            </select>
+          </label>
+
+          <label>
+            Mot-clé
+            <select name="keyword">
+              <option value="">Tous</option>
+            </select>
+          </label>
+
+          <label>
+            Tri
+            <select name="sort">
+              <option value="date">Chronologique</option>
+              <option value="pertinence">Pertinence</option>
+              <option value="tendance">Tendance</option>
+            </select>
+          </label>
+
+          <label>
+            Du
+            <input name="from" type="date" />
+          </label>
+
+          <label>
+            Au
+            <input name="to" type="date" />
+          </label>
+
+          <button type="submit">Appliquer</button>
+        </form>
+      </aside>
+
+      <section class="rss-admin__panel rss-admin__panel--feed">
+        <div class="rss-admin__list-head">
+          <div class="rss-admin__list-head-main">
+            <h2 id="list-title">Flux éditorial</h2>
+            <span id="count"></span>
+          </div>
+          <button
+            type="button"
+            id="delete-all"
+            class="rss-admin__delete-all"
+            hidden
+          >
+            Tout supprimer
+          </button>
+        </div>
+
+        <div id="articles" class="rss-admin__list"></div>
+        <div id="config" class="rss-admin__config" hidden></div>
+        <nav id="pagination" class="rss-admin__pager"></nav>
+      </section>
+
+      <aside class="rss-admin__panel rss-admin__detail" id="detail-panel">
+        <p class="rss-admin__detail-label">Aperçu</p>
+        <div id="detail" class="rss-admin__detail-body">
+          <p class="rss-admin__empty">Sélectionnez un article dans la liste.</p>
+        </div>
+      </aside>
+    </div>
+  </main>
+</AuthLayout>
+
+<script is:inline>
+(() => {
+  const status = document.querySelector("#status");
+  const app = document.querySelector("#app");
+  const form = document.querySelector("#filters");
+  const filtersPanel = document.querySelector("#filters-panel");
+  const feedPanel = document.querySelector(".rss-admin__panel--feed");
+  const articles = document.querySelector("#articles");
+  const configBox = document.querySelector("#config");
+  const detail = document.querySelector("#detail");
+  const detailPanel = document.querySelector("#detail-panel");
+  const count = document.querySelector("#count");
+  const pager = document.querySelector("#pagination");
+  const listTitle = document.querySelector("#list-title");
+  const deleteAllBtn = document.querySelector("#delete-all");
+  const tabs = document.querySelector("#tabs");
+
+  let page = 1;
+  let view = "inbox";
+  let themeCatalog = [];
+  let canWrite = false;
+  let selectedId = null;
+  let configSection = "sources";
+  let keywordLetter = "a";
+  const vigieThemeLabels = {
+    politique: "Politique",
+    international: "International",
+    economie: "Économie",
+    hightech: "High-tech",
+    societe: "Société",
+  };
+  const limit = 20;
+
+  const titles = {
+    inbox: "Flux éditorial",
+    sent: "Articles envoyés",
+    deleted: "Articles supprimés",
+    config: "Config éditoriale",
+  };
+
+  /** Décode &#xE9; / &#160; / &nbsp; stockés en base avant échappement HTML. */
+  function decodeEntities(value) {
+    const s = String(value ?? "");
+    if (!s.includes("&")) return s;
+    const el = document.createElement("textarea");
+    el.innerHTML = s;
+    return el.value;
+  }
+
+  const esc = (value) =>
+    decodeEntities(value).replace(/[&<>"']/g, (char) =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      })[char]
+    );
+
+  function formatDate(value) {
+    if (!value) return "—";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return String(value).replace("T", " ").replace(/\.\d{3}Z$/, "");
+    }
+    return new Intl.DateTimeFormat("fr-FR", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(date);
+  }
+
+  function tagsHtml(keywords, max = 4) {
+    const list = (keywords || []).filter(Boolean);
+    if (!list.length) return "";
+    const shown = list.slice(0, max);
+    const extra = list.length - shown.length;
+    return `<ul class="rss-admin__tags">${shown
+      .map((k) => `<li>${esc(k)}</li>`)
+      .join("")}${extra > 0 ? `<li>+${extra}</li>` : ""}</ul>`;
+  }
+
+  function listMetaHtml(article) {
+    const kws = (article.keywords || []).filter(Boolean);
+    const kwHint =
+      kws.length > 0
+        ? `<span class="rss-admin__kw">${esc(kws.slice(0, 2).join(" · "))}${
+            kws.length > 2 ? ` · +${kws.length - 2}` : ""
+          }</span>`
+        : "";
+    return `<p class="rss-admin__meta-line">
+      <span class="rss-admin__source">${esc(article.source)}</span>
+      <span class="rss-admin__dot" aria-hidden="true">·</span>
+      <span class="rss-admin__time">${esc(formatDate(article.date))}</span>
+      ${kwHint ? `<span class="rss-admin__dot" aria-hidden="true">·</span>${kwHint}` : ""}
+    </p>`;
+  }
+
+  function redirectToDeskLogin() {
+    const next = `${location.pathname}${location.search}${location.hash}`;
+    location.replace(
+      `/desk/?redirect=${encodeURIComponent(next || "/admin/rss/")}`
+    );
+  }
+
+  function isDeskAuthError(error) {
+    const status = Number(error?.status || 0);
+    const msg = String(error?.message || "");
+    return (
+      status === 401 ||
+      status === 403 ||
+      /Accès pupitre refusé|Accès Desk requis|Authentification requise/i.test(
+        msg
+      )
+    );
+  }
+
+  async function getJson(url, options = {}) {
+    const response = await fetch(url, {
+      credentials: "same-origin",
+      ...options,
+    });
+
+    const body = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      const err = new Error(body.error || `HTTP ${response.status}`);
+      err.status = response.status;
+      if (isDeskAuthError(err)) {
+        redirectToDeskLogin();
+        throw err;
+      }
+      throw err;
+    }
+
+    return body;
+  }
+
+  async function postAction(payload) {
+    return getJson("/api/rss/actions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async function loadCounts() {
+    const data = await getJson("/api/rss/counts");
+    const setCount = (key, value) => {
+      const el = tabs.querySelector(`[data-count="${key}"]`);
+      if (el) el.textContent = String(value ?? "—");
+    };
+    setCount("sent", data.sent);
+    setCount("deleted", data.deleted);
+  }
+
+  function themeOptionsHtml(selected) {
+    const sel = selected != null ? String(selected) : "";
+    return [
+      '<option value="">Choisir un thème…</option>',
+      ...themeCatalog.map(
+        (t) =>
+          `<option value="${esc(t.id)}"${String(t.id) === sel ? " selected" : ""}>${esc(t.name)}</option>`
+      ),
+    ].join("");
+  }
+
+  function bindDetailActions(articleId) {
+    const flash = detail.querySelector("[data-action-flash]");
+    detail.querySelector("[data-action='send']")?.addEventListener("click", async () => {
+      try {
+        const themeId = detail.querySelector("[name='action_theme']")?.value || "";
+        const result = await postAction({
+          action: "send",
+          ids: [articleId],
+          themeId: themeId || null,
+        });
+        flash.textContent = `Envoyé client (${result.updated.length})`;
+        await loadCounts();
+        await loadArticles();
+      } catch (error) {
+        flash.textContent = error.message;
+      }
+    });
+    detail.querySelector("[data-action='to_desk']")?.addEventListener("click", async () => {
+      const btn = detail.querySelector("[data-action='to_desk']");
+      const themeId = detail.querySelector("[name='action_theme']")?.value || "";
+      if (!themeId) {
+        flash.textContent = "Choisissez un thème pour l’envoi client (/client).";
+        return;
+      }
+      if (btn) btn.disabled = true;
+      flash.textContent = "Envoi Pupitre + client en cours…";
+      try {
+        const result = await postAction({
+          action: "to_desk",
+          ids: [articleId],
+          themeId,
+        });
+        if (!result.success && result.errors?.length) {
+          flash.textContent = result.errors[0].error || "Échec envoi Pupitre";
+        } else {
+          const created = result.created?.[0];
+          flash.textContent = created
+            ? `Pupitre #${created.article_id} + client (thème ${created.theme_id || themeId})`
+            : `Pupitre + client OK (${result.processed?.length || 0})`;
+          await loadCounts();
+          await loadArticles();
+        }
+      } catch (error) {
+        flash.textContent = error.message;
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    });
+    detail.querySelector("[data-action='delete']")?.addEventListener("click", async () => {
+      if (!confirm("Supprimer cet article du flux ?")) return;
+      try {
+        const result = await postAction({ action: "delete", ids: [articleId] });
+        flash.textContent = `Supprimé (${result.updated.length})`;
+        selectedId = null;
+        await loadCounts();
+        await loadArticles();
+        detail.innerHTML = `<p class="rss-admin__empty">${esc(flash.textContent)}. Sélectionnez un autre article.</p>`;
+      } catch (error) {
+        flash.textContent = error.message;
+      }
+    });
+    detail.querySelector("[data-action='restore']")?.addEventListener("click", async () => {
+      try {
+        const result = await postAction({ action: "restore", ids: [articleId] });
+        flash.textContent = `Restauré (${result.updated.length})`;
+        selectedId = null;
+        await loadCounts();
+        await loadArticles();
+        detail.innerHTML = `<p class="rss-admin__empty">${esc(flash.textContent)}. L’article est revenu dans le flux.</p>`;
+      } catch (error) {
+        flash.textContent = error.message;
+      }
+    });
+  }
+
+  async function loadDetail(id) {
+    selectedId = String(id);
+    articles.querySelectorAll("article").forEach((el) => {
+      el.classList.toggle("is-selected", el.dataset.id === selectedId);
+    });
+
+    const allow = view === "deleted" ? "?allowDeleted=1" : "";
+    const article = await getJson(
+      `/api/rss/articles/${encodeURIComponent(id)}${allow}`
+    );
+
+    const flags = article.flags || {};
+    let actions = "";
+    if (canWrite) {
+      if (view === "deleted" || flags.deleted) {
+        actions = `
+          <div class="rss-admin__actions">
+            <button type="button" data-action="restore">Restaurer dans le flux</button>
+            <p data-action-flash></p>
+          </div>`;
+      } else {
+        actions = `
+          <div class="rss-admin__actions">
+            <label>Thème (client / Pupitre)
+              <select name="action_theme">${themeOptionsHtml()}</select>
+            </label>
+            <div class="rss-admin__actions-row">
+              <button type="button" data-action="to_desk">Envoyer au Pupitre</button>
+              <button type="button" data-action="send">Envoyer (client)</button>
+              <button type="button" data-action="delete" class="is-danger">Supprimer</button>
+            </div>
+            <p data-action-flash></p>
+          </div>`;
+      }
+    }
+
+    const flagBits = [
+      flags.sent ? '<span class="rss-admin__flag">envoyé</span>' : "",
+      flags.deleted ? '<span class="rss-admin__flag">supprimé</span>' : "",
+    ].join("");
+
+    detail.innerHTML = `
+      <div class="rss-admin__detail-head">
+        <div class="rss-admin__row-top">
+          <span class="rss-admin__source">${esc(article.source)}</span>
+          <span class="rss-admin__time">${esc(formatDate(article.date))}</span>
+        </div>
+        <h2>${esc(article.title)}${flagBits}</h2>
+        ${tagsHtml(article.keywords, 8)}
+      </div>
+      <div class="rss-admin__detail-scroll">
+        <div class="rss-admin__detail-text">
+          ${esc(article.text || "Texte absent.")}
+        </div>
+      </div>
+      ${actions ? `<div class="rss-admin__detail-foot">${actions}</div>` : ""}
+    `;
+    if (canWrite) bindDetailActions(article.id);
+  }
+
+  async function postConfig(payload) {
+    return getJson("/api/rss/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  }
+
+  function configSubnavHtml() {
+    const items = [
+      ["sources", "Sources"],
+      ["vigie", "Espace Vigie"],
+      ["themes", "Thèmes"],
+      ["keywords", "Mots-clés"],
+      ["authors", "Auteurs"],
+    ];
+    return `<nav class="rss-admin__config-sub" aria-label="Configuration">
+      ${items
+        .map(
+          ([id, label]) =>
+            `<button type="button" data-config-section="${id}" class="${
+              configSection === id ? "is-active" : ""
+            }">${label}</button>`
+        )
+        .join("")}
+    </nav>`;
+  }
+
+  function vigieThemeOptions(selected) {
+    const cur = selected || "";
+    return `<option value="">—</option>${Object.entries(vigieThemeLabels)
+      .map(
+        ([k, label]) =>
+          `<option value="${esc(k)}" ${cur === k ? "selected" : ""}>${esc(
+            label
+          )}</option>`
+      )
+      .join("")}`;
+  }
+
+  function letterNavHtml() {
+    const letters = "abcdefghijklmnopqrstuvwxyz".split("");
+    return `<p class="rss-admin__letters" id="kw-letters">
+      ${letters
+        .map(
+          (l) =>
+            `<button type="button" data-letter="${l}" class="${
+              keywordLetter === l ? "is-active" : ""
+            }">${l.toUpperCase()}</button>`
+        )
+        .join(" ")}
+      <button type="button" data-letter="number" class="${
+        keywordLetter === "number" ? "is-active" : ""
+      }">0-9</button>
+    </p>`;
+  }
+
+  function bindConfigShell() {
+    configBox.querySelectorAll("[data-config-section]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        configSection = btn.dataset.configSection;
+        loadConfig().catch((error) => {
+          status.hidden = false;
+          status.textContent = error.message;
+        });
+      });
+    });
+  }
+
+  function renderSourcesConfig(data) {
+    const isVigieTab = configSection === "vigie";
+    const sources = data.sources || [];
+    const labels = data.vigieThemeLabels || vigieThemeLabels;
+    const title = isVigieTab
+      ? `Sources Espace Vigie (${sources.length})`
+      : `Sources éditoriales (${sources.length})`;
+
+    const rows = sources
+      .map((s) => {
+        return `
+      <li class="rss-admin__config-row rss-admin__config-row--source ${
+        isVigieTab ? "is-vigie" : ""
+      }" data-source-id="${esc(s.id)}">
+        <form class="rss-admin__source-form" data-role="edit-source">
+          ${
+            isVigieTab
+              ? `<p class="rss-admin__source-badge">Espace Vigie${
+                  s.theme
+                    ? " — " + esc(labels[s.theme] || s.theme)
+                    : ""
+                }</p>`
+              : ""
+          }
+          <label>Nom <input name="name" value="${esc(s.name)}" ${
+            canWrite ? "" : "readonly"
+          } required /></label>
+          <label class="rss-admin__source-url">URL <input name="url" value="${esc(
+            s.url
+          )}" ${canWrite ? "" : "readonly"} required /></label>
+          ${
+            isVigieTab
+              ? `<label>Thème Vigie
+            <select name="theme" ${canWrite ? "" : "disabled"}>
+              ${vigieThemeOptions(s.theme)}
+            </select>
+          </label>`
+              : ""
+          }
+          ${
+            canWrite
+              ? `<div class="rss-admin__actions-row">
+                  <button type="submit">Enregistrer</button>
+                  <button type="button" data-role="del-source" class="is-danger">Supprimer</button>
+                </div>`
+              : ""
+          }
+        </form>
+      </li>`;
+      })
+      .join("");
+
+    configBox.innerHTML = `
+      ${configSubnavHtml()}
+      <h3>${esc(title)}</h3>
+      ${
+        canWrite
+          ? `<form class="rss-admin__source-form rss-admin__source-form--add" data-role="add-source">
+              <h4>${isVigieTab ? "Ajouter un flux Vigie" : "Ajouter un flux éditorial"}</h4>
+              <label>Nom <input name="name" placeholder="Nom affiché" required /></label>
+              <label class="rss-admin__source-url">URL <input name="url" placeholder="https://…" required /></label>
+              ${
+                isVigieTab
+                  ? `<label>Thème Vigie
+                <select name="theme">${vigieThemeOptions("")}</select>
+              </label>`
+                  : ""
+              }
+              <div class="rss-admin__actions-row">
+                <button type="submit">Ajouter</button>
+              </div>
+            </form>`
+          : ""
+      }
+      <p class="rss-admin__config-flash" data-config-flash hidden></p>
+      <ul class="rss-admin__config-list rss-admin__config-list--sources">${
+        rows || "<li>Aucune source.</li>"
+      }</ul>
+    `;
+    bindConfigShell();
+    const flash = configBox.querySelector("[data-config-flash]");
+    const showFlash = (msg, isErr) => {
+      flash.hidden = false;
+      flash.textContent = msg;
+      flash.classList.toggle("is-error", Boolean(isErr));
+    };
+
+    const sourcePayload = (fd) => ({
+      section: "source",
+      name: fd.get("name"),
+      url: fd.get("url"),
+      vigie: isVigieTab,
+      audience: isVigieTab ? "vigie" : "editorial",
+      theme: isVigieTab ? fd.get("theme") : "",
+    });
+
+    configBox
+      .querySelector('[data-role="add-source"]')
+      ?.addEventListener("submit", async (ev) => {
+        ev.preventDefault();
+        const fd = new FormData(ev.target);
+        try {
+          await postConfig({ ...sourcePayload(fd), action: "create" });
+          await loadConfig();
+        } catch (error) {
+          showFlash(error.message, true);
+        }
+      });
+
+    configBox.querySelectorAll('[data-role="edit-source"]').forEach((form) => {
+      form.addEventListener("submit", async (ev) => {
+        ev.preventDefault();
+        const id = form.closest("[data-source-id]")?.dataset.sourceId;
+        const fd = new FormData(form);
+        try {
+          await postConfig({ ...sourcePayload(fd), action: "update", id });
+          showFlash("Source enregistrée.");
+          await loadConfig();
+        } catch (error) {
+          showFlash(error.message, true);
+        }
+      });
+    });
+
+    configBox.querySelectorAll('[data-role="del-source"]').forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const id = btn.closest("[data-source-id]")?.dataset.sourceId;
+        if (!window.confirm("Supprimer ce flux RSS ?")) return;
+        try {
+          await postConfig({ section: "source", action: "delete", id });
+          await loadConfig();
+        } catch (error) {
+          showFlash(error.message, true);
+        }
+      });
+    });
+  }
+
+  function renderThemesConfig(themes) {
+    const rows = (themes || [])
+      .map(
+        (t) => `
+      <li class="rss-admin__config-row" data-theme-id="${esc(t.id)}">
+        <form class="rss-admin__config-form" data-role="edit-theme">
+          <input type="text" name="name" value="${esc(t.name)}" ${
+            canWrite ? "" : "readonly"
+          } />
+          <span class="rss-admin__config-id">#${esc(t.id)}</span>
+          ${
+            canWrite
+              ? `<button type="submit">Modifier</button>
+                 <button type="button" data-role="del-theme" class="is-danger">Supprimer</button>`
+              : ""
+          }
+        </form>
+      </li>`
+      )
+      .join("");
+
+    configBox.innerHTML = `
+      ${configSubnavHtml()}
+      <h3>Thèmes (${esc((themes || []).length)})</h3>
+      ${
+        canWrite
+          ? `<form class="rss-admin__config-add" data-role="add-theme">
+              <input type="text" name="name" placeholder="Nouveau thème" required />
+              <button type="submit">Ajouter</button>
+            </form>`
+          : `<p class="rss-admin__empty">Lecture seule.</p>`
+      }
+      <p class="rss-admin__config-flash" data-config-flash hidden></p>
+      <ul class="rss-admin__config-list">${rows || "<li>—</li>"}</ul>
+    `;
+    bindConfigShell();
+    const flash = configBox.querySelector("[data-config-flash]");
+    const showFlash = (msg, isErr) => {
+      flash.hidden = false;
+      flash.textContent = msg;
+      flash.classList.toggle("is-error", Boolean(isErr));
+    };
+
+    configBox
+      .querySelector('[data-role="add-theme"]')
+      ?.addEventListener("submit", async (ev) => {
+        ev.preventDefault();
+        const name = new FormData(ev.target).get("name");
+        try {
+          await postConfig({ section: "theme", action: "create", name });
+          await loadConfig();
+        } catch (error) {
+          showFlash(error.message, true);
+        }
+      });
+
+    configBox.querySelectorAll('[data-role="edit-theme"]').forEach((form) => {
+      form.addEventListener("submit", async (ev) => {
+        ev.preventDefault();
+        const id = form.closest("[data-theme-id]")?.dataset.themeId;
+        const name = new FormData(form).get("name");
+        try {
+          await postConfig({ section: "theme", action: "update", id, name });
+          showFlash("Thème modifié.");
+          await loadConfig();
+        } catch (error) {
+          showFlash(error.message, true);
+        }
+      });
+    });
+
+    configBox.querySelectorAll('[data-role="del-theme"]').forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const id = btn.closest("[data-theme-id]")?.dataset.themeId;
+        if (
+          !window.confirm(
+            "Supprimer ce thème ? Les articles liés seront remis dans le flux."
+          )
+        ) {
+          return;
+        }
+        try {
+          await postConfig({ section: "theme", action: "delete", id });
+          await loadConfig();
+        } catch (error) {
+          showFlash(error.message, true);
+        }
+      });
+    });
+  }
+
+  function renderKeywordsConfig(data) {
+    const keywords = data.keywords || [];
+    const rows = keywords
+      .map((k) => {
+        const aliases = (k.aliases || [])
+          .map(
+            (a) => `
+          <li class="rss-admin__alias-row" data-alias-id="${esc(a.id_alias)}">
+            <form data-role="edit-alias" class="rss-admin__config-form rss-admin__config-form--alias">
+              <input type="text" name="name" value="${esc(a.name_alias)}" ${
+                canWrite ? "" : "readonly"
+              } />
+              ${
+                canWrite
+                  ? `<button type="submit">modifier</button>
+                     <button type="button" data-role="del-alias" class="is-danger">Supprimer</button>`
+                  : ""
+              }
+            </form>
+          </li>`
+          )
+          .join("");
+        return `
+        <li class="rss-admin__config-row" data-keyword-id="${esc(k.id_keyword)}">
+          <form class="rss-admin__config-form" data-role="edit-keyword">
+            <input type="text" name="name" value="${esc(k.name_keyword)}" ${
+              canWrite ? "" : "readonly"
+            } />
+            ${
+              canWrite
+                ? `<button type="submit">modifier</button>
+                   <button type="button" data-role="del-keyword" class="is-danger">Supprimer</button>
+                   <button type="button" data-role="toggle-alias" class="is-ghost">Alias</button>`
+                : `<button type="button" data-role="toggle-alias" class="is-ghost">Alias</button>`
+            }
+          </form>
+          <div class="rss-admin__aliases" hidden>
+            <ul>${aliases || ""}</ul>
+            ${
+              canWrite
+                ? `<form data-role="add-alias" class="rss-admin__config-form rss-admin__config-form--alias">
+                    <input type="text" name="name" placeholder="Nouvel alias" required />
+                    <button type="submit">Ajouter alias</button>
+                  </form>`
+                : ""
+            }
+          </div>
+        </li>`;
+      })
+      .join("");
+
+    configBox.innerHTML = `
+      ${configSubnavHtml()}
+      <h3>Mots-clés (${esc(keywords.length)} / total ${esc(
+        data.keywordTotal ?? "—"
+      )})</h3>
+      ${letterNavHtml()}
+      ${
+        canWrite
+          ? `<form class="rss-admin__config-add" data-role="add-keyword">
+              <input type="text" name="name" placeholder="Nouveau mot-clé" required />
+              <button type="submit">Ajouter</button>
+            </form>`
+          : ""
+      }
+      <p class="rss-admin__config-flash" data-config-flash hidden></p>
+      <ul class="rss-admin__config-list">${rows || "<li>Aucun mot-clé pour cette lettre.</li>"}</ul>
+    `;
+    bindConfigShell();
+    const flash = configBox.querySelector("[data-config-flash]");
+    const showFlash = (msg, isErr) => {
+      flash.hidden = false;
+      flash.textContent = msg;
+      flash.classList.toggle("is-error", Boolean(isErr));
+    };
+
+    configBox.querySelectorAll("[data-letter]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        keywordLetter = btn.dataset.letter;
+        loadConfig().catch((error) => {
+          status.hidden = false;
+          status.textContent = error.message;
+        });
+      });
+    });
+
+    configBox
+      .querySelector('[data-role="add-keyword"]')
+      ?.addEventListener("submit", async (ev) => {
+        ev.preventDefault();
+        const name = new FormData(ev.target).get("name");
+        try {
+          const out = await postConfig({
+            section: "keyword",
+            action: "create",
+            name,
+          });
+          const created = String(out.result?.name_keyword || name).charAt(0);
+          if (/[a-z]/.test(created)) keywordLetter = created;
+          else if (/[0-9]/.test(created)) keywordLetter = "number";
+          await loadConfig();
+        } catch (error) {
+          showFlash(error.message, true);
+        }
+      });
+
+    configBox.querySelectorAll('[data-role="edit-keyword"]').forEach((form) => {
+      form.addEventListener("submit", async (ev) => {
+        ev.preventDefault();
+        const id = form.closest("[data-keyword-id]")?.dataset.keywordId;
+        const name = new FormData(form).get("name");
+        try {
+          await postConfig({ section: "keyword", action: "update", id, name });
+          await loadConfig();
+        } catch (error) {
+          showFlash(error.message, true);
+        }
+      });
+    });
+
+    configBox.querySelectorAll('[data-role="del-keyword"]').forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const id = btn.closest("[data-keyword-id]")?.dataset.keywordId;
+        if (!window.confirm("Supprimer ce mot-clé et ses alias ?")) return;
+        try {
+          await postConfig({ section: "keyword", action: "delete", id });
+          await loadConfig();
+        } catch (error) {
+          showFlash(error.message, true);
+        }
+      });
+    });
+
+    configBox.querySelectorAll('[data-role="toggle-alias"]').forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const box = btn
+          .closest("[data-keyword-id]")
+          ?.querySelector(".rss-admin__aliases");
+        if (box) box.hidden = !box.hidden;
+      });
+    });
+
+    configBox.querySelectorAll('[data-role="add-alias"]').forEach((form) => {
+      form.addEventListener("submit", async (ev) => {
+        ev.preventDefault();
+        const keywordId = form.closest("[data-keyword-id]")?.dataset.keywordId;
+        const name = new FormData(form).get("name");
+        try {
+          await postConfig({
+            section: "alias",
+            action: "create",
+            keywordId,
+            name,
+          });
+          await loadConfig();
+        } catch (error) {
+          showFlash(error.message, true);
+        }
+      });
+    });
+
+    configBox.querySelectorAll('[data-role="edit-alias"]').forEach((form) => {
+      form.addEventListener("submit", async (ev) => {
+        ev.preventDefault();
+        const id = form.closest("[data-alias-id]")?.dataset.aliasId;
+        const name = new FormData(form).get("name");
+        try {
+          await postConfig({ section: "alias", action: "update", id, name });
+          await loadConfig();
+        } catch (error) {
+          showFlash(error.message, true);
+        }
+      });
+    });
+
+    configBox.querySelectorAll('[data-role="del-alias"]').forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const id = btn.closest("[data-alias-id]")?.dataset.aliasId;
+        if (!window.confirm("Supprimer cet alias ?")) return;
+        try {
+          await postConfig({ section: "alias", action: "delete", id });
+          await loadConfig();
+        } catch (error) {
+          showFlash(error.message, true);
+        }
+      });
+    });
+  }
+
+  function renderAuthorsConfig(authors) {
+    const rows = (authors || [])
+      .map(
+        (a) => `
+      <li class="rss-admin__config-row" data-author-id="${esc(a.id)}">
+        <details class="rss-admin__author">
+          <summary>
+            <strong>${esc(a.name)}</strong>
+            <span class="rss-admin__muted">${esc(
+              [a.prenom, a.nom].filter(Boolean).join(" ") || "—"
+            )}</span>
+          </summary>
+          <form class="rss-admin__author-form" data-role="edit-author">
+            <label>Identifiant RSS <input name="name" value="${esc(
+              a.name
+            )}" ${canWrite ? "" : "readonly"} required /></label>
+            <label>Prénom <input name="prenom" value="${esc(a.prenom || "")}" ${
+              canWrite ? "" : "readonly"
+            } /></label>
+            <label>Nom <input name="nom" value="${esc(a.nom || "")}" ${
+              canWrite ? "" : "readonly"
+            } /></label>
+            <label>Média <input name="media" value="${esc(a.media || "")}" ${
+              canWrite ? "" : "readonly"
+            } /></label>
+            <label>Twitter <input name="twitter" value="${esc(
+              a.twitter || ""
+            )}" ${canWrite ? "" : "readonly"} /></label>
+            <label>Mail <input name="mail" value="${esc(a.mail || "")}" ${
+              canWrite ? "" : "readonly"
+            } /></label>
+            <label>Tél <input name="tel" value="${esc(a.tel || "")}" ${
+              canWrite ? "" : "readonly"
+            } /></label>
+            <label>Site <input name="website" value="${esc(a.website || "")}" ${
+              canWrite ? "" : "readonly"
+            } /></label>
+            <label class="rss-admin__author-desc">Description
+              <textarea name="description" rows="3" ${
+                canWrite ? "" : "readonly"
+              }>${esc(a.description || "")}</textarea>
+            </label>
+            ${
+              canWrite
+                ? `<div class="rss-admin__actions-row">
+                    <button type="submit">Enregistrer</button>
+                    <button type="button" data-role="del-author" class="is-danger">Supprimer</button>
+                  </div>`
+                : ""
+            }
+          </form>
+        </details>
+      </li>`
+      )
+      .join("");
+
+    configBox.innerHTML = `
+      ${configSubnavHtml()}
+      <h3>Auteurs (${esc((authors || []).length)})</h3>
+      ${
+        canWrite
+          ? `<form class="rss-admin__config-add" data-role="add-author">
+              <input type="text" name="name" placeholder="Identifiant RSS" required />
+              <input type="text" name="prenom" placeholder="Prénom" />
+              <input type="text" name="nom" placeholder="Nom" />
+              <button type="submit">Ajouter</button>
+            </form>`
+          : ""
+      }
+      <p class="rss-admin__config-flash" data-config-flash hidden></p>
+      <ul class="rss-admin__config-list">${rows || "<li>—</li>"}</ul>
+    `;
+    bindConfigShell();
+    const flash = configBox.querySelector("[data-config-flash]");
+    const showFlash = (msg, isErr) => {
+      flash.hidden = false;
+      flash.textContent = msg;
+      flash.classList.toggle("is-error", Boolean(isErr));
+    };
+
+    configBox
+      .querySelector('[data-role="add-author"]')
+      ?.addEventListener("submit", async (ev) => {
+        ev.preventDefault();
+        const fd = new FormData(ev.target);
+        try {
+          await postConfig({
+            section: "author",
+            action: "create",
+            name: fd.get("name"),
+            prenom: fd.get("prenom"),
+            nom: fd.get("nom"),
+          });
+          await loadConfig();
+        } catch (error) {
+          showFlash(error.message, true);
+        }
+      });
+
+    configBox.querySelectorAll('[data-role="edit-author"]').forEach((form) => {
+      form.addEventListener("submit", async (ev) => {
+        ev.preventDefault();
+        const id = form.closest("[data-author-id]")?.dataset.authorId;
+        const fd = new FormData(form);
+        try {
+          await postConfig({
+            section: "author",
+            action: "update",
+            id,
+            name: fd.get("name"),
+            prenom: fd.get("prenom"),
+            nom: fd.get("nom"),
+            media: fd.get("media"),
+            twitter: fd.get("twitter"),
+            mail: fd.get("mail"),
+            tel: fd.get("tel"),
+            website: fd.get("website"),
+            description: fd.get("description"),
+          });
+          showFlash("Auteur enregistré.");
+        } catch (error) {
+          showFlash(error.message, true);
+        }
+      });
+    });
+
+    configBox.querySelectorAll('[data-role="del-author"]').forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const id = btn.closest("[data-author-id]")?.dataset.authorId;
+        if (!window.confirm("Supprimer cet auteur ?")) return;
+        try {
+          await postConfig({ section: "author", action: "delete", id });
+          await loadConfig();
+        } catch (error) {
+          showFlash(error.message, true);
+        }
+      });
+    });
+  }
+
+  async function loadConfig() {
+    articles.hidden = true;
+    configBox.hidden = false;
+    detailPanel.hidden = true;
+    pager.innerHTML = "";
+    count.textContent = canWrite ? "édition" : "lecture";
+
+    const params = new URLSearchParams({ section: configSection });
+    if (configSection === "keywords") params.set("letter", keywordLetter);
+    const data = await getJson(`/api/rss/config?${params}`);
+
+    if (configSection === "sources" || configSection === "vigie")
+      renderSourcesConfig(data);
+    else if (configSection === "themes") renderThemesConfig(data.themes || []);
+    else if (configSection === "keywords") renderKeywordsConfig(data);
+    else renderAuthorsConfig(data.authors || []);
+  }
+
+  async function loadArticles() {
+    articles.hidden = false;
+    configBox.hidden = true;
+    detailPanel.hidden = false;
+
+    const params = new URLSearchParams();
+
+    for (const element of form.elements) {
+      if (element.name && element.value) {
+        params.set(element.name, element.value);
+      }
+    }
+
+    params.set("page", String(page));
+    params.set("limit", String(limit));
+
+    let url;
+    if (view === "sent") {
+      url = `/api/rss/sent?${params}`;
+    } else if (view === "deleted") {
+      url = `/api/rss/deleted?${params}`;
+    } else {
+      params.set("audience", "editorial");
+      params.set("scope", "inbox");
+      url = `/api/rss/articles?${params}`;
+    }
+
+    const data = await getJson(url);
+
+    count.textContent = `${data.total.toLocaleString("fr-FR")} article(s)`;
+
+    articles.innerHTML =
+      data.items
+        .map((article) => {
+          const selected =
+            selectedId && String(article.id) === String(selectedId)
+              ? " is-selected"
+              : "";
+          return `
+            <article data-id="${esc(article.id)}" class="${selected.trim()}">
+              <strong>${esc(article.title)}</strong>
+              ${listMetaHtml(article)}
+            </article>
+          `;
+        })
+        .join("") || '<p class="rss-admin__empty">Aucun article.</p>';
+
+    articles.querySelectorAll("article").forEach((element) => {
+      element.addEventListener("click", () => {
+        loadDetail(element.dataset.id).catch((error) => {
+          detail.innerHTML = `<p class="rss-admin__empty">${esc(error.message)}</p>`;
+        });
+      });
+    });
+
+    pager.innerHTML = "";
+
+    if (data.page > 1) {
+      pager.insertAdjacentHTML(
+        "beforeend",
+        '<button type="button" id="prev">Précédent</button>'
+      );
+    }
+
+    if (data.page * data.limit < data.total) {
+      pager.insertAdjacentHTML(
+        "beforeend",
+        '<button type="button" id="next">Suivant</button>'
+      );
+    }
+
+    document.querySelector("#prev")?.addEventListener("click", () => {
+      page -= 1;
+      loadArticles();
+    });
+
+    document.querySelector("#next")?.addEventListener("click", () => {
+      page += 1;
+      loadArticles();
+    });
+  }
+
+  function syncDeleteAllButton() {
+    if (!deleteAllBtn) return;
+    deleteAllBtn.hidden = !(canWrite && view === "inbox");
+  }
+
+  async function setView(next) {
+    view = next;
+    page = 1;
+    selectedId = null;
+    listTitle.textContent = titles[view] || view;
+    tabs.querySelectorAll("button").forEach((btn) => {
+      btn.classList.toggle("is-active", btn.dataset.view === view);
+    });
+    const isConfig = view === "config";
+    filtersPanel.hidden = isConfig;
+    app?.classList.toggle("rss-admin__layout--config", isConfig);
+    feedPanel?.classList.toggle("rss-admin__panel--config", isConfig);
+    syncDeleteAllButton();
+    detail.innerHTML =
+      '<p class="rss-admin__empty">Sélectionnez un article dans la liste.</p>';
+    if (isConfig) {
+      await loadConfig();
+    } else {
+      await loadArticles();
+    }
+  }
+
+  async function init() {
+    try {
+      const desk = await getJson("/api/desk/me");
+
+      if (!desk.user) {
+        const err = new Error("Accès Desk requis");
+        err.status = 403;
+        throw err;
+      }
+
+      const role = String(desk.user.role || "").toLowerCase();
+      canWrite = role === "admin" || role === "editor";
+
+      const filters = await getJson("/api/rss/filters");
+      themeCatalog = filters.themeCatalog || [];
+
+      for (const value of filters.sources || []) {
+        form.elements.source.insertAdjacentHTML(
+          "beforeend",
+          `<option value="${esc(value)}">${esc(value)}</option>`
+        );
+      }
+
+      for (const value of filters.themes || []) {
+        form.elements.theme.insertAdjacentHTML(
+          "beforeend",
+          `<option value="${esc(value)}">${esc(value)}</option>`
+        );
+      }
+
+      for (const value of filters.keywords || []) {
+        form.elements.keyword.insertAdjacentHTML(
+          "beforeend",
+          `<option value="${esc(value)}">${esc(value)}</option>`
+        );
+      }
+
+      app.hidden = false;
+      status.hidden = true;
+
+      await loadCounts();
+      await setView("inbox");
+    } catch (error) {
+      if (isDeskAuthError(error)) {
+        status.textContent = "Session expirée — redirection vers Pupitre…";
+        redirectToDeskLogin();
+        return;
+      }
+      status.textContent = error.message || "Accès refusé";
+    }
+  }
+
+  tabs.addEventListener("click", (event) => {
+    const btn = event.target.closest("button[data-view]");
+    if (!btn) return;
+    setView(btn.dataset.view).catch((error) => {
+      status.hidden = false;
+      status.textContent = error.message;
+    });
+  });
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    page = 1;
+    loadArticles().catch((error) => {
+      status.hidden = false;
+      status.textContent = error.message;
+    });
+  });
+
+  deleteAllBtn?.addEventListener("click", async () => {
+    const ok = confirm(
+      "Tout supprimer de l’inbox ?\nLes articles nouveaux non envoyés seront mis à la corbeille (comme en legacy)."
+    );
+    if (!ok) return;
+    try {
+      deleteAllBtn.disabled = true;
+      const result = await postAction({ action: "delete_all" });
+      selectedId = null;
+      detail.innerHTML = `<p class="rss-admin__empty">Tout supprimer : ${esc(
+        result.affected ?? 0
+      )} article(s) traités.</p>`;
+      await loadCounts();
+      await loadArticles();
+    } catch (error) {
+      status.hidden = false;
+      status.textContent = error.message;
+    } finally {
+      deleteAllBtn.disabled = false;
+    }
+  });
+
+  init();
+})();
+</script>

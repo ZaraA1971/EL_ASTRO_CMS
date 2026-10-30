@@ -208,6 +208,11 @@ async function bootstrap() {
       /* ignore */
     }
     await loadRubrics();
+    const raw = new URLSearchParams(location.search).get("redirect") || "";
+    if (raw.startsWith("/") && !raw.startsWith("//") && !raw.includes("://")) {
+      location.replace(raw);
+      return;
+    }
     await openDesiredView();
   } catch {
     state.view = "login";

@@ -60,6 +60,12 @@ export async function login(ev) {
       state.caps = { manageUsers: false };
     }
     state.status = "";
+    // Retour admin RSS (ou autre) après login si ?redirect=/chemin
+    const raw = new URLSearchParams(location.search).get("redirect") || "";
+    if (raw.startsWith("/") && !raw.startsWith("//") && !raw.includes("://")) {
+      location.assign(raw);
+      return;
+    }
     await ctx.openDesiredView();
   } catch (err) {
     state.error = err.message;

@@ -1,0 +1,107 @@
+---
+export const prerender = false;
+import AuthLayout from "../../../layouts/AuthLayout.astro";
+
+const id = Astro.params.id || "";
+---
+
+<AuthLayout
+  title="Article RSS — Administration | ElectronLibre"
+  description="Détail d’un article RSS."
+>
+  <section class="el-archive-shell el-auth">
+    <article class="el-auth__card" style="max-width:1100px">
+      <p><a href="/admin/rss/">← Retour aux articles RSS</a></p>
+      <p id="status">Chargement…</p>
+
+      <div id="app" hidden>
+        <small id="meta"></small>
+        <h1 id="title"></h1>
+        <p id="keywords"></p>
+        <hr />
+        <div id="text"></div>
+      </div>
+    </article>
+  </section>
+</AuthLayout>
+
+<script define:vars={{ id }} is:inline>
+(() => {
+  const status = document.querySelector("#status");
+  const app = document.querySelector("#app");
+
+  const esc = (value) =>
+    String(value ?? "").replace(/[&<>"']/g, (c) =>
+      ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" })[c]
+    );
+
+  function redirectToDeskLogin() {
+    const next = `${location.pathname}${location.search}${location.hash}`;
+    location.replace(
+      `/desk/?redirect=${encodeURIComponent(next || "/admin/rss/")}`
+    );
+  }
+
+  function isDeskAuthError(error) {
+    const code = Number(error?.status || 0);
+    const msg = String(error?.message || "");
+    return (
+      code === 401 ||
+      code === 403 ||
+      /Accès pupitre refusé|Accès Desk requis|Authentification requise/i.test(
+        msg
+      )
+    );
+  }
+
+  async function getJson(url) {
+    const response = await fetch(url, { credentials: "same-origin" });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const err = new Error(body.error || `HTTP ${response.status}`);
+      err.status = response.status;
+      if (isDeskAuthError(err)) {
+        redirectToDeskLogin();
+        throw err;
+      }
+      throw err;
+    }
+    return body;
+  }
+
+  async function init() {
+    try {
+      const desk = await getJson("/api/desk/me");
+      if (!desk?.user) {
+        const err = new Error("Accès Desk requis");
+        err.status = 403;
+        throw err;
+      }
+
+      const article = await getJson(`/api/rss/articles/${encodeURIComponent(id)}`);
+
+      document.querySelector("#meta").textContent =
+        `${article.audience || "—"} · ${article.source || "—"} · ${article.date || "—"}`;
+
+      document.querySelector("#title").textContent = article.title || "Sans titre";
+      document.querySelector("#keywords").textContent =
+        article.keywords ? `Mots-clés : ${article.keywords}` : "";
+
+      document.querySelector("#text").innerHTML =
+        article.text ? esc(article.text).replace(/\n/g, "<br />") : "<em>Texte absent.</em>";
+
+      status.hidden = true;
+      app.hidden = false;
+    } catch (error) {
+      if (isDeskAuthError(error)) {
+        status.textContent = "Session expirée — redirection vers Pupitre…";
+        redirectToDeskLogin();
+        return;
+      }
+      status.textContent = error.message || "Impossible de charger l’article.";
+    }
+  }
+
+  init();
+})();
+</script>
